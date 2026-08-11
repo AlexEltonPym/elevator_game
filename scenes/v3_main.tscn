@@ -1,0 +1,18 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/v3/main3.gd" id="1_main3"]
+[ext_resource type="Script" path="res://scripts/v3/grid.gd" id="2_grid3"]
+[ext_resource type="Script" path="res://scripts/v3/hud3.gd" id="3_hud3"]
+
+[node name="Main3" type="Node2D"]
+script = ExtResource("1_main3")
+
+[node name="Grid" type="Node2D" parent="."]
+script = ExtResource("2_grid3")
+
+[node name="Cars" type="Node2D" parent="."]
+
+[node name="Passengers" type="Node2D" parent="."]
+
+[node name="HUD" type="CanvasLayer" parent="."]
+script = ExtResource("3_hud3")
