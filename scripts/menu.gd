@@ -30,7 +30,7 @@ func _ready() -> void:
 			Color(0.42, 0.52, 0.68), "res://scenes/main.tscn")
 	_add_mode_button(box, "v3  PATH DRAWING",
 			"drag maze routes, gate mutexes, emergent transfers",
-			Color(0.93, 0.58, 0.16), "res://scenes/v3_main.tscn")
+			Color(0.93, 0.58, 0.16), "res://scenes/v3_select.tscn")
 
 
 func _add_mode_button(box: VBoxContainer, label: String, desc: String,

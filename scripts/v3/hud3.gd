@@ -1,9 +1,10 @@
 extends CanvasLayer
 ## v3 HUD, built entirely in code (v2 style):
-## - top bar: level id "X-1", Served n/30, Lost n/8, MENU, speed buttons
+## - top bar: level id, Served n/quota, Lost n/max, MENU, speed buttons
 ## - bottom panel: 3 route card chips (colored, route length + stop count),
 ##   CLEAR button, contextual hint line
-## - overlays: intro / win (keep playing or restart) / lose (retry)
+## - overlays: intro / win (next level, level select, keep playing) /
+##   lose (retry, level select)
 
 var game = null # main3.gd, set by main before first refresh
 
@@ -141,6 +142,7 @@ func refresh_cards() -> void:
 func refresh_stats() -> void:
 	if game == null:
 		return
+	level_label.text = str(game.level.get("id", "X-1"))
 	served_label.text = "Served %d/%d" % [game.served, game.QUOTA]
 	lost_label.text = "Lost %d/%d" % [game.lost, game.MAX_LOST]
 	if game.endless:
@@ -179,28 +181,30 @@ func _refresh_hint() -> void:
 # ---------------------------------------------------------------- overlays
 
 func show_intro() -> void:
-	_show_overlay("X-1  PATH DRAWING",
-			"Draw each elevator's route as a line through the maze.\n" +
-			"Rooms (lettered) on a route become its stops; passengers\n" +
-			"transfer between routes at shared rooms automatically.\n" +
-			"Striped GATE cells let only one car through at a time.\n\n" +
-			"Serve %d before losing %d." % [game.QUOTA, game.MAX_LOST],
+	var lv: Dictionary = game.level
+	_show_overlay("%s  %s" % [lv.id, str(lv.name).to_upper()],
+			str(lv.intro) +
+			"\n\nServe %d before losing %d." % [game.QUOTA, game.MAX_LOST],
 			[{"text": "START", "cb": func(): game.start_session()}])
 
 
 func show_win(served: int, lost: int) -> void:
+	var buttons: Array = []
+	if Levels3.current < Levels3.LEVELS.size() - 1:
+		buttons.append({"text": "NEXT LEVEL", "cb": func(): game.next_level()})
+	buttons.append({"text": "LEVEL SELECT", "cb": func(): game.to_level_select()})
+	buttons.append({"text": "KEEP PLAYING", "cb": func(): game.keep_playing()})
 	_show_overlay("QUOTA MET",
-			"Served %d, lost %d.\nKeep the network running, or start fresh?" % [served, lost],
-			[
-				{"text": "KEEP PLAYING", "cb": func(): game.keep_playing()},
-				{"text": "RESTART", "cb": func(): game.restart_session()},
-			])
+			"Served %d, lost %d." % [served, lost], buttons)
 
 
 func show_lose(served: int, lost: int) -> void:
 	_show_overlay("SHIFT FAILED",
 			"Lost %d passengers (served %d).\nYour routes stay drawn - counters reset." % [lost, served],
-			[{"text": "RETRY", "cb": func(): game.restart_session()}])
+			[
+				{"text": "RETRY", "cb": func(): game.restart_session()},
+				{"text": "LEVEL SELECT", "cb": func(): game.to_level_select()},
+			])
 
 
 func hide_overlay() -> void:

@@ -1,41 +1,48 @@
 extends Node2D
 ## Game controller for prototype v3 "Path Drawing".
-## Owns: the three route cards + cars, drag-to-draw route editing, the gate
-## FIFO mutexes, passenger spawning + time-based replanning, session flow
-## (X-1: Served 30 before Lost 8, win -> keep playing/restart, lose -> retry),
-## and the game time scale (pause/1x/3x — a plain variable multiplied into
-## game ticks, so UI and route editing keep working while paused).
+## Owns: the level config (data-driven via Levels3), the three route cards +
+## cars, drag-to-draw route editing, the gate FIFO mutexes, PULSE-based
+## passenger spawning + time-based replanning, session flow (win -> next
+## level / level select / keep playing, lose -> retry / level select), and
+## the game time scale (pause/1x/3x - a plain variable multiplied into game
+## ticks, so UI and route editing keep working while paused).
+##
+## All randomness flows through `rng` (one RandomNumberGenerator): normal
+## play randomizes it, the balance harness sets a fixed seed for
+## deterministic runs.
 
 enum State { INTRO, PLAYING, WIN, LOSE }
 
-const CARDS := [
-	{"name": "LOCAL A", "type": "standard", "cap": 4, "speed": 260.0,
-			"color": Color(0.45, 0.68, 0.95)},
-	{"name": "LOCAL B", "type": "standard", "cap": 4, "speed": 260.0,
-			"color": Color(0.5, 0.88, 0.55)},
-	{"name": "EXPRESS", "type": "express", "cap": 4, "speed": 520.0,
-			"color": Color(0.98, 0.68, 0.2)},
-]
-
-const QUOTA := 30
-const MAX_LOST := 8
-const SPAWN_START := 5.5
-const SPAWN_END := 3.0
-const SPAWN_RAMP_T := 240.0
+var level: Dictionary = {} # Levels3 entry for Levels3.current
+var CARDS: Array = [] # this level's 3 elevator cards
+var QUOTA := 30
+var MAX_LOST := 8
 
 var state: int = State.INTRO
 var time_scale := 1.0
 var served := 0
 var lost := 0
 var elapsed := 0.0 # game-time seconds since session start (drives spawn ramp)
-var spawn_timer := 0.0
-var auto_spawn := true # test hook: harness disables random spawns
+var auto_spawn := true # test hook: harness may disable random spawns
 var endless := false # after a win, "keep playing" disables win/lose checks
+
+var rng := RandomNumberGenerator.new()
+
+# Pulse spawner state: quiet until pulse_timer runs out, then a burst of
+# burst_left passengers spawns gap seconds apart.
+var pulse_timer := 0.0
+var burst_left := 0
+var burst_timer := 0.0
 
 var routes: Array = [null, null, null] # Route3 or null per card
 var cars: Array = [null, null, null] # Car3 per card (always exist, may be idle)
 var gates := {} # gate cell -> {"holder": Car3 or null, "queue": Array[Car3]}
 var waiting := {} # room cell -> Array[Passenger3] in arrival order
+
+# Session log for stats/harness: one entry per finished passenger,
+# {"type", "origin", "dest", "wait", "rides"}.
+var log_served: Array = []
+var log_lost: Array = []
 
 var selected_card := -1
 var drawing := false
@@ -48,7 +55,14 @@ var stroke: Array = [] # Vector2i cells of the active drag
 
 
 func _ready() -> void:
-	randomize()
+	rng.randomize() # normal play is unseeded; the harness overrides rng.seed
+	level = Levels3.get_level(Levels3.current)
+	Grid3.load_level(level.rows)
+	CARDS = level.cards
+	QUOTA = level.quota
+	MAX_LOST = level.max_lost
+	routes = []
+	cars = []
 	for g in Grid3.gate_cells():
 		gates[g] = {"holder": null, "queue": []}
 	for r in Grid3.rooms():
@@ -56,10 +70,11 @@ func _ready() -> void:
 	grid.game = self
 	hud.game = self
 	for i in CARDS.size():
+		routes.append(null)
 		var c := Car3.new()
 		c.setup(self, i, CARDS[i])
 		cars_node.add_child(c)
-		cars[i] = c
+		cars.append(c)
 	hud.refresh_cards()
 	hud.show_intro()
 
@@ -78,10 +93,7 @@ func advance(dt: float) -> void:
 		return
 	elapsed += dt
 	if auto_spawn:
-		spawn_timer -= dt
-		if spawn_timer <= 0.0:
-			_spawn_random()
-			spawn_timer = spawn_interval()
+		_spawn_tick(dt)
 	for c in cars:
 		if c != null:
 			c.tick(dt)
@@ -89,8 +101,31 @@ func advance(dt: float) -> void:
 		p.tick(dt)
 
 
-func spawn_interval() -> float:
-	return lerpf(SPAWN_START, SPAWN_END, clampf(elapsed / SPAWN_RAMP_T, 0.0, 1.0))
+## Average per-passenger spawn interval right now (ramps over the session).
+func current_interval() -> float:
+	var s: Dictionary = level.spawn
+	return lerpf(s.interval_start, s.interval_end,
+			clampf(elapsed / float(s.ramp), 0.0, 1.0))
+
+
+## Pulse spawning: bursts of burst_min..burst_max passengers `gap` s apart,
+## then quiet for burst_size * interval (average rate == interval, but with
+## visible lulls where cars go idle and door timing reads).
+func _spawn_tick(dt: float) -> void:
+	var s: Dictionary = level.spawn
+	if burst_left > 0:
+		burst_timer -= dt
+		if burst_timer <= 0.0:
+			_spawn_random()
+			burst_left -= 1
+			burst_timer = s.gap
+	else:
+		pulse_timer -= dt
+		if pulse_timer <= 0.0:
+			var n: int = rng.randi_range(s.burst_min, s.burst_max)
+			burst_left = n
+			burst_timer = 0.0 # first of the burst spawns immediately
+			pulse_timer = n * current_interval()
 
 
 # ---------------------------------------------------------------- session flow
@@ -98,7 +133,7 @@ func spawn_interval() -> float:
 func start_session() -> void:
 	hud.hide_overlay()
 	state = State.PLAYING
-	spawn_timer = 2.0
+	_reset_spawner()
 
 
 func keep_playing() -> void:
@@ -108,16 +143,33 @@ func keep_playing() -> void:
 
 
 ## Reset counters/passengers (routes are KEPT — free redraw makes wiping them
-## pointless); used by both the win "Restart" and the lose "Retry".
+## pointless); used by the lose "Retry".
 func restart_session() -> void:
 	served = 0
 	lost = 0
 	elapsed = 0.0
 	endless = false
+	log_served = []
+	log_lost = []
 	_clear_passengers()
 	hud.hide_overlay()
 	state = State.PLAYING
-	spawn_timer = 2.0
+	_reset_spawner()
+
+
+func next_level() -> void:
+	Levels3.current = mini(Levels3.current + 1, Levels3.LEVELS.size() - 1)
+	get_tree().change_scene_to_file("res://scenes/v3_main.tscn")
+
+
+func to_level_select() -> void:
+	get_tree().change_scene_to_file("res://scenes/v3_select.tscn")
+
+
+func _reset_spawner() -> void:
+	pulse_timer = 2.0
+	burst_left = 0
+	burst_timer = 0.0
 
 
 func _win() -> void:
@@ -323,7 +375,7 @@ func replan_all() -> void:
 
 
 func _compute_path_for(p) -> void:
-	var path = Pathfind3.find_path(p.cur_cell, p.dest_cell, cars)
+	var path = Pathfind3.find_path(p.cur_cell, p.dest_cell, cars, p.salt)
 	if path == null:
 		p.legs = []
 		p.no_path = true
@@ -334,34 +386,63 @@ func _compute_path_for(p) -> void:
 
 # ---------------------------------------------------------------- passengers
 
+## Weighted pick from the level's type mix.
+func _pick_type() -> String:
+	var mix: Dictionary = level.mix
+	var total := 0.0
+	for t in mix:
+		total += mix[t]
+	var roll := rng.randf() * total
+	for t in mix:
+		roll -= mix[t]
+		if roll <= 0.0:
+			return t
+	return mix.keys().back()
+
+
+func _pick_room(group: Array, avoid: Vector2i = Vector2i(-1, -1)) -> Vector2i:
+	var pool := group.filter(func(c): return c != avoid)
+	if pool.is_empty():
+		pool = group
+	return pool[rng.randi_range(0, pool.size() - 1)]
+
+
 func _spawn_random() -> void:
-	var t := "visitor" if randf() < 0.55 else "patient"
-	var rooms := Grid3.rooms()
-	var lobby: Array = rooms.filter(func(c): return c.y == 0)
-	var upper: Array = rooms.filter(func(c): return c.y > 0)
+	var t := _pick_type()
 	var o: Vector2i
 	var d: Vector2i
-	if randf() < 0.6:
-		# Trip involves a lobby room, either direction.
-		var l: Vector2i = lobby.pick_random()
-		var u: Vector2i = upper.pick_random()
-		if randf() < 0.5:
-			o = l
-			d = u
-		else:
-			o = u
-			d = l
+	if t == "exec" and not level.exec_origins.is_empty() \
+			and not level.exec_dests.is_empty():
+		# Execs use only the level-designated origin/destination rooms.
+		o = _pick_room(level.exec_origins)
+		d = _pick_room(level.exec_dests, o)
 	else:
-		o = upper.pick_random()
-		d = upper.pick_random()
-		while d == o:
-			d = upper.pick_random()
+		if t == "exec":
+			t = "visitor" # level configured exec weight but no rooms: degrade
+		# Weighted trip table between named room groups.
+		var groups: Dictionary = level.groups
+		var trips: Array = level.trips
+		var total := 0.0
+		for row in trips:
+			total += row.w
+		var roll := rng.randf() * total
+		var picked: Dictionary = trips.back()
+		for row in trips:
+			roll -= row.w
+			if roll <= 0.0:
+				picked = row
+				break
+		o = _pick_room(groups[picked.from])
+		d = _pick_room(groups[picked.to], o)
+	if o == d:
+		return # degenerate config (single shared room); skip this spawn
 	spawn_passenger(t, o, d)
 
 
 func spawn_passenger(ptype: String, origin: Vector2i, dest: Vector2i) -> Passenger3:
 	var p := Passenger3.new()
 	p.setup(self, ptype, origin, dest)
+	p.salt = rng.randf()
 	passengers_node.add_child(p)
 	waiting[origin].append(p)
 	_compute_path_for(p)
@@ -383,6 +464,8 @@ func on_alight(p, cell: Vector2i) -> void:
 
 func on_served(p) -> void:
 	p.active = false
+	log_served.append({"type": p.ptype, "origin": p.origin_cell,
+			"dest": p.dest_cell, "wait": p.wait_time, "rides": p.rides})
 	p.queue_free()
 	served += 1
 	if state == State.PLAYING and not endless and served >= QUOTA:
@@ -391,10 +474,21 @@ func on_served(p) -> void:
 
 func on_expired(p) -> void:
 	waiting[p.cur_cell].erase(p)
+	log_lost.append({"type": p.ptype, "origin": p.origin_cell,
+			"dest": p.dest_cell, "wait": p.wait_time, "rides": p.rides})
 	p.queue_free()
 	lost += 1
 	if state == State.PLAYING and not endless and lost >= MAX_LOST:
 		_lose()
+
+
+## Total game-seconds cars of this session spent blocked at gates (stat).
+func gate_wait_total() -> float:
+	var t := 0.0
+	for c in cars:
+		if c != null:
+			t += c.gate_wait_total
+	return t
 
 
 ## Stack waiting passengers inside their room cell (queue beside the room).

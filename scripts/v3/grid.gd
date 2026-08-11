@@ -1,19 +1,21 @@
 class_name Grid3
 extends Node2D
 ## Maze data + all grid drawing for prototype v3 "Path Drawing".
-## The maze is 7 columns x 10 rows (row 0 = bottom/lobby). Cell types:
+## The maze is a per-level grid of cells (row 0 = bottom/lobby). Cell types:
 ##   "." open shaft, "#" blocked, "R" room (stop when a route passes it),
 ##   "G" gate (open, but a one-car mutex).
 ## All layout geometry lives here as statics so every v3 script shares one
 ## source of truth (mirrors v2's building.gd role). Drawing reads state from
 ## `game` (main3.gd): committed routes, the live drag preview, selection.
 
-const COLS := 7
-const ROWS := 10
 const CELL := 90.0
-const ORIGIN := Vector2(45.0, 100.0) # top-left corner of cell (0, 9)
+const GRID_X := 720.0 # playfield width the grid centers in
+const GRID_Y_TOP := 100.0 # grid area is y 100..1000 (below the top HUD)
+const GRID_Y_H := 900.0
 
-## Spec layout, top row first (index 0 = row 9, index 9 = row 0), cols 0..6.
+## X-1 layout, top row first (index 0 = row 9, index 9 = row 0), cols 0..6.
+## Kept as the class const because it is the original/default maze; other
+## levels swap the static maze via load_level() (see levels3.gd).
 const MAZE := [
 	"R..#R.R", # row 9 (penthouse)
 	".#.#.#.", # row 8
@@ -29,9 +31,28 @@ const MAZE := [
 
 const ROOM_LETTERS := "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
+## Current level's maze (defaults to X-1). Levels are data-driven: the level
+## select / main3 call load_level() with a rows array BEFORE the scene draws.
+static var maze_rows: Array = MAZE
+static var COLS := 7
+static var ROWS := 10
+static var ORIGIN := Vector2(45.0, 100.0) # top-left corner of the top-left cell
+
 static var _rooms_cache: Array = []
 
 var game = null # main3.gd
+
+
+## Install a level's maze (array of row strings, TOP row first, all the same
+## length). Recomputes bounds/origin and invalidates caches. Cells stay CELL
+## px; the grid is centered in the 720x900 grid area.
+static func load_level(rows: Array) -> void:
+	maze_rows = rows
+	ROWS = rows.size()
+	COLS = (rows[0] as String).length()
+	ORIGIN = Vector2((GRID_X - COLS * CELL) / 2.0,
+			GRID_Y_TOP + (GRID_Y_H - ROWS * CELL) / 2.0)
+	_rooms_cache = []
 
 
 # ---------------------------------------------------------------- maze queries
@@ -43,7 +64,7 @@ static func in_bounds(c: Vector2i) -> bool:
 static func cell_char(c: Vector2i) -> String:
 	if not in_bounds(c):
 		return "#"
-	return MAZE[ROWS - 1 - c.y].substr(c.x, 1)
+	return maze_rows[ROWS - 1 - c.y].substr(c.x, 1)
 
 
 static func passable(c: Vector2i) -> bool:
