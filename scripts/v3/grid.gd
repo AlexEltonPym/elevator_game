@@ -301,17 +301,18 @@ func _draw_cell(c: Vector2i) -> void:
 	# Drawn off the CELL SETS, not the raw character, so a gate written as its
 	# width digit ("1", "3") renders exactly like a plain "G".
 	if not Grid3.passable(c):
-		draw_rect(rect, Color(0.055, 0.055, 0.075))
-		# Diagonal hatch = solid rock.
-		for t in range(0, int(CELL), 22):
-			draw_line(rect.position + Vector2(t, 0),
-					rect.position + Vector2(0, t), Color(1, 1, 1, 0.05), 3.0)
+		# Blocked = "not here": a flat fill slightly darker than the facade
+		# behind the maze, plus a thin subtle border. No hatch — the static maze
+		# recedes so routes, cars and passengers read first (docs/ui-pass §3).
+		draw_rect(rect, Color(0.11, 0.105, 0.13))
+		draw_rect(rect, Color(0, 0, 0, 0.22), false, 1.0)
 	elif Grid3.is_room(c):
 		draw_rect(rect, Color(0.23, 0.29, 0.35))
-		draw_rect(rect, Color(0.55, 0.75, 0.9, 0.5), false, 2.0)
-		# Door strip at the cell floor + room letter.
-		draw_rect(Rect2(rect.position.x + 8.0, rect.end.y - 10.0,
-				rect.size.x - 16.0, 6.0), Color(0.55, 0.75, 0.9, 0.7))
+		draw_rect(rect, Color(0.55, 0.75, 0.9, 0.4), false, 2.0)
+		# Door strip at the cell floor + room letter (door lightened so it sits
+		# under the route line, not over it).
+		draw_rect(Rect2(rect.position.x + 8.0, rect.end.y - 9.0,
+				rect.size.x - 16.0, 4.0), Color(0.55, 0.75, 0.9, 0.30))
 		draw_string(ThemeDB.fallback_font,
 				rect.position + Vector2(8.0, 26.0), room_letter(c),
 				HORIZONTAL_ALIGNMENT_LEFT, -1.0, 20, Color(0.75, 0.88, 1.0, 0.8))
@@ -337,7 +338,7 @@ func _draw_gate_width(rect: Rect2, c: Vector2i) -> void:
 	var w := Grid3.gate_width(c)
 	if w <= 0:
 		return
-	var col := Color(0.95, 0.78, 0.20, 0.55)
+	var col := Color(0.90, 0.76, 0.28, 0.34)
 	var bar := 7.0
 	var gap := 5.0
 	var total := w * bar + (w - 1) * gap
@@ -357,18 +358,21 @@ func _draw_hazard_border(rect: Rect2, c: Vector2i) -> void:
 	var edge_bottom := Grid3.gate_group_of(c + Vector2i(0, -1)) != gi
 	var edge_left := Grid3.gate_group_of(c + Vector2i(-1, 0)) != gi
 	var edge_right := Grid3.gate_group_of(c + Vector2i(1, 0)) != gi
-	var dark := Color(0.10, 0.10, 0.10)
+	# A THIN striped border keeps the hazard identity without the old bright
+	# band (docs/ui-pass §3): the corridor still reads as striped, but recedes.
+	var eb := 3.0
+	var dark := Color(0.10, 0.10, 0.10, 0.85)
 	if edge_top:
-		draw_rect(Rect2(rect.position, Vector2(rect.size.x, 6.0)), dark)
+		draw_rect(Rect2(rect.position, Vector2(rect.size.x, eb)), dark)
 	if edge_bottom:
-		draw_rect(Rect2(Vector2(rect.position.x, rect.end.y - 6.0),
-				Vector2(rect.size.x, 6.0)), dark)
+		draw_rect(Rect2(Vector2(rect.position.x, rect.end.y - eb),
+				Vector2(rect.size.x, eb)), dark)
 	if edge_left:
-		draw_rect(Rect2(rect.position, Vector2(6.0, rect.size.y)), dark)
+		draw_rect(Rect2(rect.position, Vector2(eb, rect.size.y)), dark)
 	if edge_right:
-		draw_rect(Rect2(Vector2(rect.end.x - 6.0, rect.position.y),
-				Vector2(6.0, rect.size.y)), dark)
-	var yellow := Color(0.95, 0.78, 0.20)
+		draw_rect(Rect2(Vector2(rect.end.x - eb, rect.position.y),
+				Vector2(eb, rect.size.y)), dark)
+	var yellow := Color(0.90, 0.76, 0.28, 0.85)
 	var n := 0
 	var step := 16.0
 	var t := 0.0
@@ -376,9 +380,9 @@ func _draw_hazard_border(rect: Rect2, c: Vector2i) -> void:
 		if n % 2 == 0:
 			var w := minf(step * 0.6, rect.size.x - t)
 			if edge_top:
-				draw_rect(Rect2(rect.position.x + t, rect.position.y, w, 6.0), yellow)
+				draw_rect(Rect2(rect.position.x + t, rect.position.y, w, eb), yellow)
 			if edge_bottom:
-				draw_rect(Rect2(rect.position.x + t, rect.end.y - 6.0, w, 6.0), yellow)
+				draw_rect(Rect2(rect.position.x + t, rect.end.y - eb, w, eb), yellow)
 		t += step
 		n += 1
 	n = 0
@@ -387,9 +391,9 @@ func _draw_hazard_border(rect: Rect2, c: Vector2i) -> void:
 		if n % 2 == 0:
 			var h := minf(step * 0.6, rect.size.y - t)
 			if edge_left:
-				draw_rect(Rect2(rect.position.x, rect.position.y + t, 6.0, h), yellow)
+				draw_rect(Rect2(rect.position.x, rect.position.y + t, eb, h), yellow)
 			if edge_right:
-				draw_rect(Rect2(rect.end.x - 6.0, rect.position.y + t, 6.0, h), yellow)
+				draw_rect(Rect2(rect.end.x - eb, rect.position.y + t, eb, h), yellow)
 		t += step
 		n += 1
 

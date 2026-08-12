@@ -209,18 +209,62 @@ func _smoke() -> bool:
 	var ok := true
 	print("=== game smoke ===")
 	Levels3.headless = false # the smoke test must exercise the REAL game, HUD and all
-	# 1. Level select builds, with WATCH BEST exactly where a set exists.
+	# 1. Level select builds as PAGED WORLDS (docs/ui-pass §1): one world at a
+	#    time, arrow paging, a full-width PLAY card per level with a compact
+	#    N/T/B strip under it. Page through every world and tally: a PLAY card
+	#    per level, a B button exactly where a discovered set exists, a T per
+	#    level with a thesis and an N per level with a naive set.
 	Levels3.watch_strategy = ""
 	Levels3.injected = null
 	var sel = load("res://scenes/v3_select.tscn").instantiate()
 	root.add_child(sel)
-	var labels: Array = []
-	_collect_buttons(sel, labels)
-	var got: int = labels.count("WATCH\nBEST")
-	ok = _p("select: WATCH BEST count matches discovered sets",
-			got == _n_discovered(), "%d buttons vs %d sets" % [got, _n_discovered()]) and ok
-	ok = _p("select: PLAY row per level",
-			labels.size() >= Levels3.LEVELS.size(), "%d buttons" % labels.size()) and ok
+	var n_worlds: int = Levels3.WORLDS.size()
+	var play_ids := {}
+	var b_count := 0
+	var t_count := 0
+	var n_count := 0
+	var worlds_seen: Array = []
+	for wi in n_worlds:
+		var labels: Array = []
+		_collect_buttons(sel, labels)
+		worlds_seen.append(String(sel.world_label.text))
+		for lbl in labels:
+			var s := String(lbl)
+			if s == "B":
+				b_count += 1
+			elif s == "T":
+				t_count += 1
+			elif s == "N":
+				n_count += 1
+			elif s.length() >= 2: # a PLAY card: "L1  TOWER\n<thesis>"
+				play_ids[s.split(" ")[0]] = true
+		if wi == 0:
+			ok = _p("select: on the first world the left arrow is disabled, the right is live",
+					sel.left_btn.disabled and not sel.right_btn.disabled,
+					"left %s right %s" % [str(sel.left_btn.disabled),
+							str(sel.right_btn.disabled)]) and ok
+		if wi < n_worlds - 1:
+			sel.right_btn.pressed.emit() # page to the next world
+	var want_t := 0
+	var want_n := 0
+	for lv in Levels3.LEVELS:
+		var sets: Dictionary = Scenarios3.route_sets(lv.id)
+		if sets.has("thesis"):
+			want_t += 1
+		if sets.has("naive"):
+			want_n += 1
+	ok = _p("select: pages through every world",
+			worlds_seen.size() == n_worlds and worlds_seen[0].begins_with("PATH")
+			and sel.right_btn.disabled,
+			"seen %s right_disabled %s" % [str(worlds_seen), str(sel.right_btn.disabled)]) and ok
+	ok = _p("select: a PLAY card for every level across the worlds",
+			play_ids.size() == Levels3.LEVELS.size(),
+			"%d cards vs %d levels" % [play_ids.size(), Levels3.LEVELS.size()]) and ok
+	ok = _p("select: WATCH BEST (B) count matches discovered sets",
+			b_count == _n_discovered(), "%d B buttons vs %d sets" % [b_count, _n_discovered()]) and ok
+	ok = _p("select: N/T strips match the scenario sets",
+			t_count == want_t and n_count == want_n,
+			"T %d/%d N %d/%d" % [t_count, want_t, n_count, want_n]) and ok
 	root.remove_child(sel)
 	sel.free()
 	# 2. Every level instantiates and plays THROUGH THE v4 PHASES: a fresh

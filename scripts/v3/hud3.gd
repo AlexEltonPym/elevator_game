@@ -30,6 +30,8 @@ var menu_btn: Button
 var speed_buttons: Array = []
 var hint_label: Label
 var chip_buttons: Array = []
+var chip_pips: Array = [] # per chip: route-state pip (grey/amber/green)
+var chip_homes: Array = [] # per chip: home glyph, shown when a home is set
 var clear_btn: Button
 var action_btn: Button # RUN in PLAN, ABORT during a run
 var _action_key := "" # last phase/ready pair the action button was styled for
@@ -118,6 +120,22 @@ func _build_panel() -> void:
 		btn.pressed.connect(func(): game.select_card(idx))
 		add_child(btn)
 		chip_buttons.append(btn)
+		# Route-state pip in the chip's top-right corner: grey none / amber
+		# invalid (<2 stops) / green valid. Set every refresh_cards.
+		var pip := ColorRect.new()
+		pip.size = Vector2(22, 22)
+		pip.position = Vector2(btn.size.x - 32, 10)
+		pip.color = Color(0.42, 0.42, 0.48)
+		btn.add_child(pip)
+		chip_pips.append(pip)
+		# Home glyph in the chip's top-left corner, shown only when a home is set.
+		var home := Label.new()
+		home.text = "⌂" # house
+		home.position = Vector2(8, 4)
+		home.add_theme_font_size_override("font_size", 24)
+		home.visible = false
+		btn.add_child(home)
+		chip_homes.append(home)
 	clear_btn = Button.new()
 	clear_btn.text = "CLEAR"
 	clear_btn.position = Vector2(546, 1046)
@@ -217,31 +235,26 @@ func refresh_cards() -> void:
 		var card: Dictionary = game.CARDS[i]
 		var route = game.routes[i]
 		var car = game.cars[i]
-		var sub: String
-		if car != null and car.car_state == Car3.CarState.RECALLING:
-			sub = "recalling..."
-		elif car != null and car.car_state == Car3.CarState.REDEPLOYING:
-			sub = "deploys in %d" % ceili(maxf(car.redeploy_left, 0.001))
-		elif route == null:
-			sub = "no route"
-		else:
-			var stops: int = route.stop_cells().size()
-			if route.closed:
-				sub = "%d-cell loop - %d stops" % [route.cells.size(), stops]
-			else:
-				sub = "%d cells - %d stops" % [route.cells.size(), stops]
-			if stops < 2:
-				sub += "\nneeds 2 stops!"
-		# The card's own line: what KIND of car it is and, since v4 phase 2, how
-		# WIDE - which decides both who can board it and where it can drive.
-		var kind: String = "%s - w%d, %d slots" % [str(card.type),
+		# TWO LINES ONLY (docs/ui-pass-spec.md §3): the card NAME, then a terse
+		# spec `type · wN · C`. Route state moves off the text onto the pip and
+		# the "needs 2 stops" wording stays on the hint line.
+		var spec := "%s · w%d · %d" % [str(card.type),
 				Levels3.card_width(card), Levels3.card_capacity(card)]
-		if car != null and car.home_cell != null:
-			if Grid3.is_room(car.home_cell):
-				sub += "\nhome: room %s" % Grid3.room_letter(car.home_cell)
-			else:
-				sub += "\nhome set"
-		btn.text = "%s\n%s\n%s" % [card.name, kind, sub]
+		btn.text = "%s\n%s" % [card.name, spec]
+		# State pip: grey no route / amber drawn-but-invalid / green valid.
+		var pip: ColorRect = chip_pips[i]
+		if route == null:
+			pip.color = Color(0.42, 0.42, 0.48)
+		elif route.stop_cells().size() < 2:
+			pip.color = Color(0.90, 0.65, 0.20)
+		else:
+			pip.color = Color(0.35, 0.80, 0.42)
+		# Home glyph, tinted the card colour, shown only when a home is set.
+		var home: Label = chip_homes[i]
+		home.visible = car != null and car.home_cell != null
+		if home.visible:
+			home.add_theme_color_override("font_color",
+					Color(card.color.lightened(0.3), 0.95))
 		var selected: bool = game.selected_card == i
 		var sb := StyleBoxFlat.new()
 		sb.bg_color = Color(card.color, 1.0).darkened(0.45).lightened(0.2 if selected else 0.0)

@@ -440,8 +440,8 @@ func _briefing_check(lv: Dictionary) -> Dictionary:
 	if body.find(str(int(lv.max_lost))) == -1:
 		missing.append("max_lost %d" % int(lv.max_lost))
 	return _c("%s briefing names every card, type and goal" % lv.id,
-			missing.is_empty() and Levels3.roster_lines(lv).size() == lv.cards.size()
-			and Levels3.people_lines(lv).size() > 0, "missing %s" % str(missing))
+			missing.is_empty() and Levels3.roster_lines_short(lv).size() == lv.cards.size()
+			and Levels3.people_lines_short(lv).size() > 0, "missing %s" % str(missing))
 
 
 # -------------------------------------------------------- v4 phase machine

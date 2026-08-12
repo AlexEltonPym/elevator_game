@@ -596,6 +596,17 @@ static var LEVELS := [
 ]
 
 
+## PAGED WORLDS ("superlevels") for the level select. Each world is a title
+## plus the ids it contains, IN PLAY ORDER — an explicit table so the select
+## never has to guess a grouping from id prefixes. select3.gd shows ONE world
+## at a time and pages between them. Every LEVELS id must appear in exactly one
+## world (X-1 closes out PATH).
+const WORLDS := [
+	{"name": "PATH", "levels": ["L1", "L2", "L3", "L4", "X-1"]},
+	{"name": "WIDTH", "levels": ["W-1", "W-2", "W-3"]},
+]
+
+
 static func get_level(i: int) -> Dictionary:
 	if injected != null:
 		return injected
@@ -608,49 +619,68 @@ static func get_level(i: int) -> Dictionary:
 # `cards` for the roster, `mix` + `patience` + `exec_*` for the crowd, `spawn`
 # for the pace, `quota`/`max_lost` for the goal. Nothing about a level is
 # described twice, so a briefing cannot drift from what actually spawns; the
-# only hand-written strings it shows are the level's own thesis/intro.
-# tests/balance.gd lints every level against this (see _briefing_checks).
+# only hand-written string it shows is the level's own thesis line.
+# tests/balance.gd lints every level against this (see _briefing_check).
+#
+# The UI pass (docs/ui-pass-spec.md §2) made these COMPACT: the multi-paragraph
+# `intro` is no longer rendered (the field survives in the data for anything
+# that still wants it), the roster is one terse line per car that only names a
+# trait when it differs from standard, and the crowd/pace lines are shortened
+# to ~10-12 total. The balance-suite briefing lint checks the SHORT text, so it
+# cannot rot into a no-op: every card name, spawnable type and goal number must
+# still appear.
 
-## One line per elevator card: type, WIDTH, capacity, speed and ramp
-## character — everything a player needs to plan the roster. Every number is
-## read back through the same accessors Car3.setup uses, so the briefing
-## cannot describe a car the simulation does not build.
-static func roster_lines(lv: Dictionary) -> Array:
+## Speed trait, only when it differs from the standard car (else ""). Derived
+## from the card's own number so it can never claim a class the car is not.
+static func speed_tag(speed: float) -> String:
+	var r := speed / STANDARD_SPEED
+	if r >= 1.5:
+		return "fast"
+	if r <= 0.75:
+		return "slow"
+	return ""
+
+
+## Ramp trait, only when it differs from a standard ramp (else ""). Derived
+## from the card's own acceleration.
+static func accel_tag(a: float) -> String:
+	var std := float(CAR_TYPES.standard.accel)
+	if a >= std * 1.5:
+		return "sharp"
+	if a <= std * 0.7:
+		return "sluggish"
+	return ""
+
+
+## One terse roster line per car: `NAME · type · wN · C · <trait(s)>`. Speed
+## and ramp only surface when non-default, so a plain standard reads `CAR A ·
+## standard · w2 · 4` and the express reads `EXPRESS · express · w2 · 4 · fast`.
+## Every number is read back through the same accessors Car3.setup uses.
+static func roster_line_short(c: Dictionary) -> String:
+	var bits: Array = [str(c.name), str(c.type), "w%d" % card_width(c),
+			str(card_capacity(c))]
+	var st := speed_tag(card_speed(c))
+	if st != "":
+		bits.append(st)
+	var at := accel_tag(card_accel(c))
+	if at != "":
+		bits.append(at)
+	return " · ".join(bits)
+
+
+static func roster_lines_short(lv: Dictionary) -> Array:
 	var out: Array = []
 	for c in lv.cards:
-		var bits: Array = [str(c.type), "width %d" % card_width(c),
-				"%d slots" % card_capacity(c), speed_word(card_speed(c)),
-				accel_word(card_accel(c))]
-		out.append("%s - %s" % [str(c.name), " - ".join(bits)])
+		out.append(roster_line_short(c))
 	return out
 
 
-## Ramp character, derived from the card's own acceleration.
-static func accel_word(a: float) -> String:
-	var std := float(CAR_TYPES.standard.accel)
-	if a >= std * 1.5:
-		return "sharp off the mark"
-	if a <= std * 0.7:
-		return "sluggish"
-	return "steady ramp"
-
-
-## Speed character, derived from the card's own number so it can never lie.
-static func speed_word(speed: float) -> String:
-	var r := speed / STANDARD_SPEED
-	var word := "normal"
-	if r >= 1.5:
-		word = "fast"
-	elif r <= 0.75:
-		word = "slow"
-	return "%s (%.1fx)" % [word, r]
-
-
-## One line per passenger type that can actually spawn: share of the crowd,
-## patience (level override if any) and, for execs, the rooms they use.
-## A type with an exec weight but no exec rooms degrades to a visitor at spawn
-## time (main3._spawn_random), so it is not advertised here either.
-static func people_lines(lv: Dictionary) -> Array:
+## One terse crowd line per spawnable type: `visitor 43% · w1 · 72s`, with a
+## routing tail only where a type is pinned to its own rooms (execs, or a v4
+## `type_rooms` freight lane): `exec 15% · w1 · 44s · B/F→G`. A type with an
+## exec weight but no exec rooms degrades to a visitor at spawn time, so it is
+## not advertised here either.
+static func people_lines_short(lv: Dictionary) -> Array:
 	var mix: Dictionary = lv.mix
 	var total := 0.0
 	for t in mix:
@@ -664,52 +694,46 @@ static func people_lines(lv: Dictionary) -> Array:
 		var pat := float(Passenger3.PTYPES.get(t, {}).get("patience", 90.0))
 		if lv.has("patience"):
 			pat = float(lv.patience.get(t, pat))
-		var line := "%s - %.0f%% of the crowd - width %d - patience %.0f s" % [
-				t, 100.0 * float(mix[t]) / total,
+		var line := "%s %.0f%% · w%d · %.0fs" % [t, 100.0 * float(mix[t]) / total,
 				int(Passenger3.PTYPES.get(t, {}).get("width", 1)), pat]
-		# A type pinned to its own rooms (execs, or a v4 `type_rooms` freight /
-		# burst lane) tells the player exactly where it runs.
 		var tr: Dictionary = lv.get("type_rooms", {})
 		if tr.has(t):
-			line += " - rides %s to %s" % [_rooms_str(tr[t].from), _rooms_str(tr[t].to)]
+			line += " · %s→%s" % [_rooms_letters(tr[t].from), _rooms_letters(tr[t].to)]
 		elif t == "exec":
-			line += " - rides %s to %s" % [
-					_rooms_str(lv.exec_origins), _rooms_str(lv.exec_dests)]
+			line += " · %s→%s" % [
+					_rooms_letters(lv.exec_origins), _rooms_letters(lv.exec_dests)]
 		out.append(line)
 	return out
 
 
-## Room cells as their on-grid letters ("A/D"). Needs the level's maze loaded.
-static func _rooms_str(cells: Array) -> String:
+## Room cells as their bare on-grid letters ("B/F"). Needs the maze loaded.
+static func _rooms_letters(cells: Array) -> String:
 	var parts: Array = []
 	for c in cells:
-		parts.append("room " + Grid3.room_letter(c))
+		parts.append(Grid3.room_letter(c))
 	return "/".join(parts)
 
 
-## Average spawn pace, straight out of the pulse-spawner config.
-static func pace_line(lv: Dictionary) -> String:
+## Average spawn pace, short: `Bursts of 4-6, every 0.9s→0.6s`.
+static func pace_line_short(lv: Dictionary) -> String:
 	var s: Dictionary = lv.spawn
-	return "They arrive in bursts of %d-%d: one every %.1f s at first, %.1f s once the rush builds." % [
-			int(s.burst_min), int(s.burst_max),
+	return "Bursts of %d-%d, every %.1fs→%.1fs" % [int(s.burst_min), int(s.burst_max),
 			float(s.interval_start), float(s.interval_end)]
 
 
-## The whole briefing body (hud3.show_briefing renders this verbatim).
+## The whole briefing body (hud3.show_briefing renders this verbatim). Compact:
+## thesis + roster + crowd + pace + goal, no flavour paragraph. ~10-12 lines.
 static func briefing_body(lv: Dictionary) -> String:
 	var L: Array = []
 	if str(lv.get("thesis", "")) != "":
 		L.append("\"%s\"" % lv.thesis)
 		L.append("")
-	if str(lv.get("intro", "")) != "":
-		L.append(str(lv.intro))
-		L.append("")
 	L.append("YOUR ELEVATORS")
-	L.append_array(roster_lines(lv))
+	L.append_array(roster_lines_short(lv))
 	L.append("")
 	L.append("WHO SHOWS UP")
-	L.append_array(people_lines(lv))
-	L.append(pace_line(lv))
+	L.append_array(people_lines_short(lv))
+	L.append(pace_line_short(lv))
 	L.append("")
 	L.append("GOAL: serve %d before losing %d." % [int(lv.quota), int(lv.max_lost)])
 	return "\n".join(L)
