@@ -95,6 +95,14 @@ var decel := 375.0 # px/s^2 while braking for a stop
 var vel := 0.0 # current speed, px/s (0 whenever the car is standing still)
 var color := Color.GRAY
 var route = null # Route3 or null - the COMMITTED route (what planning uses)
+## PERF: cached stop-graph base costs (Array of [from, to, base_cost]) for this
+## car's current route, plus the route object they were built for. Pathfind3
+## rebuilds them lazily whenever `route` identity changes; because routes are
+## FIXED for a whole run, this is computed once per car per run. Pure derived
+## data from route geometry + car speed/stop_penalty (all constant), so the
+## planner's edge costs are bit-identical - only the recompute is skipped.
+var pf_base = null
+var pf_base_route = null
 var car_state := CarState.UNDEPLOYED
 var ever_deployed := false # first commit deploys instantly; later ones redeploy
 var recall_route = null # Route3 - the OLD polyline still driven while RECALLING
