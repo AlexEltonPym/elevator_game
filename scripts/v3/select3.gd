@@ -78,6 +78,10 @@ func _ready() -> void:
 	legend.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	legend.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	add_child(legend)
+	# Open on the world that holds the level we just came from (EXIT / the
+	# victory LEVELS button leave Levels3.current pointing at it), not always
+	# world 0.
+	world_idx = _world_of_current()
 	page = Control.new()
 	page.position = Vector2.ZERO
 	page.size = vp
@@ -97,6 +101,17 @@ func _arrow(text: String, x: float) -> Button:
 	b.size = Vector2(ARROW, ARROW)
 	b.add_theme_font_size_override("font_size", 44)
 	return b
+
+
+## Index of the world containing the current level (0 if none / first launch).
+func _world_of_current() -> int:
+	if Levels3.current < 0 or Levels3.current >= Levels3.LEVELS.size():
+		return 0
+	var id: String = Levels3.LEVELS[Levels3.current].id
+	for w in Levels3.WORLDS.size():
+		if id in Levels3.WORLDS[w].levels:
+			return w
+	return 0
 
 
 ## Page by `delta`, clamped (arrows disable at the ends rather than wrap).
