@@ -185,6 +185,57 @@ const LEVELS := [
 		],
 	},
 	{
+		"id": "L4",
+		"name": "Ring",
+		"thesis": "close the ring: one-way loops ride the clockwise tide",
+		"intro": "A ring corridor around a blocked core. The crowd cycles\nCLOCKWISE: homes (bottom) -> offices (right) -> canteen\n(top) -> lounge (left) -> home again, plus a tiny trickle\nthe other way.\n\nNEW: drag a route all the way around and back onto its\nFIRST cell to CLOSE it into a LOOP. A closed route runs\none-way, forever forward (chevrons show the direction);\nreverse onto the tail mid-draw to reopen it.\nPing-pong lines fight this tide. Loops ride it.",
+		"rows": [
+			"R..R..R", # row 6  canteen (3,6),(6,6); lounge top (0,6)
+			".#####.", # row 5
+			"R#####R", # row 4  lounge (0,4) | offices (6,4)
+			".#####.", # row 3
+			"R#####R", # row 2  lounge (0,2) | offices (6,2)
+			".#####.", # row 1
+			"R..R..R", # row 0  homes (0,0),(3,0),(6,0)
+		],
+		"cards": [
+			{"name": "CAR A", "type": "standard", "cap": 4, "speed": STANDARD_SPEED,
+					"color": Color(0.45, 0.68, 0.95)},
+			{"name": "CAR B", "type": "standard", "cap": 4, "speed": STANDARD_SPEED,
+					"color": Color(0.5, 0.88, 0.55)},
+			{"name": "EXPRESS", "type": "express", "cap": 4, "speed": EXPRESS_SPEED,
+					"color": Color(0.98, 0.68, 0.2)},
+		],
+		"quota": 60,
+		"max_lost": 7,
+		"spawn": {"interval_start": 1.6, "interval_end": 1.2, "ramp": 120.0,
+				"burst_min": 4, "burst_max": 6, "gap": 0.5},
+		"mix": {"visitor": 0.6, "patient": 0.4},
+		# Tight enough that ping-pong's doubled effective headway (half of
+		# every sweep drives back empty against the flow) starves the queues;
+		# a staggered one-way loop keeps waits well under these.
+		"patience": {"visitor": 60.0, "patient": 50.0},
+		"exec_origins": [],
+		"exec_dests": [],
+		"groups": {
+			"homes": [Vector2i(0, 0), Vector2i(3, 0), Vector2i(6, 0)],
+			"offices": [Vector2i(6, 2), Vector2i(6, 4)],
+			"canteen": [Vector2i(6, 6), Vector2i(3, 6)],
+			"lounge": [Vector2i(0, 6), Vector2i(0, 4), Vector2i(0, 2)],
+		},
+		"trips": [
+			# The commute cycle, each hop one clockwise third-lap...
+			{"w": 0.28, "from": "homes", "to": "offices"},
+			{"w": 0.22, "from": "offices", "to": "canteen"},
+			{"w": 0.16, "from": "canteen", "to": "lounge"},
+			{"w": 0.22, "from": "lounge", "to": "homes"},
+			# ...seasoned with a counter-clockwise trickle the loop honestly
+			# prices as the long way around and still absorbs.
+			{"w": 0.08, "from": "offices", "to": "homes"},
+			{"w": 0.04, "from": "canteen", "to": "offices"},
+		],
+	},
+	{
 		"id": "X-1",
 		"name": "Sandbox",
 		"thesis": "the original maze - no thesis, just the toys",

@@ -20,7 +20,7 @@ extends RefCounted
 ## walked one cell at a time (validated again by the harness against the
 ## level's maze).
 
-const SEEDS := {"L1": 101, "L2": 202, "L3": 303, "X-1": 404}
+const SEEDS := {"L1": 101, "L2": 202, "L3": 303, "L4": 505, "X-1": 404}
 
 
 ## Expand [w0, w1, w2, ...] waypoints into an inclusive cell polyline.
@@ -37,6 +37,24 @@ static func path(waypoints: Array) -> Array:
 			c += step
 			cells.append(c)
 	return cells
+
+
+## A CLOSED route (v3.4 loop): same waypoint expansion, but the last cell
+## must end adjacent to the first (do NOT repeat the head) — the closing link
+## is implied. Marked with {"closed": true} so consumers commit it as a loop.
+static func loop(waypoints: Array) -> Dictionary:
+	return {"cells": path(waypoints), "closed": true}
+
+
+## Route-set entries are either a plain cell Array (open route) or a
+## Dictionary from loop(). These two normalizers let every consumer (watch
+## mode, harness, lints) handle both shapes.
+static func cells_of(entry) -> Array:
+	return entry.cells if entry is Dictionary else entry
+
+
+static func closed_of(entry) -> bool:
+	return bool(entry.get("closed", false)) if entry is Dictionary else false
 
 
 ## {"naive": {"desc": String, "routes": Array}, "thesis": {...}} for a level.
@@ -100,6 +118,36 @@ static func route_sets(level_id: String) -> Dictionary:
 						path([Vector2i(1, 3), Vector2i(3, 3)]),
 						path([Vector2i(5, 3), Vector2i(3, 3)]),
 						path([Vector2i(3, 0), Vector2i(3, 9)]),
+					],
+				},
+			}
+		"L4":
+			return {
+				"naive": {
+					"desc": "honest ping-pong coverage: full-ring C sweep + two arc shuttles",
+					"routes": [
+						# What a player who hasn't discovered closing draws: the
+						# same ring corridor as open ping-pong lines. Full
+						# coverage — but every sweep drives back against the
+						# one-way crowd, doubling the effective headway.
+						path([Vector2i(0, 0), Vector2i(6, 0), Vector2i(6, 6)]),
+						path([Vector2i(6, 6), Vector2i(0, 6), Vector2i(0, 0)]),
+						path([Vector2i(0, 0), Vector2i(6, 0), Vector2i(6, 6),
+								Vector2i(0, 6), Vector2i(0, 1)]),
+					],
+				},
+				"thesis": {
+					"desc": "three clockwise closed loops, staggered 1/3 lap apart",
+					"routes": [
+						# The identical ring, CLOSED — one-way with the demand
+						# cycle. Different start cells stagger the cars around
+						# the loop so the headway stays ~lap/3.
+						loop([Vector2i(0, 0), Vector2i(6, 0), Vector2i(6, 6),
+								Vector2i(0, 6), Vector2i(0, 1)]),
+						loop([Vector2i(6, 2), Vector2i(6, 6), Vector2i(0, 6),
+								Vector2i(0, 0), Vector2i(6, 0), Vector2i(6, 1)]),
+						loop([Vector2i(2, 6), Vector2i(0, 6), Vector2i(0, 0),
+								Vector2i(6, 0), Vector2i(6, 6), Vector2i(3, 6)]),
 					],
 				},
 			}

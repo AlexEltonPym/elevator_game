@@ -1,4 +1,4 @@
-extends RefCounted
+﻿extends RefCounted
 ## v3 balance harness (PERSISTENT deliverable - keep it green).
 ##
 ## Runs every scenario from tests/scenarios3.gd headless at high effective
@@ -33,6 +33,8 @@ var results := {} # key -> stats dict
 var next_i := 0
 var redeploy_done := false
 var redeploy_checks: Array = [] # filled by the redeploy smoke run
+var loop_done := false
+var loop_checks: Array = [] # filled by the v3.4 loop-mechanics run
 
 
 ## Run one scenario per call (per engine frame). Returns true when finished
@@ -46,6 +48,10 @@ func step(tree: SceneTree) -> bool:
 	if not redeploy_done:
 		redeploy_done = true
 		redeploy_checks = _redeploy_smoke(tree)
+		return false
+	if not loop_done:
+		loop_done = true
+		loop_checks = _loop_mechanics(tree)
 		return false
 	var ok := _report()
 	tree.quit(0 if ok else 1)
@@ -79,7 +85,8 @@ func _run_scenario(tree: SceneTree, sc: Dictionary) -> Dictionary:
 	game.rng.seed = sc.seed
 	game.start_session()
 	for i in sc.routes.size():
-		game.commit_route(i, sc.routes[i])
+		game.commit_route(i, ScenData.Scen.cells_of(sc.routes[i]),
+				ScenData.Scen.closed_of(sc.routes[i]))
 	var t := 0.0
 	while game.state == game.State.PLAYING and t < TIMEOUT:
 		game.advance(STEP)
@@ -111,10 +118,16 @@ func _run_scenario(tree: SceneTree, sc: Dictionary) -> Dictionary:
 	return r
 
 
-## "" when `cells` is a legal polyline on the CURRENT level's maze.
-func _route_error(cells: Array) -> String:
+## "" when the route entry (cell Array, or {"cells", "closed"} Dictionary for
+## a loop) is legal on the CURRENT level's maze. Closed loops additionally
+## need >= 4 cells and the last cell adjacent to the first (the closing link).
+func _route_error(entry) -> String:
+	var cells: Array = ScenData.Scen.cells_of(entry)
+	var closed: bool = ScenData.Scen.closed_of(entry)
 	if cells.size() < 2:
 		return "fewer than 2 cells"
+	if closed and cells.size() < 4:
+		return "closed loop with fewer than 4 cells"
 	var seen := {}
 	for k in cells.size():
 		var c: Vector2i = cells[k]
@@ -127,6 +140,11 @@ func _route_error(cells: Array) -> String:
 			var d: Vector2i = c - cells[k - 1]
 			if absi(d.x) + absi(d.y) != 1:
 				return "cells %s -> %s not adjacent" % [str(cells[k - 1]), str(c)]
+	if closed:
+		var dc: Vector2i = cells[0] - cells[cells.size() - 1]
+		if absi(dc.x) + absi(dc.y) != 1:
+			return "closing link %s -> %s not adjacent" % [
+					str(cells[cells.size() - 1]), str(cells[0])]
 	return ""
 
 
@@ -178,7 +196,7 @@ func _checks() -> Array:
 					"detail": results[sc.key].route_error})
 	# Every playable level: naive LOSES (hits max_lost before quota) while
 	# the intended (thesis) strategy WINS with lost <= 3.
-	for id in ["L1", "L2", "L3"]:
+	for id in ["L1", "L2", "L3", "L4"]:
 		var ri: Dictionary = results["%s_intended" % id]
 		var rn: Dictionary = results["%s_naive" % id]
 		out.append(_c("%s intended wins quota" % id, ri.result == "WIN",
@@ -203,6 +221,7 @@ func _checks() -> Array:
 			"result %s, served %d, lost %d" % [x1.result, x1.served, x1.lost]))
 	out.append_array(_lint_levels())
 	out.append_array(redeploy_checks)
+	out.append_array(loop_checks)
 	return out
 
 
@@ -231,8 +250,8 @@ func _lint_levels() -> Array:
 			for c in lv.groups[row.to]:
 				dests[c] = true
 		var covered := {}
-		for cells in ScenData.Scen.route_set(lv.id, "thesis"):
-			for c in cells:
+		for entry in ScenData.Scen.route_set(lv.id, "thesis"):
+			for c in ScenData.Scen.cells_of(entry):
 				covered[c] = true
 		var no_spawn: Array = []
 		var no_dest: Array = []
@@ -325,6 +344,200 @@ func _redeploy_smoke(tree: SceneTree) -> Array:
 			not is_instance_valid(p2) or not p2.active, "still waiting after %.1fs" % t))
 	tree.root.remove_child(game)
 	game.free()
+	return out
+
+
+# ---------------------------------------------------------- v3.4 loop checks
+
+## Unit + integration checks for closed (loop) routes, all driven through the
+## REAL editing path (select_card -> _begin_stroke -> stroke_try_extend ->
+## _end_stroke) and real game ticks:
+## - closing detection (>= 4 cells + head adjacency; 3-cell strokes cannot
+##   close), forward drags ignored while closed, no retract while closed,
+##   reopen by reversing onto the tail, backtrack after reopening;
+## - a closed car advances forward-only, wraps the n-1 -> 0 seam smoothly;
+## - directional ride_dist (a->b short implies b->a = n - short);
+## - backward demand priced as almost-a-full-lap;
+## - recall on a loop drives FORWARD to the nearest stop.
+func _loop_mechanics(tree: SceneTree) -> Array:
+	var out: Array = []
+	# --- Stage A (L1 grid): the minimal 4-cell square + the size guard.
+	Levels3.current = Levels3.index_of("L1")
+	Levels3.watch_strategy = ""
+	var g1 = load("res://scenes/v3_main.tscn").instantiate()
+	tree.root.add_child(g1)
+	g1.rng.seed = 11
+	g1.auto_spawn = false
+	g1.start_session()
+	g1.select_card(0)
+	# Size guard: a 3-cell stroke whose last cell touches the head must NOT
+	# close (grid parity makes this stroke undrawable, so it is planted
+	# directly â€” the guard is what is under test).
+	g1.drawing = true
+	g1.stroke = [Vector2i(0, 0), Vector2i(1, 0), Vector2i(0, 1)]
+	g1.stroke_closed = false
+	var tri: bool = g1.stroke_try_extend(Vector2i(0, 0))
+	out.append(_c("loop: 3-cell stroke cannot close",
+			not tri and not g1.stroke_closed, "closed %s" % str(g1.stroke_closed)))
+	# The smallest legal loop: a 2x2 square drawn through the real path.
+	g1._begin_stroke(Grid3.cell_center(Vector2i(0, 0)))
+	g1.stroke_try_extend(Vector2i(1, 0))
+	g1.stroke_try_extend(Vector2i(1, 1))
+	g1.stroke_try_extend(Vector2i(0, 1))
+	var sq: bool = g1.stroke_try_extend(Vector2i(0, 0))
+	out.append(_c("loop: 4-cell stroke closes onto its head",
+			sq and g1.stroke_closed, "closed %s" % str(g1.stroke_closed)))
+	g1._end_stroke()
+	out.append(_c("loop: release commits the closed flag",
+			g1.routes[0] != null and g1.routes[0].closed,
+			"route %s" % ("null" if g1.routes[0] == null else "open")))
+	tree.root.remove_child(g1)
+	g1.free()
+	# --- Stage B (L4 ring): full closing UX + movement + pathfinding.
+	Levels3.current = Levels3.index_of("L4")
+	Levels3.watch_strategy = ""
+	var g = load("res://scenes/v3_main.tscn").instantiate()
+	tree.root.add_child(g)
+	g.rng.seed = 777
+	g.auto_spawn = false
+	g.start_session()
+	g.select_card(0)
+	var ring: Array = ScenData.Scen.path([Vector2i(0, 0), Vector2i(6, 0),
+			Vector2i(6, 6), Vector2i(0, 6), Vector2i(0, 1)])
+	g._begin_stroke(Grid3.cell_center(ring[0]))
+	for k in range(1, ring.size()):
+		g.stroke_try_extend(ring[k])
+	out.append(_c("loop: 24-cell ring stroke drawn", g.stroke.size() == 24,
+			"size %d" % g.stroke.size()))
+	var cl: bool = g.stroke_try_extend(Vector2i(0, 0))
+	out.append(_c("loop: ring stroke closes", cl and g.stroke_closed,
+			"closed %s" % str(g.stroke_closed)))
+	var fwd: bool = g.stroke_try_extend(Vector2i(1, 0))
+	out.append(_c("loop: forward drags ignored while closed",
+			not fwd and g.stroke_closed and g.stroke.size() == 24,
+			"size %d closed %s" % [g.stroke.size(), str(g.stroke_closed)]))
+	var retr: bool = g.stroke_try_extend(g.stroke[g.stroke.size() - 2])
+	out.append(_c("loop: cannot retract while closed",
+			not retr and g.stroke.size() == 24, "size %d" % g.stroke.size()))
+	var ro: bool = g.stroke_try_extend(Vector2i(0, 1)) # the tail cell
+	out.append(_c("loop: reversing onto the tail reopens",
+			ro and not g.stroke_closed and g.stroke.size() == 24,
+			"closed %s size %d" % [str(g.stroke_closed), g.stroke.size()]))
+	var back: bool = g.stroke_try_extend(Vector2i(0, 2)) # normal backtrack resumes
+	out.append(_c("loop: backtrack retracts after reopening",
+			back and g.stroke.size() == 23, "size %d" % g.stroke.size()))
+	g.stroke_try_extend(Vector2i(0, 1)) # redraw the tail...
+	g.stroke_try_extend(Vector2i(0, 0)) # ...close again...
+	g._end_stroke() # ...and commit (session-start: deploys instantly)
+	var r0 = g.routes[0]
+	out.append(_c("loop: committed ring is a closed 10-stop loop",
+			r0 != null and r0.closed and r0.cells.size() == 24
+			and r0.stop_cells().size() == 10,
+			"null" if r0 == null else "closed %s stops %d" % [
+					str(r0.closed), r0.stop_cells().size()]))
+	# Directional ride_dist: forward short, and a->b + b->a == n for ALL
+	# distinct stop pairs.
+	var n: int = r0.cells.size()
+	out.append(_c("loop: ride_dist forward-only ((ib-ia) mod n)",
+			is_equal_approx(r0.ride_dist(Vector2i(0, 0), Vector2i(3, 0)),
+					3.0 * Grid3.CELL)
+			and is_equal_approx(r0.ride_dist(Vector2i(3, 0), Vector2i(0, 0)),
+					21.0 * Grid3.CELL),
+			"fwd %.0f bwd %.0f" % [r0.ride_dist(Vector2i(0, 0), Vector2i(3, 0)),
+					r0.ride_dist(Vector2i(3, 0), Vector2i(0, 0))]))
+	var ident := true
+	var stops: Array = r0.stop_cells()
+	for i in stops.size():
+		for j in range(i + 1, stops.size()):
+			if not is_equal_approx(r0.ride_dist(stops[i], stops[j])
+					+ r0.ride_dist(stops[j], stops[i]), n * Grid3.CELL):
+				ident = false
+	out.append(_c("loop: ride_dist identity a->b + b->a == n (all stop pairs)",
+			ident, "n %d" % n))
+	# A passenger with backward demand prices the long way (single loop car:
+	# the only plan is the almost-full lap; it must be honest, not |a-b|).
+	var legs = Pathfind3.find_path(Vector2i(3, 0), Vector2i(0, 0), g.cars, -1.0)
+	var long_ok: bool = legs != null and not legs.is_empty()
+	var legs_dist := 0.0
+	if long_ok:
+		for leg in legs:
+			legs_dist += leg.car.route.ride_dist(leg.board, leg.alight)
+		long_ok = legs_dist >= 21.0 * Grid3.CELL - 0.01
+	out.append(_c("loop: backward demand priced the long way",
+			long_ok, "legs %s dist %.0f" % [
+					"none" if legs == null else str(legs.size()), legs_dist]))
+	# Closed car wraps forward-only, smoothly across the seam, and actually
+	# delivers that backward rider.
+	var car = g.cars[0]
+	var p = g.spawn_passenger("visitor", Vector2i(3, 0), Vector2i(0, 0))
+	var prev_idx: int = car.idx
+	var prev_pos: Vector2 = car.position
+	var wrapped := false
+	var fwd_only := true
+	var max_step := 0.0
+	var t := 0.0
+	while is_instance_valid(p) and p.active and t < 120.0:
+		g.advance(STEP)
+		t += STEP
+		if car.dir != 1 or posmod(car.idx - prev_idx, n) > 1:
+			fwd_only = false
+		if car.idx < prev_idx:
+			wrapped = true
+		max_step = maxf(max_step, car.position.distance_to(prev_pos))
+		prev_idx = car.idx
+		prev_pos = car.position
+	out.append(_c("loop: closed car advances forward only", fwd_only, ""))
+	out.append(_c("loop: closed car wraps the n-1 -> 0 seam", wrapped, ""))
+	out.append(_c("loop: glides across the seam (no position snap)",
+			max_step <= car.speed * STEP + 1.0,
+			"max step %.1f px vs %.1f" % [max_step, car.speed * STEP]))
+	out.append(_c("loop: backward rider served the long way around",
+			not is_instance_valid(p) or not p.active,
+			"still waiting after %.1fs" % t))
+	# Recall on a loop drives FORWARD to the nearest stop (never backwards).
+	var p2 = g.spawn_passenger("visitor", Vector2i(6, 0), Vector2i(6, 4))
+	t = 0.0
+	while p2.riding != car and t < 60.0:
+		g.advance(STEP)
+		t += STEP
+	out.append(_c("loop: recall test rider aboard", p2.riding == car,
+			"after %.1fs" % t))
+	t = 0.0
+	while car.seg_t == 0.0 and t < 30.0: # let it get rolling mid-segment
+		g.advance(STEP)
+		t += STEP
+	var old_r = car.route
+	var base: int = posmod(car.idx + (1 if car.seg_t > 0.0 else 0), n)
+	var exp_stop := -1
+	var best := n + 1
+	for s in old_r.stop_indices():
+		var dd: int = posmod(s - base, n)
+		if dd < best:
+			best = dd
+			exp_stop = s
+	g.commit_route(0, ScenData.Scen.path([Vector2i(0, 0), Vector2i(3, 0)]))
+	out.append(_c("loop: mid-game redraw with riders recalls",
+			car.car_state == Car3.CarState.RECALLING, "state %d" % car.car_state))
+	out.append(_c("loop: recall targets the forward-nearest stop",
+			car.recall_stop_idx == exp_stop,
+			"stop %d expected %d (base %d)" % [car.recall_stop_idx, exp_stop, base]))
+	var recall_fwd := true
+	t = 0.0
+	while car.car_state == Car3.CarState.RECALLING and t < 60.0:
+		if car.dir != 1:
+			recall_fwd = false
+		g.advance(STEP)
+		t += STEP
+	out.append(_c("loop: recall drives forward (never reverses)", recall_fwd, ""))
+	var drop_cell: Vector2i = old_r.cells[exp_stop]
+	var dropped: bool = (not is_instance_valid(p2)) \
+			or (p2.riding == null and p2.cur_cell == drop_cell)
+	out.append(_c("loop: recall drops riders at that forward stop", dropped,
+			"cur_cell %s expected %s" % [
+					str(p2.cur_cell) if is_instance_valid(p2) else "served",
+					str(drop_cell)]))
+	tree.root.remove_child(g)
+	g.free()
 	return out
 
 

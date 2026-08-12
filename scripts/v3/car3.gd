@@ -1,7 +1,11 @@
 class_name Car3
 extends Node2D
 ## One elevator car bound to a route card. Ping-pongs along its drawn
-## polyline end-to-end. At room stops it runs a DOOR PHASE cycle:
+## polyline end-to-end — unless the route is CLOSED (v3.4 loop: the stroke
+## closed onto its head), in which case the car advances idx -> (idx+1) mod n
+## forward forever: no reversing, no end dwell, and recall / home_cell
+## deadheads also travel forward (the long way around if need be).
+## At room stops it runs a DOOR PHASE cycle:
 ##   OPEN 0.5 s (doors slide open) ->
 ##   EXCHANGE max(0.8 s, 0.35 s x passenger-moves this stop; unload then
 ##   load, late arrivals may still board) ->
@@ -122,6 +126,24 @@ func _drive():
 	return recall_route if car_state == CarState.RECALLING else route
 
 
+## Wrap a cell index onto the drive polyline: closed routes cycle mod n
+## (the seam n-1 -> 0 is a real travel segment), open routes pass through.
+func _wrap_idx(i: int) -> int:
+	var r = _drive()
+	if r != null and r.closed:
+		return posmod(i, r.cells.size())
+	return i
+
+
+## Index distance from `from_idx` to `to_idx` along `r`: forward-only on a
+## closed route, symmetric on an open one. Mirrors Route3.ride_dist in index
+## space (used for recall nearest-stop selection).
+func _stop_dist(r, from_idx: int, to_idx: int) -> int:
+	if r.closed:
+		return posmod(to_idx - from_idx, r.cells.size())
+	return absi(to_idx - from_idx)
+
+
 ## The cell whose center the car last reached, or (-1,-1) when off the grid.
 func current_cell() -> Vector2i:
 	var r = _drive()
@@ -208,10 +230,17 @@ func _begin_recall(old) -> void:
 	door_timer = 0.0
 	exchange_elapsed = 0.0
 	idle = false
+	# Nearest stop by ride distance. On a closed route "nearest" is FORWARD
+	# distance (recall never reverses a loop); measure from the NEXT cell when
+	# the car has already left its cell center, so a just-passed stop reads as
+	# almost-a-full-lap away instead of 0.
+	var base := idx
+	if old.closed and seg_t > 0.0:
+		base = posmod(idx + 1, old.cells.size())
 	var stops: Array = old.stop_indices()
 	recall_stop_idx = stops[0]
 	for s in stops:
-		if absi(s - idx) < absi(recall_stop_idx - idx):
+		if _stop_dist(old, base, s) < _stop_dist(old, base, recall_stop_idx):
 			recall_stop_idx = s
 
 
@@ -348,7 +377,7 @@ func _move_tick(dt: float) -> void:
 				else:
 					rem -= need / speed
 					seg_t = 0.0
-					idx += dir
+					idx = _wrap_idx(idx + dir) # closed: glide across the n-1 -> 0 seam
 					_arrive_center()
 	_update_position()
 
@@ -415,20 +444,30 @@ func _begin_stop() -> void:
 	stop_moves = 0
 
 
-## Next ping-pong target index (just "keep going", reversing at the ends).
+## Next sweep target index. Open routes ping-pong (reverse at the ends);
+## CLOSED routes advance forward forever — no reversing, no end dwell (the
+## polyline has no ends; the wrap happens on arrival via _wrap_idx).
 func _pingpong_target() -> int:
+	if _drive().closed:
+		dir = 1
+		return idx + 1
 	if idx + dir < 0 or idx + dir >= _drive().cells.size():
 		dir = -dir
 	return idx + dir
 
 
 ## Try to start the hop toward cells[target_idx] (sets dir from it).
-## Acquires the gate GROUP lock when the next cell belongs to a group this
-## car does not hold. Returns false if the car must wait (group held by
-## someone else).
+## On a CLOSED route travel is always FORWARD regardless of where the target
+## sits (recall stops and home_cell deadheads drive the long way around, never
+## backwards). Acquires the gate GROUP lock when the next cell belongs to a
+## group this car does not hold. Returns false if the car must wait (group
+## held by someone else).
 func _depart(target_idx: int) -> bool:
-	dir = 1 if target_idx > idx else -1
-	var next: Vector2i = _drive().cells[idx + dir]
+	if _drive().closed:
+		dir = 1
+	else:
+		dir = 1 if target_idx > idx else -1
+	var next: Vector2i = _drive().cells[_wrap_idx(idx + dir)]
 	var gi := Grid3.gate_group_of(next)
 	if gi != -1 and not held_gates.has(gi):
 		if game.gate_request(self, gi):
@@ -472,7 +511,9 @@ func _update_position() -> void:
 	if seg_t <= 0.0:
 		position = a
 	else:
-		var b := Grid3.cell_center(r.cells[idx + dir])
+		# _wrap_idx keeps the lerp smooth across a closed route's seam
+		# (cells[n-1] -> cells[0] are adjacent cells; no snap).
+		var b := Grid3.cell_center(r.cells[_wrap_idx(idx + dir)])
 		position = a.lerp(b, seg_t / Grid3.CELL)
 
 

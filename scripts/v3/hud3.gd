@@ -153,7 +153,10 @@ func refresh_cards() -> void:
 			sub = "no route"
 		else:
 			var stops: int = route.stop_cells().size()
-			sub = "%d cells - %d stops" % [route.cells.size(), stops]
+			if route.closed:
+				sub = "%d-cell loop - %d stops" % [route.cells.size(), stops]
+			else:
+				sub = "%d cells - %d stops" % [route.cells.size(), stops]
 			if stops < 2:
 				sub += "\nneeds 2 stops!"
 		var kind: String = "fast express" if card.type == "express" else "4 slots"

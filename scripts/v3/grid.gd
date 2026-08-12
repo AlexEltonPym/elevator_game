@@ -191,6 +191,8 @@ func _draw() -> void:
 		var rp := PackedVector2Array()
 		for c in car.recall_route.cells:
 			rp.append(cell_center(c))
+		if car.recall_route.closed:
+			rp.append(cell_center(car.recall_route.cells[0]))
 		draw_polyline(rp, Color(car.color, 0.16), 4.0)
 	# Committed routes (each nudged so overlaps stay readable).
 	for i in game.routes.size():
@@ -198,10 +200,12 @@ func _draw() -> void:
 		if route == null:
 			continue
 		_draw_route(route.cells, game.CARDS[i].color, i,
-				game.selected_card == i, route.stop_cells().size() < 2)
+				game.selected_card == i, route.stop_cells().size() < 2,
+				route.closed)
 	# Live drag preview on top.
 	if game.drawing and game.stroke.size() > 0 and game.selected_card >= 0:
-		_draw_stroke_preview(game.stroke, game.CARDS[game.selected_card].color)
+		_draw_stroke_preview(game.stroke, game.CARDS[game.selected_card].color,
+				game.stroke_closed)
 
 
 func _draw_cell(c: Vector2i) -> void:
@@ -285,21 +289,28 @@ func _draw_hazard_border(rect: Rect2, c: Vector2i) -> void:
 		n += 1
 
 
-func _draw_route(cells: Array, col: Color, index: int, selected: bool, warn: bool) -> void:
+func _draw_route(cells: Array, col: Color, index: int, selected: bool, warn: bool,
+		closed := false) -> void:
 	var off := Vector2((index - 1) * 9.0, (index - 1) * 9.0)
 	var alpha := 0.9 if selected else 0.55
 	if cells.size() >= 2:
 		var pts := PackedVector2Array()
 		for c in cells:
 			pts.append(cell_center(c) + off)
+		if closed:
+			pts.append(cell_center(cells[0]) + off) # the closing segment
 		draw_polyline(pts, Color(col, alpha), 6.0)
-	# Stop rings at room cells; squares at the two ends.
+	# Stop rings at room cells; squares at the two ends (open routes only —
+	# a loop has no ends; it gets direction chevrons instead).
 	for c in cells:
 		if is_room(c):
 			draw_arc(cell_center(c) + off, 12.0, 0.0, TAU, 24, Color(col, alpha), 4.0)
-	for e in [cells[0], cells[cells.size() - 1]]:
-		var p: Vector2 = cell_center(e) + off
-		draw_rect(Rect2(p - Vector2(7, 7), Vector2(14, 14)), Color(col, alpha))
+	if closed:
+		_draw_loop_chevrons(cells, col, alpha, off)
+	else:
+		for e in [cells[0], cells[cells.size() - 1]]:
+			var p: Vector2 = cell_center(e) + off
+			draw_rect(Rect2(p - Vector2(7, 7), Vector2(14, 14)), Color(col, alpha))
 	if warn:
 		# Parked: not enough room stops.
 		var wp: Vector2 = cell_center(cells[0]) + off + Vector2(0, -26.0)
@@ -308,16 +319,38 @@ func _draw_route(cells: Array, col: Color, index: int, selected: bool, warn: boo
 				HORIZONTAL_ALIGNMENT_CENTER, -1.0, 19, Color.WHITE)
 
 
-func _draw_stroke_preview(cells: Array, col: Color) -> void:
+## Direction chevrons for CLOSED routes only: a small arrowhead on every 3rd
+## segment (including the closing seam), pointing the way the car travels
+## (= the order the player drew). Open ping-pong routes stay arrow-free.
+func _draw_loop_chevrons(cells: Array, col: Color, alpha: float, off: Vector2) -> void:
+	var n := cells.size()
+	var bright := Color(col.lightened(0.2), minf(1.0, alpha + 0.3))
+	for k in range(0, n, 3):
+		var a: Vector2 = cell_center(cells[k]) + off
+		var b: Vector2 = cell_center(cells[(k + 1) % n]) + off
+		var d := (b - a).normalized()
+		var mid := (a + b) / 2.0
+		var perp := Vector2(-d.y, d.x)
+		draw_polyline(PackedVector2Array([
+				mid - d * 7.0 + perp * 8.0, mid + d * 7.0,
+				mid - d * 7.0 - perp * 8.0]), bright, 4.0)
+
+
+func _draw_stroke_preview(cells: Array, col: Color, closed := false) -> void:
 	var bright := col.lightened(0.35)
 	if cells.size() >= 2:
 		var pts := PackedVector2Array()
 		for c in cells:
 			pts.append(cell_center(c))
+		if closed:
+			pts.append(cell_center(cells[0])) # live closing segment
 		draw_polyline(pts, Color(bright, 0.95), 10.0)
 	for c in cells:
 		draw_circle(cell_center(c), 6.0, Color(bright, 0.9))
-	# Pulsing head marker where the finger is.
-	var head: Vector2 = cell_center(cells[cells.size() - 1])
+	if closed:
+		_draw_loop_chevrons(cells, bright, 0.95, Vector2.ZERO)
+	# Pulsing head marker where the finger is (on the HEAD cell while closed —
+	# that is where the finger sits after closing the loop).
+	var head: Vector2 = cell_center(cells[0] if closed else cells[cells.size() - 1])
 	var pulse := 10.0 + 4.0 * sin(Time.get_ticks_msec() / 90.0)
 	draw_arc(head, pulse, 0.0, TAU, 24, Color.WHITE, 3.0)

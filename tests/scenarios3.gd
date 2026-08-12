@@ -12,7 +12,7 @@ const Scen = preload("res://scripts/v3/scenarios3.gd")
 
 static func scenarios() -> Array:
 	var out: Array = []
-	for id in ["L1", "L2", "L3"]:
+	for id in ["L1", "L2", "L3", "L4"]:
 		var sets: Dictionary = Scen.route_sets(id)
 		out.append({"key": "%s_naive" % id, "level": id, "seed": Scen.SEEDS[id],
 				"desc": sets.naive.desc, "routes": sets.naive.routes})

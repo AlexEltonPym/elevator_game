@@ -53,6 +53,7 @@ var log_lost: Array = []
 var selected_card := -1
 var drawing := false
 var stroke: Array = [] # Vector2i cells of the active drag
+var stroke_closed := false # live stroke closed back onto stroke[0] (a loop)
 
 @onready var grid: Grid3 = $Grid
 @onready var cars_node: Node2D = $Cars
@@ -88,7 +89,7 @@ func _ready() -> void:
 		start_session()
 		var rs: Array = Scenarios3.route_set(level.id, watch)
 		for i in mini(rs.size(), CARDS.size()):
-			commit_route(i, rs[i])
+			commit_route(i, Scenarios3.cells_of(rs[i]), Scenarios3.closed_of(rs[i]))
 	else:
 		rng.randomize() # normal play is unseeded; the harness overrides rng.seed
 		hud.show_intro()
@@ -241,6 +242,7 @@ func select_card(i: int) -> void:
 	selected_card = -1 if selected_card == i else i
 	drawing = false
 	stroke = []
+	stroke_closed = false
 	hud.refresh_cards()
 
 
@@ -252,6 +254,7 @@ func _begin_stroke(pos: Vector2) -> void:
 		return
 	drawing = true
 	stroke = [cell]
+	stroke_closed = false
 
 
 func _extend_stroke(pos: Vector2) -> void:
@@ -268,18 +271,34 @@ func _extend_stroke(pos: Vector2) -> void:
 ## SECOND-TO-LAST cell retracts one step (ONI pipe-style undo — only backing
 ## up the way you came undoes); touching the stroke anywhere else is a
 ## collision and is ignored, like any other illegal cell.
+## CLOSING (v3.4): dragging onto stroke[0] when the stroke has >= 4 cells and
+## the last cell is orthogonally adjacent to it CLOSES the loop — the ONE
+## exception to the collision rule. While closed, forward drags are ignored
+## and retracting is impossible; reversing back onto the TAIL cell (the last
+## cell — the finger sits on the head) REOPENS the loop, after which normal
+## backtracking continues.
 ## A fast drag that skipped cells is filled in ONLY when there is an
 ## unambiguous straight-line legal path from the last cell; anything else is
 ## ignored (never teleport). Returns true if the stroke changed.
 func stroke_try_extend(cell: Vector2i) -> bool:
 	if stroke.is_empty():
 		return false
+	if stroke_closed:
+		if cell == stroke.back():
+			stroke_closed = false # reopen: remove the closing link only
+			return true
+		return false # closed: any other drag is ignored
 	var last: Vector2i = stroke.back()
 	if cell == last:
 		return false
 	if stroke.size() >= 2 and cell == stroke[stroke.size() - 2]:
 		stroke.resize(stroke.size() - 1)
 		return true
+	if cell == stroke[0] and stroke.size() >= 4:
+		var dh := cell - last
+		if absi(dh.x) + absi(dh.y) == 1:
+			stroke_closed = true # close the loop; stroke cells unchanged
+			return true
 	if not Grid3.passable(cell) or stroke.has(cell):
 		return false
 	var d := cell - last
@@ -307,8 +326,9 @@ func _end_stroke() -> void:
 		return
 	drawing = false
 	if selected_card >= 0 and stroke.size() > 0:
-		commit_route(selected_card, stroke)
+		commit_route(selected_card, stroke, stroke_closed)
 	stroke = []
+	stroke_closed = false
 
 
 # ---------------------------------------------------------------- route edits
@@ -317,12 +337,15 @@ func _end_stroke() -> void:
 ## decides how to get there (Car3.apply_route): a never-deployed car appears
 ## instantly; a deployed one recalls its riders to the nearest old-route room
 ## stop first, then redeploys at the new start after a ghost countdown.
-## Every waiting passenger replans against the NEW route immediately.
-func commit_route(i: int, cells: Array) -> void:
+## `closed` marks a loop (stroke closed onto its head — the car will travel
+## forward around the cycle forever). Every waiting passenger replans against
+## the NEW route immediately.
+func commit_route(i: int, cells: Array, closed := false) -> void:
 	var r: Route3 = null
 	if cells.size() > 0:
 		r = Route3.new()
 		r.cells = cells.duplicate()
+		r.closed = closed and cells.size() >= 4
 	routes[i] = r
 	cars[i].apply_route(r)
 	replan_all()
