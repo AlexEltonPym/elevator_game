@@ -17,6 +17,10 @@ extends Node2D
 
 enum State { INTRO, PLAYING, WIN, LOSE }
 
+## Safety bound on one magnetic-extend walk (a drag sample can never legitimately
+## cross more cells than the grid holds; each step is strictly closer anyway).
+const MAX_STROKE_WALK := 256
+
 var level: Dictionary = {} # Levels3 entry for Levels3.current
 var CARDS: Array = [] # this level's 3 elevator cards
 var QUOTA := 30
@@ -266,20 +270,27 @@ func _extend_stroke(pos: Vector2) -> void:
 	stroke_try_extend(cell)
 
 
-## Grow the active stroke toward `cell`. Legal only into an orthogonally
-## adjacent, non-blocked, not-yet-used cell. Dragging back onto the
-## SECOND-TO-LAST cell retracts one step (ONI pipe-style undo — only backing
-## up the way you came undoes); touching the stroke anywhere else is a
-## collision and is ignored, like any other illegal cell.
+## Grow the active stroke toward `cell` (the finger's cell this drag sample).
+## MAGNETIC HEAD: picture the head as a magnet pulled toward the finger, free to
+## slide along the path it has drawn. One idea, applied in both directions and
+## purely positional (drag speed is irrelevant):
+##   RETRACT — pop the head while the cell BEHIND it is strictly closer to the
+##     finger than the head is. Gives straight-run snapping, cutting back around
+##     corners, and rerouting at a junction (the abandoned leg pops off, then the
+##     outbound walk below draws the new one).
+##   EXTEND — push the head onward while a legal neighbour is strictly closer to
+##     the finger than the head is, preferring the axis with the most ground left
+##     to cover. Gives straight-line fill across a fast skip and corners that
+##     turn on their own, without ever teleporting: the walk moves one adjacent
+##     legal cell at a time, so a wall or the stroke's own body simply stops it
+##     where it stands.
+## A finger that pulls neither way — a sideways graze of an earlier part of the
+## path — makes nothing closer, so the stroke holds still (the graze collides).
 ## CLOSING (v3.4): dragging onto stroke[0] when the stroke has >= 4 cells and
-## the last cell is orthogonally adjacent to it CLOSES the loop — the ONE
-## exception to the collision rule. While closed, forward drags are ignored
-## and retracting is impossible; reversing back onto the TAIL cell (the last
-## cell — the finger sits on the head) REOPENS the loop, after which normal
-## backtracking continues.
-## A fast drag that skipped cells is filled in ONLY when there is an
-## unambiguous straight-line legal path from the last cell; anything else is
-## ignored (never teleport). Returns true if the stroke changed.
+## the last cell is orthogonally adjacent to it CLOSES the loop — checked before
+## retract. While closed, forward drags are ignored and retracting is impossible;
+## reversing onto the TAIL cell REOPENS the loop, after which retract continues.
+## Returns true if the stroke changed.
 func stroke_try_extend(cell: Vector2i) -> bool:
 	if stroke.is_empty():
 		return false
@@ -288,37 +299,61 @@ func stroke_try_extend(cell: Vector2i) -> bool:
 			stroke_closed = false # reopen: remove the closing link only
 			return true
 		return false # closed: any other drag is ignored
-	var last: Vector2i = stroke.back()
-	if cell == last:
+	if cell == stroke.back():
 		return false
-	if stroke.size() >= 2 and cell == stroke[stroke.size() - 2]:
-		stroke.resize(stroke.size() - 1)
-		return true
+	# Closing takes precedence over retract when the head is adjacent to start.
 	if cell == stroke[0] and stroke.size() >= 4:
-		var dh := cell - last
+		var dh: Vector2i = cell - stroke.back()
 		if absi(dh.x) + absi(dh.y) == 1:
 			stroke_closed = true # close the loop; stroke cells unchanged
 			return true
-	if not Grid3.passable(cell) or stroke.has(cell):
-		return false
-	var d := cell - last
-	if absi(d.x) + absi(d.y) == 1:
-		stroke.append(cell)
-		return true
-	if d.x != 0 and d.y != 0:
-		return false # diagonal jump: ambiguous, ignore
-	var step := Vector2i(signi(d.x), signi(d.y))
-	var fill: Array = []
-	var c := last + step
-	while true:
-		if not Grid3.passable(c) or stroke.has(c):
-			return false # any illegal intermediate voids the whole jump
-		fill.append(c)
-		if c == cell:
+	# Magnetic retract: slide the head back toward the finger along the path.
+	var changed := false
+	while stroke.size() >= 2:
+		var h: Vector2i = stroke[stroke.size() - 1]
+		var p: Vector2i = stroke[stroke.size() - 2]
+		if _md(cell, p) < _md(cell, h):
+			stroke.remove_at(stroke.size() - 1)
+			changed = true
+		else:
 			break
-		c += step
-	stroke.append_array(fill)
-	return true
+	# Magnetic extend: walk the head toward the finger one legal cell at a time,
+	# each step strictly closer (so the walk always terminates), taking the axis
+	# with the most ground left to cover first so corners turn naturally.
+	var guard := 0
+	while guard < MAX_STROKE_WALK:
+		guard += 1
+		var h: Vector2i = stroke[stroke.size() - 1]
+		if h == cell:
+			break
+		var d: Vector2i = cell - h
+		var steps: Array = []
+		if absi(d.x) >= absi(d.y):
+			if d.x != 0:
+				steps.append(Vector2i(signi(d.x), 0))
+			if d.y != 0:
+				steps.append(Vector2i(0, signi(d.y)))
+		else:
+			if d.y != 0:
+				steps.append(Vector2i(0, signi(d.y)))
+			if d.x != 0:
+				steps.append(Vector2i(signi(d.x), 0))
+		var moved := false
+		for s in steps:
+			var n: Vector2i = h + s
+			if Grid3.passable(n) and not stroke.has(n):
+				stroke.append(n)
+				changed = true
+				moved = true
+				break
+		if not moved:
+			break # walled in, or blocked by the stroke's own body
+	return changed
+
+
+## Manhattan distance between two cells (the metric the magnetic pull uses).
+func _md(a: Vector2i, b: Vector2i) -> int:
+	return absi(a.x - b.x) + absi(a.y - b.y)
 
 
 func _end_stroke() -> void:

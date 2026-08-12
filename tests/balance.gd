@@ -391,6 +391,81 @@ func _loop_mechanics(tree: SceneTree) -> Array:
 	out.append(_c("loop: release commits the closed flag",
 			g1.routes[0] != null and g1.routes[0].closed,
 			"route %s" % ("null" if g1.routes[0] == null else "open")))
+	# --- Magnetic retract (head slides back along the path to the finger,
+	# speed-independent). Strokes planted directly; the retract phase resolves
+	# before any passability check, so cases (1),(2),(4),(5) are grid-free.
+	g1.drawing = true
+	# (1) Straight snap: E->F reversed onto E leaves just E.
+	g1.stroke = [Vector2i(0, 0), Vector2i(0, 1), Vector2i(0, 2)]
+	g1.stroke_closed = false
+	var snap: bool = g1.stroke_try_extend(Vector2i(0, 0))
+	out.append(_c("retract: straight run snaps back to start",
+			snap and g1.stroke.size() == 1, "size %d" % g1.stroke.size()))
+	# (2) Corner slide: A->E->east, finger to A unwinds round the bend to A.
+	g1.stroke = [Vector2i(0, 0), Vector2i(0, 1), Vector2i(0, 2), Vector2i(1, 2)]
+	g1.stroke_closed = false
+	var slide: bool = g1.stroke_try_extend(Vector2i(0, 0))
+	out.append(_c("retract: corner slides back to start",
+			slide and g1.stroke.size() == 1, "size %d" % g1.stroke.size()))
+	# (3) T-junction: finger pulls off the last leg back to the junction; the
+	# dropped leg's cells are gone and the junction cell remains (extension
+	# toward the finger may add fresh cells, so assert on the dropped leg).
+	g1.stroke = [Vector2i(0, 0), Vector2i(0, 1), Vector2i(0, 2),
+			Vector2i(0, 3), Vector2i(0, 4)]
+	g1.stroke_closed = false
+	g1.stroke_try_extend(Vector2i(2, 2))
+	out.append(_c("retract: reroutes to the junction, dropping the old leg",
+			g1.stroke.find(Vector2i(0, 4)) == -1
+			and g1.stroke.find(Vector2i(0, 3)) == -1
+			and g1.stroke.find(Vector2i(0, 2)) != -1,
+			"cells %s" % str(g1.stroke)))
+	# (4) Sideways graze of a looped-back path: the head may draw ON toward the
+	# finger (that is the forward pull), but it must never EAT the drawn path,
+	# and it can never enter the grazed cell itself.
+	var looped := [Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0),
+			Vector2i(2, 1), Vector2i(2, 2), Vector2i(1, 2)]
+	g1.stroke = looped.duplicate()
+	g1.stroke_closed = false
+	g1.stroke_try_extend(Vector2i(0, 0))
+	var kept := true
+	for i in looped.size():
+		if i >= g1.stroke.size() or g1.stroke[i] != looped[i]:
+			kept = false
+	out.append(_c("graze: sideways pass never eats the drawn path",
+			kept and g1.stroke.back() != Vector2i(0, 0),
+			"cells %s" % str(g1.stroke)))
+	# (5) Plain one-step reverse still retracts.
+	g1.stroke = [Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0)]
+	g1.stroke_closed = false
+	var one: bool = g1.stroke_try_extend(Vector2i(1, 0))
+	out.append(_c("retract: single-step reverse still retracts",
+			one and g1.stroke.size() == 2, "size %d" % g1.stroke.size()))
+	# --- Magnetic EXTEND (the same pull, outbound). L1's grid is fully open,
+	# so these exercise the walk itself rather than any level's geometry.
+	# (6) Straight skip forward fills the gap cell by cell.
+	g1.stroke = [Vector2i(0, 0)]
+	g1.stroke_closed = false
+	var fill: bool = g1.stroke_try_extend(Vector2i(0, 3))
+	out.append(_c("extend: straight skip fills the run",
+			fill and g1.stroke == [Vector2i(0, 0), Vector2i(0, 1),
+					Vector2i(0, 2), Vector2i(0, 3)], "cells %s" % str(g1.stroke)))
+	# (7) Diagonal drag turns a corner on its own, longest axis first.
+	g1.stroke = [Vector2i(0, 0)]
+	g1.stroke_closed = false
+	var lshape: bool = g1.stroke_try_extend(Vector2i(2, 1))
+	out.append(_c("extend: diagonal drag turns a corner",
+			lshape and g1.stroke == [Vector2i(0, 0), Vector2i(1, 0),
+					Vector2i(2, 0), Vector2i(2, 1)], "cells %s" % str(g1.stroke)))
+	# (8) The walk never crosses its own body: it stops rather than teleporting.
+	g1.stroke = [Vector2i(0, 0), Vector2i(0, 1), Vector2i(0, 2)]
+	g1.stroke_closed = false
+	g1.stroke_try_extend(Vector2i(0, 0)) # retracts to the start...
+	g1.stroke = [Vector2i(1, 0), Vector2i(1, 1), Vector2i(1, 2), Vector2i(0, 2)]
+	g1.stroke_closed = false
+	g1.stroke_try_extend(Vector2i(0, 0)) # ...finger past the far side of the tail
+	out.append(_c("extend: walk stops at its own body, never jumps it",
+			not g1.stroke.has(Vector2i(0, 0)) or g1.stroke.size() <= 6,
+			"cells %s" % str(g1.stroke)))
 	tree.root.remove_child(g1)
 	g1.free()
 	# --- Stage B (L4 ring): full closing UX + movement + pathfinding.

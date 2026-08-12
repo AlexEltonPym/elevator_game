@@ -80,10 +80,15 @@ the harness proves.
   that skip cells are filled in only along an unambiguous straight legal
   line; anything else is ignored mid-drag. A live colored preview follows
   your finger; **release to commit**.
-- **Backtrack while drawing**: reverse back the way you came to retract the
-  path one cell at a time (like Oxygen Not Included's pipe drawing). Touching
-  your line anywhere else is a collision — the stroke just stops there, same
-  as hitting a wall.
+- **The head is magnetic**, both ways, and purely positional (drag speed never
+  matters). Drawing **on**, it walks toward your finger a cell at a time:
+  straight skips fill themselves in, and a diagonal drag turns the corner on its
+  own (longest axis first). Dragging **back**, it slides along the path to meet
+  you: a straight run snaps back to its start, corners unwind, and at a junction
+  the leg you're leaving pops off before the new one draws (go A→E→B, sweep to
+  G, and it becomes A→E→G). The walk never teleports — it steps only into open,
+  unused cells, so a wall or the stroke's own body just stops it where it
+  stands, and brushing sideways past an earlier part of your path never eats it.
 - **Close a LOOP** (v3.4): drag the stroke back onto its **first cell** (needs
   at least 4 cells and an adjacent step) — the ONE exception to the collision
   rule. The preview draws the closing segment and further forward drags are
