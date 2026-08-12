@@ -22,6 +22,7 @@ var closed := false # loop: cells[n-1] -> cells[0] is a real travel segment
 var _stop_cells: Array = []
 var _stop_indices: Array = []
 var _index_of := {}
+var _room_prefix: Array = [] # _room_prefix[i] = room cells in cells[0 .. i-1]
 var _dirty := true
 
 
@@ -38,6 +39,7 @@ func _ensure() -> void:
 	_stop_cells = []
 	_stop_indices = []
 	_index_of = {}
+	_room_prefix = [0]
 	for i in cells.size():
 		var c: Vector2i = cells[i]
 		if not _index_of.has(c):
@@ -45,6 +47,7 @@ func _ensure() -> void:
 		if Grid3.is_room(c):
 			_stop_cells.append(c)
 			_stop_indices.append(i)
+		_room_prefix.append(_stop_cells.size())
 
 
 func stop_cells() -> Array:
@@ -75,6 +78,36 @@ func ride_dist(a: Vector2i, b: Vector2i) -> float:
 	return absf(ia - ib) * Grid3.CELL
 
 
+## How many of this route's OWN room stops lie strictly between a and b, in
+## the direction the car would travel (forward-only on a closed route). Each
+## one costs a door cycle and, since v4 phase 2, a whole braking-and-ramping-
+## up-again - which is why Pathfind3 prices them (Car3.stop_penalty).
+##
+## Answered from the memoized room-count prefix, because Pathfind3 asks it for
+## every ordered stop PAIR of every running route on every replan.
+func stops_between(a: Vector2i, b: Vector2i) -> int:
+	_ensure()
+	var ia := index_of(a)
+	var ib := index_of(b)
+	if ia < 0 or ib < 0 or ia == ib:
+		return 0
+	var n := cells.size()
+	if closed:
+		if ib > ia:
+			return _rooms_in(ia + 1, ib)
+		return _rooms_in(ia + 1, n) + _rooms_in(0, ib)
+	if ib > ia:
+		return _rooms_in(ia + 1, ib)
+	return _rooms_in(ib + 1, ia)
+
+
+## Room cells in the half-open index range [lo, hi).
+func _rooms_in(lo: int, hi: int) -> int:
+	if hi <= lo:
+		return 0
+	return _room_prefix[hi] - _room_prefix[lo]
+
+
 # ---------------------------------------------------------------- validation
 
 ## "" when `cells` (+ the `closed` flag) is a legal route on the CURRENTLY
@@ -83,9 +116,14 @@ func ride_dist(a: Vector2i, b: Vector2i) -> float:
 ## harness calls this on its scripted routes, main3.commit_route rejects
 ## anything that fails it, and the search tools validate every decoded gene.
 ##
+## `car_width` (v4 phase 2) additionally rejects a route that runs a car down
+## a corridor narrower than it is - the one route-legality rule that depends
+## on WHICH card is being drawn. 0 (the default) skips the check, which is
+## what a caller that has no card in hand wants (geometry-only validation).
+##
 ## Requires Grid3.load_level() to have run for the level in question - i.e.
 ## call it AFTER the game scene is in the tree, never before.
-static func validate(cells_in: Array, closed_in: bool) -> String:
+static func validate(cells_in: Array, closed_in: bool, car_width: int = 0) -> String:
 	if cells_in.size() < 2:
 		return "fewer than 2 cells"
 	if closed_in and cells_in.size() < 4:
@@ -109,4 +147,9 @@ static func validate(cells_in: Array, closed_in: bool) -> String:
 		if absi(dc.x) + absi(dc.y) != 1:
 			return "closing link %s -> %s not adjacent" % [
 					str(cells_in[cells_in.size() - 1]), str(cells_in[0])]
+	if car_width > 0:
+		var w := Grid3.route_min_gate_width(cells_in)
+		if w < car_width:
+			return "car is %d wide; the route's narrowest corridor is %d" % [
+					car_width, w]
 	return ""

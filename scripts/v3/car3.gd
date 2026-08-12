@@ -44,6 +44,29 @@ extends Node2D
 ## exactly the old per-cell behavior. Time spent blocked is accumulated in
 ## gate_wait_total; corridor entries in gate_transits (harness stats).
 ##
+## ACCELERATION (v4 phase 2). A car no longer teleports between 0 and its top
+## speed: it ramps at `accel` and brakes at `decel`, and it must arrive AT REST
+## at every place it has to be stopped -
+##   * a room stop it is going to open its doors at,
+##   * the end of an open (ping-pong) polyline, where it reverses,
+##   * a cell whose next step enters a gate corridor it cannot get into,
+##   * the cell it is about to park or deadhead-home at.
+## So every stop now costs momentum on top of door time, queueing at a corridor
+## costs momentum too, and a long uninterrupted run is where a heavy car wins.
+## Wider is heavier: pod ramps sharply, standard medium, cargo sluggishly
+## (Levels3.CAR_TYPES).
+##
+## The lookahead (`_stop_distance`) rescans every sub-step, so a stop that
+## appears late (a passenger spawning in front of a rolling car) is picked up
+## as soon as it exists; if it appears inside the braking distance the car
+## simply stops harder, which is the same thing today's game did to EVERY stop.
+##
+## Integration is ANALYTIC per phase (accelerate / cruise / brake), not a fixed
+## sub-step: each call solves the exact distance covered in the time given, and
+## never advances past the next cell centre. That is what keeps `advance(dt)`
+## give-or-take dt-invariant - a 0.25 s search step and a 0.1 s reporting step
+## see the same physics - and what makes overshooting a stop impossible.
+##
 ## Logic time comes from game tick() calls; _process is visuals only.
 
 enum DoorState { CLOSED, OPENING, EXCHANGE, CLOSING }
@@ -57,11 +80,19 @@ const REDEPLOY_DELAY := 3.0 # game-seconds of ghost countdown before service
 const VANISH_T := 0.35 # real-seconds of the shrink/fade flourish (visual only)
 const BODY := 60.0
 
+const EPS_D := 1.0e-6 # px: "close enough to the cell centre"
+const EPS_V := 1.0e-9
+const MAX_SCAN_CELLS := 24 # hard cap on the braking lookahead
+
 var game = null # main3.gd
 var card_index := 0
 var card_type := "standard"
-var capacity := 4
-var speed := 260.0
+var width := 2 # v4 phase 2: doorway units (pod 1, standard/express 2, cargo 3)
+var capacity := 4 # in WIDTH-UNITS, default 2 * width (Levels3.card_capacity)
+var speed := 260.0 # MAX speed, px/s
+var accel := 300.0 # px/s^2 while ramping up
+var decel := 375.0 # px/s^2 while braking for a stop
+var vel := 0.0 # current speed, px/s (0 whenever the car is standing still)
 var color := Color.GRAY
 var route = null # Route3 or null - the COMMITTED route (what planning uses)
 var car_state := CarState.UNDEPLOYED
@@ -92,10 +123,31 @@ func setup(g, i: int, card: Dictionary) -> void:
 	game = g
 	card_index = i
 	card_type = card.type
-	capacity = card.cap
-	speed = card.speed
+	width = Levels3.card_width(card)
+	capacity = Levels3.card_capacity(card)
+	speed = Levels3.card_speed(card)
+	accel = Levels3.card_accel(card)
+	decel = Levels3.card_decel(card)
 	color = card.color
 	visible = false
+
+
+## Time (s) this car loses to ONE extra intermediate stop, purely from
+## momentum: braking to rest and getting back up to speed. Pathfind3 prices a
+## many-stop leg with it, which is the planner's half of acceleration.
+func stop_penalty() -> float:
+	return speed * (1.0 / (2.0 * accel) + 1.0 / (2.0 * decel))
+
+
+## True when a party of `w` doorway units can physically fit through this
+## car's doors. The capacity check is separate (free_slots).
+func fits(w: int) -> bool:
+	return w <= width
+
+
+## Drawn body width in px: a pod is visibly a third of a cargo car.
+func body_w() -> float:
+	return 4.0 + 28.0 * width
 
 
 ## True when the committed route can run service (>= 2 stops). Pathfinding
@@ -110,10 +162,11 @@ func on_grid() -> bool:
 	return car_state == CarState.RUNNING or car_state == CarState.RECALLING
 
 
+## Capacity in use, counted in WIDTH-UNITS (a couple costs 2, a big delivery 3).
 func used_slots() -> int:
 	var used := 0
 	for p in riders:
-		used += p.slots
+		used += p.width
 	return used
 
 
@@ -172,6 +225,7 @@ func set_route(r) -> void:
 	idx = 0
 	seg_t = 0.0
 	dir = 1
+	vel = 0.0
 	door_state = DoorState.CLOSED
 	door_timer = 0.0
 	exchange_elapsed = 0.0
@@ -256,6 +310,7 @@ func _start_redeploy() -> void:
 	idx = 0
 	seg_t = 0.0
 	dir = 1
+	vel = 0.0
 	door_state = DoorState.CLOSED
 	door_timer = 0.0
 	stop_moves = 0
@@ -273,6 +328,7 @@ func _to_undeployed() -> void:
 	car_state = CarState.UNDEPLOYED
 	waiting_gate = false
 	idle = false
+	vel = 0.0
 	visible = false
 
 
@@ -362,6 +418,7 @@ func _move_tick(dt: float) -> void:
 			DoorState.CLOSED:
 				if seg_t == 0.0:
 					if not _decide_at_center():
+						vel = 0.0
 						if door_state != DoorState.CLOSED:
 							continue # doors just began opening: consume time there
 						if not on_grid():
@@ -370,16 +427,142 @@ func _move_tick(dt: float) -> void:
 							gate_wait_total += rem
 						break # idle, or blocked at a gate: retry next tick
 				var need := Grid3.CELL - seg_t
-				var step := speed * rem
-				if step < need:
-					seg_t += step
-					rem = 0.0
-				else:
-					rem -= need / speed
+				var move := _integrate(need, _stop_distance(need), rem)
+				seg_t += move.d
+				rem -= move.t
+				if seg_t >= Grid3.CELL - EPS_D:
 					seg_t = 0.0
 					idx = _wrap_idx(idx + dir) # closed: glide across the n-1 -> 0 seam
 					_arrive_center()
+				elif move.t <= 0.0:
+					break # standing still with nowhere to go: retry next tick
 	_update_position()
+
+
+# ------------------------------------------------------------ acceleration
+
+## Distance (px) from the car's current position to the next cell centre it
+## MUST be at rest at, given `need` px still to run to the next centre. A big
+## number when nothing within the braking lookahead demands a stop.
+##
+## Re-evaluated every sub-step, so it always reflects the world as it is now.
+func _stop_distance(need: float) -> float:
+	var r = _drive()
+	var n: int = r.cells.size()
+	var has_work := car_state != CarState.RECALLING and _has_work()
+	# Nothing to do and nowhere to be: the car parks at the very next centre.
+	if not has_work and car_state != CarState.RECALLING and home_cell == null:
+		return need
+	var scan := 2 + int(speed * speed / (2.0 * decel) / Grid3.CELL)
+	scan = mini(scan, mini(MAX_SCAN_CELLS, n))
+	var d := need
+	for k in scan:
+		var j := idx + (k + 1) * dir
+		if not r.closed and (j < 0 or j >= n):
+			break # ran off the polyline; the reversal below already caught it
+		var cell: Vector2i = r.cells[_wrap_idx(j)]
+		if _stops_at(cell, _wrap_idx(j), has_work):
+			return d
+		# The end of an open line: the car reverses there, so it stops there.
+		if not r.closed and (j + dir < 0 or j + dir >= n):
+			return d
+		# A corridor the car cannot get into right now.
+		var nxt: Vector2i = r.cells[_wrap_idx(j + dir)]
+		var gi := Grid3.gate_group_of(nxt)
+		if gi != -1 and not held_gates.has(gi) and not game.gate_free_for(self, gi):
+			return d
+		d += Grid3.CELL
+	return d
+
+
+## Would the car come to a stop at this cell, as _arrive_center decides it?
+func _stops_at(cell: Vector2i, j: int, has_work: bool) -> bool:
+	if car_state == CarState.RECALLING:
+		return j == recall_stop_idx
+	if not has_work:
+		return home_cell != null and cell == home_cell # deadhead target
+	return Grid3.is_room(cell)
+
+
+## Advance along the current segment: cover at most `dmax` px in at most `rem`
+## seconds, braking so the car can be at rest `d_stop` px from here
+## (`d_stop` >= `dmax`, because every stop sits on a cell centre).
+##
+## Solved phase by phase in CLOSED FORM - accelerate at `accel`, hold `speed`,
+## brake at `decel` - so the answer does not depend on how the caller chopped
+## up its time, and the car can never roll past `dmax`.
+## Returns {"d": px covered, "t": seconds used}.
+func _integrate(dmax: float, d_stop: float, rem: float) -> Dictionary:
+	var u := 0.0
+	var t := 0.0
+	var guard := 0
+	while u < dmax - EPS_D and t < rem and guard < 6:
+		guard += 1
+		var left_d := dmax - u
+		var left_t := rem - t
+		var to_stop := maxf(d_stop - u, 0.0)
+		var v_lim := sqrt(2.0 * decel * to_stop) # fastest we may legally be here
+		var phase_d := left_d
+		var mode := "cruise"
+		if vel > v_lim + EPS_V:
+			mode = "brake" # over the braking curve (a stop appeared late)
+		elif vel < speed - EPS_V:
+			mode = "accel"
+			# ...until we top out, or until we meet the braking curve.
+			var d_top := (speed * speed - vel * vel) / (2.0 * accel)
+			var d_meet := (2.0 * decel * to_stop - vel * vel) / (2.0 * (accel + decel))
+			phase_d = minf(phase_d, maxf(minf(d_top, d_meet), 0.0))
+		else:
+			# At top speed: cruise until the last moment we can still brake.
+			phase_d = minf(phase_d, maxf(to_stop - speed * speed / (2.0 * decel), 0.0))
+			if phase_d <= EPS_D:
+				mode = "brake"
+				phase_d = left_d
+		if phase_d <= EPS_D and mode != "brake":
+			mode = "brake"
+			phase_d = left_d
+		match mode:
+			"accel":
+				var v_end := sqrt(vel * vel + 2.0 * accel * phase_d)
+				var dt := (v_end - vel) / accel
+				if dt <= left_t:
+					u += phase_d
+					t += dt
+					vel = v_end
+				else:
+					u += vel * left_t + 0.5 * accel * left_t * left_t
+					vel += accel * left_t
+					t = rem
+			"cruise":
+				var dt2 := phase_d / speed
+				if dt2 <= left_t:
+					u += phase_d
+					t += dt2
+				else:
+					u += speed * left_t
+					t = rem
+			_: # brake
+				if vel <= EPS_V:
+					t = rem # standing still against a stop: burn the time
+					break
+				var t_zero := vel / decel
+				var d_zero := vel * vel / (2.0 * decel)
+				var d_phase := minf(phase_d, d_zero)
+				var v_end2 := sqrt(maxf(vel * vel - 2.0 * decel * d_phase, 0.0))
+				var dt3 := (vel - v_end2) / decel
+				if dt3 <= left_t:
+					u += d_phase
+					t += dt3
+					vel = v_end2
+					if d_phase >= d_zero - EPS_D and d_phase < left_d - EPS_D:
+						t = rem # braked to a halt short of the boundary
+						break
+				else:
+					var ct := minf(left_t, t_zero)
+					u += vel * ct - 0.5 * decel * ct * ct
+					vel = maxf(vel - decel * ct, 0.0)
+					t = rem
+	return {"d": minf(u, dmax), "t": minf(t, rem)}
 
 
 ## At a cell center with doors closed: open doors, start a hop, or park.
@@ -433,7 +616,7 @@ func _exchange_wanted(cell: Vector2i) -> bool:
 		if p.legs.is_empty():
 			continue
 		var leg: Dictionary = p.legs[0]
-		if leg.car == self and leg.board == cell and free >= p.slots:
+		if leg.car == self and leg.board == cell and fits(p.width) and free >= p.width:
 			return true
 	return false
 
@@ -442,6 +625,7 @@ func _begin_stop() -> void:
 	door_state = DoorState.OPENING
 	door_timer = DOOR_OPEN_T
 	stop_moves = 0
+	vel = 0.0 # a car with its doors open is standing still
 
 
 ## Next sweep target index. Open routes ping-pong (reverse at the ends);
@@ -449,10 +633,13 @@ func _begin_stop() -> void:
 ## polyline has no ends; the wrap happens on arrival via _wrap_idx).
 func _pingpong_target() -> int:
 	if _drive().closed:
+		if dir != 1:
+			vel = 0.0
 		dir = 1
 		return idx + 1
 	if idx + dir < 0 or idx + dir >= _drive().cells.size():
 		dir = -dir
+		vel = 0.0 # reversing at the end of the line means stopping first
 	return idx + dir
 
 
@@ -463,10 +650,10 @@ func _pingpong_target() -> int:
 ## group this car does not hold. Returns false if the car must wait (group
 ## held by someone else).
 func _depart(target_idx: int) -> bool:
-	if _drive().closed:
-		dir = 1
-	else:
-		dir = 1 if target_idx > idx else -1
+	var want := 1 if _drive().closed or target_idx > idx else -1
+	if want != dir:
+		vel = 0.0 # any change of direction happens from a standstill
+	dir = want
 	var next: Vector2i = _drive().cells[_wrap_idx(idx + dir)]
 	var gi := Grid3.gate_group_of(next)
 	if gi != -1 and not held_gates.has(gi):
@@ -546,7 +733,8 @@ func _load_waiting() -> void:
 		if p.legs.is_empty():
 			continue
 		var leg: Dictionary = p.legs[0]
-		if leg.car == self and leg.board == cell and free_slots() >= p.slots:
+		if leg.car == self and leg.board == cell and fits(p.width) \
+				and free_slots() >= p.width:
 			game.waiting[cell].erase(p)
 			p.riding = self
 			p.no_path = false
@@ -555,16 +743,18 @@ func _load_waiting() -> void:
 			stop_moves += 1
 
 
-## Where a rider stands inside the car (2 slots per row).
+## Where a rider stands inside the car: `width` width-units per row, so a pod
+## is a single file, a standard is two abreast and a cargo three.
 func slot_position(p) -> Vector2:
 	var i := 0
 	for r in riders:
 		if r == p:
 			break
-		i += r.slots
-	var col := i % 2
-	var row := int(i / 2.0)
-	return position + Vector2(-14.0 + col * 28.0, 12.0 - row * 20.0)
+		i += r.width
+	var cols := maxi(1, width)
+	var col := i % cols
+	var row := int(i / float(cols))
+	return position + Vector2((col - (cols - 1) / 2.0) * 26.0, 12.0 - row * 20.0)
 
 
 # ---------------------------------------------------------------- visuals
@@ -594,8 +784,9 @@ func _draw() -> void:
 	if car_state == CarState.REDEPLOYING:
 		_draw_redeploy_ghost()
 		return
-	var half := BODY / 2.0
-	var body := Rect2(-half, -half, BODY, BODY)
+	var half := body_w() / 2.0
+	var hh := BODY / 2.0
+	var body := Rect2(-half, -hh, body_w(), BODY)
 	var parked := car_state == CarState.RUNNING and not running()
 	var fill_a := 0.5 if door_state != DoorState.CLOSED else 0.26
 	if idle:
@@ -604,32 +795,43 @@ func _draw() -> void:
 	# Sliding door panels: two leaves parting from the center.
 	if not parked:
 		var frac := door_frac()
-		var leaf_w := (BODY - 12.0) / 2.0 * (1.0 - frac)
+		var leaf_w := (body_w() - 12.0) / 2.0 * (1.0 - frac)
 		var door_col := Color(color.lightened(0.25), 0.85)
 		if leaf_w > 0.5:
-			draw_rect(Rect2(-half + 6.0, -half + 10.0, leaf_w, BODY - 20.0), door_col)
-			draw_rect(Rect2(half - 6.0 - leaf_w, -half + 10.0, leaf_w, BODY - 20.0), door_col)
-			draw_line(Vector2(-half + 6.0 + leaf_w, -half + 10.0),
-					Vector2(-half + 6.0 + leaf_w, half - 10.0), Color(0, 0, 0, 0.4), 2.0)
-			draw_line(Vector2(half - 6.0 - leaf_w, -half + 10.0),
-					Vector2(half - 6.0 - leaf_w, half - 10.0), Color(0, 0, 0, 0.4), 2.0)
+			draw_rect(Rect2(-half + 6.0, -hh + 10.0, leaf_w, BODY - 20.0), door_col)
+			draw_rect(Rect2(half - 6.0 - leaf_w, -hh + 10.0, leaf_w, BODY - 20.0), door_col)
+			draw_line(Vector2(-half + 6.0 + leaf_w, -hh + 10.0),
+					Vector2(-half + 6.0 + leaf_w, hh - 10.0), Color(0, 0, 0, 0.4), 2.0)
+			draw_line(Vector2(half - 6.0 - leaf_w, -hh + 10.0),
+					Vector2(half - 6.0 - leaf_w, hh - 10.0), Color(0, 0, 0, 0.4), 2.0)
 	draw_rect(body, Color(color, 0.4 if parked else 1.0), false, 4.0)
-	if card_type == "express":
+	if speed > Levels3.STANDARD_SPEED:
+		# Chevrons = this car is faster than a standard, whatever its width.
 		for i in 2:
 			var cy := 6.0 - i * 12.0
 			draw_polyline(PackedVector2Array([
 					Vector2(-11.0, cy), Vector2(0.0, cy - 9.0), Vector2(11.0, cy)]),
 					Color(color, 0.9), 4.0)
-	# Capacity pips along the roof.
+	if width >= 3:
+		# Freight hatching: the heavy car reads as heavy at a glance.
+		for t in range(-int(half) + 8, int(half) - 6, 12):
+			draw_line(Vector2(t, hh - 8.0), Vector2(t + 8.0, hh - 18.0),
+					Color(0.05, 0.05, 0.07, 0.5), 3.0)
+	# Capacity pips along the roof, one per WIDTH-UNIT of capacity.
 	var used := used_slots()
+	var pitch := (body_w() - 12.0) / maxi(capacity, 1)
 	for i in capacity:
-		var px := -half + 6.0 + i * 13.0
+		var px := -half + 6.0 + i * pitch
 		var pip := color if i < used else Color(1, 1, 1, 0.18)
-		draw_rect(Rect2(px, -half + 5.0, 9.0, 5.0), pip)
+		draw_rect(Rect2(px, -hh + 5.0, maxf(4.0, pitch - 4.0), 5.0), pip)
 	# Waiting for a gate: pulsing white outline.
 	if waiting_gate:
 		var pulse := 0.45 + 0.45 * sin(vis_t * 8.0)
 		draw_rect(body.grow(7.0), Color(1, 1, 1, pulse), false, 4.0)
+	if home_cell != null and current_cell() == home_cell and idle:
+		# Parked on its home floor: a small roof lamp, so "waiting where I was
+		# told to wait" is distinguishable from "stranded".
+		draw_circle(Vector2(0.0, -hh - 8.0), 5.0, Color(color.lightened(0.4), 0.9))
 	# Recalling: soft white pulse + "rewind" chevrons over the roof.
 	if car_state == CarState.RECALLING:
 		var rp := 0.35 + 0.3 * sin(vis_t * 6.0)
@@ -653,8 +855,8 @@ func _draw_redeploy_ghost() -> void:
 		var p := vanish_from - position
 		draw_rect(Rect2(p - Vector2(s / 2.0, s / 2.0), Vector2(s, s)),
 				Color(color, 0.55 * f))
-	var half := BODY / 2.0
-	var body := Rect2(-half, -half, BODY, BODY)
+	var half := body_w() / 2.0
+	var body := Rect2(-half, -BODY / 2.0, body_w(), BODY)
 	var pulse := 0.35 + 0.25 * sin(vis_t * 5.0)
 	draw_rect(body, Color(color, 0.08))
 	draw_rect(body, Color(color, pulse), false, 3.0)

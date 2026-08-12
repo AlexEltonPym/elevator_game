@@ -2,7 +2,7 @@
 
 Do not hand-edit: re-run `powershell -File tools/run_depth.ps1` instead.
 
-Generated 2026-08-12T19:21:53.
+Generated 2026-08-12T22:12:49.
 
 ## How to read this
 
@@ -17,90 +17,90 @@ Generated 2026-08-12T19:21:53.
 
 | level | thesis | naive | random@B | greedy | ea@6400 | skill_gap | beat_thesis | ladder steps | struct. dist | seed_frag | plan_frag | rho top | rho spread |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| **L1** Tower | 1251.5 | 51.7 | 1244.6 | 14.7 | 1246.8 | +2.2 | -4.7 | 2 | 0.60 | +3.4 | 1178.9 | 0.08 | 0.99 |
-| **L2** Detour | 1245.2 | -1.1 | 1237.1 | 1229.7 | 1241.5 | +4.4 | -3.7 | 3 | 0.43 | +5.5 | 0.9 | -0.42 | 1.00 |
-| **L3** Junction | 1257.2 | 55.8 | 1242.2 | 1251.8 | 1252.3 | +10.1 | -4.9 | 3 | 0.62 | +4.5 | 1241.4 | 0.38 | 1.00 |
-| **L4** Ring | 1275.9 | 20.7 | 1270.0 | 83.8 | 1273.7 | +3.7 | -2.2 | 3 | 0.39 | -0.8 | 1242.8 | 0.20 | 1.00 |
-| **X-1** Sandbox | 1207.4 | — | 1217.5 | 39.7 | 1223.0 | +5.5 | +15.6 | 3 | 0.55 | +2.1 | 0.0 | 0.00 | 1.00 |
+| **L1** Tower | 1243.9 | 39.8 | 1236.4 | 14.7 | 1253.7 | +17.3 | +9.8 | 3 | 0.74 | -2.7 | 1193.9 | 0.97 | 1.00 |
+| **L2** Detour | 1244.2 | 5.8 | 1230.2 | 71.8 | 1250.8 | +20.6 | +6.6 | 3 | 0.69 | +0.5 | 9.8 | 0.97 | 1.00 |
+| **L3** Junction | 1268.4 | 53.8 | 1236.7 | 55.8 | 1268.4 | +31.7 | +0.0 | 3 | 0.00 | +0.8 | 16.5 | 0.98 | 1.00 |
+| **L4** Ring | 1261.8 | 41.8 | 1246.8 | 47.8 | 1266.4 | +19.6 | +4.6 | 3 | 0.38 | +2.0 | 1.9 | 0.84 | 1.00 |
+| **X-1** Sandbox | 1187.1 | — | 1199.5 | 1198.1 | 1220.6 | +21.1 | +33.5 | 2 | 0.70 | +2.2 | 4.9 | 0.42 | 1.00 |
 
 Scores marked **W** in the per-level tables are wins. Win/loss split per strategy (over 8 test seeds):
 
 | level | thesis | naive | random@B | greedy | ea@6400 |
 |---|---|---|---|---|---|
-| **L1** | 8/8 | 0/8 | 8/8 | 0/8 | 8/8 |
-| **L2** | 8/8 | 0/8 | 8/8 | 5/8 | 8/8 |
-| **L3** | 8/8 | 0/8 | 5/8 | 7/8 | 8/8 |
-| **L4** | 8/8 | 0/8 | 8/8 | 3/8 | 8/8 |
-| **X-1** | 7/8 | — | 8/8 | 0/8 | 8/8 |
+| **L1** | 8/8 | 0/8 | 6/8 | 0/8 | 8/8 |
+| **L2** | 8/8 | 0/8 | 6/8 | 4/8 | 8/8 |
+| **L3** | 8/8 | 0/8 | 6/8 | 0/8 | 8/8 |
+| **L4** | 6/8 | 0/8 | 5/8 | 0/8 | 8/8 |
+| **X-1** | 7/8 | — | 6/8 | 8/8 | 8/8 |
 
-Seed noise band per level (median MAD/sqrt(n) of the ladder elites' test scores): L1 0.88, L2 0.49, L3 0.46, L4 0.78, X-1 0.70. A ladder step counts only when a budget doubling beats the previous point by more than that.
+Seed noise band per level (median MAD/sqrt(n) of the ladder elites' test scores): L1 1.07, L2 0.78, L3 1.05, L4 0.32, X-1 1.45. A ladder step counts only when a budget doubling beats the previous point by more than that.
 
 ## L1 — Tower
 
 Thesis: *one local per wing, and the express spine belongs to the execs*
 
-10 rooms, 3 cards. Search cost: 13480 simulation runs in 542 s wall (random 6400 + greedy 24 + ea 6400, plus the test-seed re-scoring).
+10 rooms, 3 cards. Search cost: 13480 simulation runs in 887 s wall (random 6400 + greedy 24 + ea 6400, plus the test-seed re-scoring).
 
 | strategy | score | wins | served | lost | avg wait | med. finish |
 |---|---|---|---|---|---|---|
-| thesis | 1251.50 **W** | 8/8 | 90.5 | 0.0 | 7.6 s | 168 s |
-| naive | 51.72 | 0/8 | 69.6 | 5.0 | 27.1 s | — |
-| random | 1244.60 **W** | 8/8 | 90.5 | 0.4 | 8.9 s | 174 s |
-| greedy | 14.75 | 0/8 | 29.6 | 5.0 | 24.8 s | — |
-| random@100 | 25.80 | 0/8 | 40.0 | 5.0 | 19.8 s | — |
-| **ea@100** | 20.78 | 0/8 | 36.1 | 5.0 | 21.4 s | — |
-| random@400 | 66.86 | 3/8 | 79.0 | 4.5 | 12.7 s | — |
-| **ea@400**  <- step | 37.83 | 0/8 | 54.0 | 5.0 | 15.5 s | — |
-| random@1600 | 1244.60 **W** | 8/8 | 90.5 | 0.4 | 8.9 s | 174 s |
-| **ea@1600**  <- step | 1248.70 **W** | 8/8 | 90.8 | 0.0 | 8.5 s | 171 s |
-| random@6400 | 1244.60 **W** | 8/8 | 90.5 | 0.4 | 8.9 s | 174 s |
-| **ea@6400** | 1246.80 **W** | 8/8 | 90.6 | 0.1 | 8.2 s | 167 s |
+| thesis | 1243.90 **W** | 8/8 | 91.0 | 0.0 | 13.7 s | 173 s |
+| naive | 39.80 | 0/8 | 56.5 | 5.0 | 23.3 s | — |
+| random | 1236.40 **W** | 6/8 | 88.3 | 2.4 | 16.3 s | 178 s |
+| greedy | 14.74 | 0/8 | 29.9 | 5.0 | 25.5 s | — |
+| random@100 | 21.78 | 0/8 | 36.6 | 5.0 | 21.6 s | — |
+| **ea@100** | 22.77 | 0/8 | 37.4 | 5.0 | 22.2 s | — |
+| random@400 | 63.82 | 2/8 | 73.4 | 4.8 | 16.4 s | — |
+| **ea@400**  <- step | 28.79 | 0/8 | 43.9 | 5.0 | 18.9 s | — |
+| random@1600 | 1227.10 **W** | 6/8 | 84.1 | 3.6 | 20.1 s | 190 s |
+| **ea@1600**  <- step | 1247.90 **W** | 8/8 | 90.6 | 0.6 | 12.5 s | 169 s |
+| random@6400 | 1236.40 **W** | 6/8 | 88.3 | 2.4 | 16.3 s | 178 s |
+| **ea@6400**  <- step | 1253.70 **W** | 8/8 | 90.4 | 0.0 | 10.0 s | 165 s |
 
-Ladder (median test score vs budget): 100→20.8 (0/8 won)  400→37.8 (0/8 won)  1600→1248.7 (8/8 won)  6400→1246.8 (8/8 won)  →  **2 step(s)** above a noise band of 0.88.
+Ladder (median test score vs budget): 100→22.8 (0/8 won)  400→28.8 (0/8 won)  1600→1247.9 (8/8 won)  6400→1253.7 (8/8 won)  →  **3 step(s)** above a noise band of 1.07.
 
-Best route-set found (0 loops, 15 stops over 59 cells, 0 gate group(s) crossed) vs thesis (0 loops, 12 stops, 34 cells): Jaccard distance **0.60**.
+Best route-set found (0 loops, 12 stops over 44 cells, 0 gate group(s) crossed) vs thesis (0 loops, 12 stops, 34 cells): Jaccard distance **0.74**.
 
 ```
-card 0 line 17 cells, stops: (3,9) (3,0) (0,4)
-card 1 line 25 cells, stops: (0,6) (0,8) (3,0) (6,2) (6,4) (6,6) (6,8)
-card 2 line 17 cells, stops: (0,2) (3,0) (6,4) (6,6) (6,8)
+card 0 line 15 cells, stops: (3,9) (3,0) (0,2)
+card 1 line 17 cells, stops: (0,8) (0,6) (0,4) (3,0) (6,2)
+card 2 line 12 cells, stops: (3,0) (6,4) (6,6) (6,8)
 ```
 
-**Verdict.** Both the EA and best-of-6400 random win this level; the EA closes it 2 game-seconds faster. The ladder has 2 distinguishable steps, i.e. more search kept buying real score. Our hand-designed thesis is still ahead of the search by 4.7 — either the level's answer is hard to find, or the budget was too small. WARNING: seed_fragility +3.4 — the elite scores materially better on the seeds it was searched against, so treat its margin as optimistic. Coarse-step search is faithful overall (rho_spread 0.99) but the TOP 30 candidates re-rank freely at STEP 0.1 (rho 0.08) — they are a near-tie plateau, so which one is 'best' is arbitrary.
+**Verdict.** Both the EA and best-of-6400 random win this level; the EA closes it 17 game-seconds faster. The ladder has 3 distinguishable steps, i.e. more search kept buying real score. The optimizer BEAT our thesis by +9.8 with a structurally DIFFERENT plan (Jaccard 0.74) — this level has an answer we did not design. seed_fragility -2.7: the elite transfers to unseen seeds.
 
 <details><summary>EA instrumentation (is the optimizer actually working?)</summary>
 
-- **83 generations** of mu=12+lambda=24 completed; 1983 children proposed; stopped because: budget.
+- **97 generations** of mu=12+lambda=24 completed; 2307 children proposed; stopped because: budget.
 - Seeded from 12 hand-built primitive genomes + 0 random genomes.
-- **41.9% of proposed genes failed to decode** (scored -INF, cost no budget); 27.8% were cache hits (already evaluated, also free).
+- **43.7% of proposed genes failed to decode** (scored -INF, cost no budget); 32.6% were cache hits (already evaluated, also free).
 - Uniform random needed 4140 proposals to fill its budget, 3340 of which never produced a decodable route-set.
 
 Operator effect is measured against the PARENT's score; immigration has no parent, so its comparison columns are blank by construction, not because it is broken.
 
 | operator | children | comparable | changed the score | improved on parent | mean abs. delta |
 |---|---|---|---|---|---|
-| crossover | 511 | 389 | 67% | 7% | 227.78 |
+| crossover | 579 | 433 | 67% | 8% | 214.10 |
 | immigrate | 43 | 0 | — | — | — |
-| mutate | 1429 | 721 | 88% | 8% | 504.14 |
+| mutate | 1685 | 822 | 93% | 8% | 576.93 |
 
 Best-so-far and population diversity by generation (TRAIN seeds, search step) — `spread` is the mean pairwise Jaccard distance inside the population, so 0 means it has collapsed onto one plan:
 
 ```
 gen   runs   best      pop_best  pop_mean  distinct  spread
-1     216    30.82     30.82     4.21      12        0.699
-7     856    1222.50   1222.50   826.81    12        0.299
-14    1464   1240.75   1240.75   1231.96   12        0.216
-20    1968   1240.75   1240.75   1239.48   12        0.137
-26    2528   1241.00   1241.00   1240.65   12        0.080
-33    2968   1244.00   1244.00   1241.71   12        0.138
-39    3456   1245.25   1245.25   1244.04   12        0.135
-45    3944   1245.25   1245.25   1244.52   12        0.131
-51    4384   1245.75   1245.75   1245.21   12        0.094
-58    4904   1245.75   1245.75   1245.38   12        0.082
-64    5296   1246.00   1246.00   1245.44   12        0.082
-70    5696   1246.00   1246.00   1245.44   12        0.069
-77    6088   1246.25   1246.25   1245.52   12        0.090
-83    6400   1246.25   1246.25   1245.56   12        0.100
+1     216    21.84     21.84     2.65      12        0.582
+8     976    1237.50   1237.50   252.07    12        0.295
+16    1608   1247.00   1247.00   1244.35   12        0.122
+23    2056   1247.00   1247.00   1246.21   12        0.000
+31    2536   1249.25   1249.25   1246.65   12        0.011
+38    2904   1249.25   1249.25   1247.13   12        0.032
+45    3344   1249.25   1249.25   1247.77   12        0.036
+53    3864   1251.00   1251.00   1248.94   12        0.040
+60    4352   1251.00   1251.00   1249.58   12        0.000
+67    4744   1251.00   1251.00   1249.79   12        0.011
+75    5240   1251.00   1251.00   1250.29   12        0.027
+82    5648   1251.00   1251.00   1250.67   12        0.032
+90    6072   1251.00   1251.00   1250.90   12        0.000
+97    6400   1251.00   1251.00   1250.94   12        0.000
 ```
 
 </details>
@@ -109,68 +109,68 @@ gen   runs   best      pop_best  pop_mean  distinct  spread
 
 Thesis: *spend the gate on a cross shuttle; execs ride the perimeter express*
 
-10 rooms, 3 cards. Search cost: 13816 simulation runs in 555 s wall (random 6400 + greedy 360 + ea 6400, plus the test-seed re-scoring).
+10 rooms, 3 cards. Search cost: 13856 simulation runs in 1290 s wall (random 6400 + greedy 400 + ea 6400, plus the test-seed re-scoring).
 
 | strategy | score | wins | served | lost | avg wait | med. finish |
 |---|---|---|---|---|---|---|
-| thesis | 1245.20 **W** | 8/8 | 106.0 | 0.3 | 10.9 s | 174 s |
-| naive | -1.14 | 0/8 | 21.5 | 6.0 | 17.4 s | — |
-| random | 1237.10 **W** | 8/8 | 105.6 | 1.6 | 13.0 s | 183 s |
-| greedy | 1229.70 **W** | 5/8 | 94.4 | 5.1 | 13.1 s | 178 s |
-| random@100 | 22.89 | 0/8 | 44.5 | 6.0 | 12.3 s | — |
-| **ea@100** | 14.74 | 0/8 | 34.9 | 6.1 | 25.1 s | — |
-| random@400 | 22.89 | 0/8 | 44.5 | 6.0 | 12.3 s | — |
-| **ea@400**  <- step | 27.82 | 0/8 | 47.3 | 6.0 | 19.0 s | — |
-| random@1600 | 74.84 | 1/8 | 86.9 | 5.9 | 15.3 s | — |
-| **ea@1600**  <- step | 1238.40 **W** | 8/8 | 106.6 | 0.3 | 12.8 s | 180 s |
-| random@6400 | 1237.10 **W** | 8/8 | 105.6 | 1.6 | 13.0 s | 183 s |
-| **ea@6400**  <- step | 1241.50 **W** | 8/8 | 105.6 | 0.1 | 10.1 s | 174 s |
+| thesis | 1244.20 **W** | 8/8 | 96.3 | 0.3 | 15.7 s | 174 s |
+| naive | 5.77 | 0/8 | 29.4 | 6.0 | 24.0 s | — |
+| random | 1230.20 **W** | 6/8 | 92.8 | 3.1 | 18.1 s | 183 s |
+| greedy | 71.77 | 4/8 | 82.0 | 4.8 | 21.1 s | — |
+| random@100 | 35.83 | 0/8 | 51.1 | 6.0 | 20.9 s | — |
+| **ea@100** | 9.71 | 0/8 | 30.8 | 6.0 | 25.3 s | — |
+| random@400 | 35.83 | 0/8 | 51.1 | 6.0 | 20.9 s | — |
+| **ea@400**  <- step | 29.78 | 0/8 | 52.9 | 6.0 | 23.3 s | — |
+| random@1600 | 67.80 | 2/8 | 87.0 | 5.1 | 22.9 s | — |
+| **ea@1600**  <- step | 1247.20 **W** | 8/8 | 96.1 | 0.3 | 13.5 s | 172 s |
+| random@6400 | 1230.20 **W** | 6/8 | 92.8 | 3.1 | 18.1 s | 183 s |
+| **ea@6400**  <- step | 1250.80 **W** | 8/8 | 95.9 | 0.0 | 12.5 s | 168 s |
 
-Ladder (median test score vs budget): 100→14.7 (0/8 won)  400→27.8 (0/8 won)  1600→1238.4 (8/8 won)  6400→1241.5 (8/8 won)  →  **3 step(s)** above a noise band of 0.49.
+Ladder (median test score vs budget): 100→9.7 (0/8 won)  400→29.8 (0/8 won)  1600→1247.2 (8/8 won)  6400→1250.8 (8/8 won)  →  **3 step(s)** above a noise band of 0.78.
 
-Best route-set found (1 loops, 17 stops over 51 cells, 1 gate group(s) crossed) vs thesis (0 loops, 14 stops, 40 cells): Jaccard distance **0.43**.
+Best route-set found (2 loops, 16 stops over 48 cells, 1 gate group(s) crossed) vs thesis (0 loops, 14 stops, 40 cells): Jaccard distance **0.69**.
 
 ```
-card 0 line 10 cells, stops: (0,9) (0,8) (0,7) (0,2) (1,2) (1,1)
-card 1 line  9 cells, stops: (0,1) (0,2) (0,7) (1,7) (1,8)
-card 2 LOOP 32 cells, stops: (0,9) (0,8) (0,7) (0,2) (0,1) (0,0)
+card 0 LOOP  6 cells, stops: (1,7) (0,7) (0,8) (0,9) (1,8)
+card 1 line 10 cells, stops: (0,7) (0,2) (1,2) (1,1) (0,0)
+card 2 LOOP 32 cells, stops: (0,2) (0,1) (0,0) (0,9) (0,8) (0,7)
 ```
 
-**Verdict.** Both the EA and best-of-6400 random win this level; the EA closes it 4 game-seconds faster. The ladder has 3 distinguishable steps, i.e. more search kept buying real score. Our hand-designed thesis is still ahead of the search by 3.7 — either the level's answer is hard to find, or the budget was too small. WARNING: seed_fragility +5.5 — the elite scores materially better on the seeds it was searched against, so treat its margin as optimistic. Coarse-step search is faithful overall (rho_spread 1.00) but the TOP 30 candidates re-rank freely at STEP 0.1 (rho -0.42) — they are a near-tie plateau, so which one is 'best' is arbitrary.
+**Verdict.** Both the EA and best-of-6400 random win this level; the EA closes it 21 game-seconds faster. The ladder has 3 distinguishable steps, i.e. more search kept buying real score. The optimizer BEAT our thesis by +6.6 with a structurally DIFFERENT plan (Jaccard 0.69) — this level has an answer we did not design. seed_fragility +0.5: the elite transfers to unseen seeds.
 
 <details><summary>EA instrumentation (is the optimizer actually working?)</summary>
 
-- **55 generations** of mu=12+lambda=24 completed; 1318 children proposed; stopped because: budget.
+- **58 generations** of mu=12+lambda=24 completed; 1378 children proposed; stopped because: budget.
 - Seeded from 12 hand-built primitive genomes + 0 random genomes.
-- **18.3% of proposed genes failed to decode** (scored -INF, cost no budget); 23.1% were cache hits (already evaluated, also free).
+- **22.9% of proposed genes failed to decode** (scored -INF, cost no budget); 22.1% were cache hits (already evaluated, also free).
 - Uniform random needed 1462 proposals to fill its budget, 662 of which never produced a decodable route-set.
 
 Operator effect is measured against the PARENT's score; immigration has no parent, so its comparison columns are blank by construction, not because it is broken.
 
 | operator | children | comparable | changed the score | improved on parent | mean abs. delta |
 |---|---|---|---|---|---|
-| crossover | 375 | 323 | 66% | 7% | 208.70 |
-| immigrate | 67 | 0 | — | — | — |
-| mutate | 876 | 687 | 91% | 10% | 414.00 |
+| crossover | 363 | 306 | 74% | 9% | 181.64 |
+| immigrate | 62 | 0 | — | — | — |
+| mutate | 953 | 694 | 94% | 12% | 372.81 |
 
 Best-so-far and population diversity by generation (TRAIN seeds, search step) — `spread` is the mean pairwise Jaccard distance inside the population, so 0 means it has collapsed onto one plan:
 
 ```
 gen   runs   best      pop_best  pop_mean  distinct  spread
-1     264    18.83     18.83     13.35     12        0.327
-5     944    82.85     82.85     49.69     12        0.316
-9     1472   1240.50   1240.50   1044.31   12        0.329
-13    1968   1247.25   1247.25   1241.44   12        0.115
-18    2576   1250.00   1250.00   1247.63   12        0.091
-22    2976   1250.00   1250.00   1248.69   12        0.081
-26    3384   1250.00   1250.00   1249.08   12        0.085
-30    3768   1250.00   1250.00   1249.29   12        0.040
-34    4176   1250.00   1250.00   1249.42   12        0.000
-38    4616   1250.00   1250.00   1249.56   12        0.000
-43    5120   1250.00   1250.00   1250.00   12        0.000
-47    5488   1250.00   1250.00   1250.00   12        0.000
-51    5928   1250.00   1250.00   1250.00   12        0.085
-55    6400   1251.25   1251.25   1250.31   12        0.108
+1     264    12.76     12.76     9.23      12        0.344
+5     896    1226.00   1226.00   144.29    12        0.255
+10    1560   1244.00   1244.00   1237.50   12        0.127
+14    2056   1244.75   1244.75   1241.15   12        0.153
+19    2632   1249.00   1249.00   1245.69   12        0.116
+23    3080   1249.75   1249.75   1247.29   12        0.095
+27    3472   1249.75   1249.75   1248.04   12        0.074
+32    4032   1251.00   1251.00   1249.63   12        0.011
+36    4416   1251.25   1251.25   1250.44   12        0.020
+40    4720   1251.25   1251.25   1250.52   12        0.020
+45    5184   1251.50   1251.50   1250.96   12        0.020
+49    5608   1251.50   1251.50   1251.38   12        0.000
+54    6088   1251.50   1251.50   1251.50   12        0.000
+58    6400   1251.50   1251.50   1251.50   12        0.000
 ```
 
 </details>
@@ -179,68 +179,68 @@ gen   runs   best      pop_best  pop_mean  distinct  spread
 
 Thesis: *both feeders run arm->HUB->lobby; only the express climbs the loft*
 
-7 rooms, 3 cards. Search cost: 13474 simulation runs in 423 s wall (random 6400 + greedy 18 + ea 6400, plus the test-seed re-scoring).
+7 rooms, 3 cards. Search cost: 13474 simulation runs in 745 s wall (random 6400 + greedy 18 + ea 6400, plus the test-seed re-scoring).
 
 | strategy | score | wins | served | lost | avg wait | med. finish |
 |---|---|---|---|---|---|---|
-| thesis | 1257.20 **W** | 8/8 | 146.3 | 0.3 | 7.9 s | 162 s |
-| naive | 55.81 | 0/8 | 82.0 | 5.0 | 18.3 s | — |
-| random | 1242.20 **W** | 5/8 | 139.0 | 3.4 | 12.5 s | 167 s |
-| greedy | 1251.80 **W** | 7/8 | 142.1 | 1.6 | 9.2 s | 164 s |
-| random@100 | 10.88 | 0/8 | 28.0 | 5.0 | 11.8 s | — |
-| **ea@100** | 11.89 | 0/8 | 28.5 | 5.0 | 11.3 s | — |
-| random@400 | 1242.20 **W** | 5/8 | 139.0 | 3.4 | 12.5 s | 167 s |
-| **ea@400**  <- step | 68.84 | 0/8 | 92.0 | 5.0 | 16.3 s | — |
-| random@1600 | 1242.20 **W** | 5/8 | 139.0 | 3.4 | 12.5 s | 167 s |
-| **ea@1600**  <- step | 1251.80 **W** | 8/8 | 146.8 | 1.1 | 10.2 s | 168 s |
-| random@6400 | 1242.20 **W** | 5/8 | 139.0 | 3.4 | 12.5 s | 167 s |
-| **ea@6400**  <- step | 1252.30 **W** | 8/8 | 146.5 | 1.3 | 9.3 s | 168 s |
+| thesis | 1268.40 **W** | 8/8 | 117.0 | 0.8 | 11.5 s | 150 s |
+| naive | 53.80 | 0/8 | 66.5 | 5.0 | 25.4 s | — |
+| random | 1236.70 **W** | 6/8 | 115.8 | 2.3 | 23.1 s | 180 s |
+| greedy | 55.80 | 0/8 | 72.0 | 5.0 | 18.9 s | — |
+| random@100 | 14.86 | 0/8 | 32.0 | 5.0 | 15.6 s | — |
+| **ea@100** | 15.86 | 0/8 | 32.9 | 5.0 | 15.4 s | — |
+| random@400 | 83.78 | 3/8 | 100.3 | 4.1 | 19.5 s | — |
+| **ea@400**  <- step | 73.80 | 3/8 | 96.5 | 3.9 | 18.3 s | — |
+| random@1600 | 83.78 | 3/8 | 100.3 | 4.1 | 19.5 s | — |
+| **ea@1600**  <- step | 1257.60 **W** | 7/8 | 117.1 | 1.3 | 15.1 s | 161 s |
+| random@6400 | 1236.70 **W** | 6/8 | 115.8 | 2.3 | 23.1 s | 180 s |
+| **ea@6400**  <- step | 1268.40 **W** | 8/8 | 117.0 | 0.8 | 11.5 s | 150 s |
 
-Ladder (median test score vs budget): 100→11.9 (0/8 won)  400→68.8 (0/8 won)  1600→1251.8 (8/8 won)  6400→1252.3 (8/8 won)  →  **3 step(s)** above a noise band of 0.46.
+Ladder (median test score vs budget): 100→15.9 (0/8 won)  400→73.8 (3/8 won)  1600→1257.6 (7/8 won)  6400→1268.4 (8/8 won)  →  **3 step(s)** above a noise band of 1.05.
 
-Best route-set found (0 loops, 11 stops over 22 cells, 1 gate group(s) crossed) vs thesis (0 loops, 11 stops, 22 cells): Jaccard distance **0.62**.
+Best route-set found (0 loops, 11 stops over 22 cells, 1 gate group(s) crossed) vs thesis (0 loops, 11 stops, 22 cells): Jaccard distance **0.00**.
 
 ```
-card 0 line  6 cells, stops: (5,3) (4,3) (3,3) (3,0)
-card 1 line 10 cells, stops: (3,9) (3,3) (3,0)
-card 2 line  6 cells, stops: (1,3) (2,3) (3,3) (3,0)
+card 0 line  6 cells, stops: (1,3) (2,3) (3,3) (3,0)
+card 1 line  6 cells, stops: (5,3) (4,3) (3,3) (3,0)
+card 2 line 10 cells, stops: (3,0) (3,3) (3,9)
 ```
 
-**Verdict.** Both the EA and best-of-6400 random win this level; the EA closes it 10 game-seconds faster. The ladder has 3 distinguishable steps, i.e. more search kept buying real score. Our hand-designed thesis is still ahead of the search by 4.9 — either the level's answer is hard to find, or the budget was too small. WARNING: seed_fragility +4.5 — the elite scores materially better on the seeds it was searched against, so treat its margin as optimistic. Coarse-step search is faithful overall (rho_spread 1.00) but the TOP 30 candidates re-rank freely at STEP 0.1 (rho 0.38) — they are a near-tie plateau, so which one is 'best' is arbitrary.
+**Verdict.** Both the EA and best-of-6400 random win this level; the EA closes it 32 game-seconds faster. The ladder has 3 distinguishable steps, i.e. more search kept buying real score. The optimizer matched the thesis (+0.0, within noise). seed_fragility +0.8: the elite transfers to unseen seeds.
 
 <details><summary>EA instrumentation (is the optimizer actually working?)</summary>
 
-- **96 generations** of mu=12+lambda=24 completed; 2285 children proposed; stopped because: budget.
+- **92 generations** of mu=12+lambda=24 completed; 2205 children proposed; stopped because: budget.
 - Seeded from 12 hand-built primitive genomes + 0 random genomes.
-- **38.7% of proposed genes failed to decode** (scored -INF, cost no budget); 37.3% were cache hits (already evaluated, also free).
+- **33.9% of proposed genes failed to decode** (scored -INF, cost no budget); 43.8% were cache hits (already evaluated, also free).
 - Uniform random needed 1737 proposals to fill its budget, 937 of which never produced a decodable route-set.
 
 Operator effect is measured against the PARENT's score; immigration has no parent, so its comparison columns are blank by construction, not because it is broken.
 
 | operator | children | comparable | changed the score | improved on parent | mean abs. delta |
 |---|---|---|---|---|---|
-| crossover | 629 | 450 | 62% | 4% | 219.82 |
-| immigrate | 118 | 0 | — | — | — |
-| mutate | 1538 | 832 | 88% | 7% | 528.03 |
+| crossover | 601 | 461 | 53% | 5% | 331.43 |
+| immigrate | 112 | 0 | — | — | — |
+| mutate | 1492 | 885 | 91% | 5% | 617.78 |
 
 Best-so-far and population diversity by generation (TRAIN seeds, search step) — `spread` is the mean pairwise Jaccard distance inside the population, so 0 means it has collapsed onto one plan:
 
 ```
 gen   runs   best      pop_best  pop_mean  distinct  spread
-1     216    45.81     45.81     10.52     12        0.529
-8     824    1245.75   1245.75   388.74    12        0.233
-16    1616   1251.50   1251.50   1248.44   12        0.055
-23    2112   1251.50   1251.50   1250.29   12        0.000
-30    2640   1251.50   1251.50   1250.98   12        0.000
-38    3240   1251.50   1251.50   1251.08   12        0.000
-45    3720   1251.50   1251.50   1251.08   12        0.000
-52    4080   1251.50   1251.50   1251.08   12        0.000
-59    4352   1251.50   1251.50   1251.08   12        0.000
-67    4704   1251.50   1251.50   1251.17   12        0.000
-74    5032   1253.50   1253.50   1253.15   12        0.000
-81    5520   1253.50   1253.50   1253.27   12        0.000
-89    6008   1253.50   1253.50   1253.33   12        0.000
-96    6400   1253.50   1253.50   1253.35   12        0.000
+1     216    55.77     55.77     15.30     12        0.548
+8     880    1246.50   1246.50   571.53    12        0.108
+15    1512   1259.75   1259.75   1253.44   12        0.064
+22    2120   1262.25   1262.25   1260.77   12        0.000
+29    2664   1262.25   1262.25   1261.79   12        0.014
+36    3288   1262.25   1262.25   1262.04   12        0.000
+43    3840   1262.25   1262.25   1262.21   12        0.000
+50    4288   1262.25   1262.25   1262.25   12        0.000
+57    4704   1262.25   1262.25   1262.25   12        0.000
+64    5000   1262.25   1262.25   1262.25   12        0.000
+71    5328   1262.25   1262.25   1262.25   12        0.000
+78    5592   1262.25   1262.25   1262.25   12        0.000
+85    5904   1269.25   1269.25   1263.40   12        0.209
+92    6400   1269.25   1269.25   1267.63   12        0.073
 ```
 
 </details>
@@ -249,137 +249,137 @@ gen   runs   best      pop_best  pop_mean  distinct  spread
 
 Thesis: *weave the lane: a loop only swings outside for the rooms it serves*
 
-8 rooms, 3 cards. Search cost: 13748 simulation runs in 611 s wall (random 6400 + greedy 292 + ea 6400, plus the test-seed re-scoring).
+8 rooms, 3 cards. Search cost: 13712 simulation runs in 1135 s wall (random 6400 + greedy 256 + ea 6400, plus the test-seed re-scoring).
 
 | strategy | score | wins | served | lost | avg wait | med. finish |
 |---|---|---|---|---|---|---|
-| thesis | 1275.90 **W** | 8/8 | 110.9 | 0.0 | 8.3 s | 143 s |
-| naive | 20.74 | 0/8 | 33.8 | 4.0 | 25.6 s | — |
-| random | 1270.00 **W** | 8/8 | 110.8 | 0.1 | 9.8 s | 149 s |
-| greedy | 83.80 | 3/8 | 96.9 | 3.4 | 19.4 s | — |
-| random@100 | 84.79 | 4/8 | 93.6 | 3.1 | 18.3 s | — |
-| **ea@100** | 27.77 | 0/8 | 40.5 | 4.0 | 23.8 s | — |
-| random@400 | 84.79 | 4/8 | 93.6 | 3.1 | 18.3 s | — |
-| **ea@400**  <- step | 68.76 | 0/8 | 80.1 | 4.0 | 22.3 s | — |
-| random@1600 | 1245.70 **W** | 5/8 | 104.9 | 1.6 | 16.8 s | 157 s |
-| **ea@1600**  <- step | 1269.00 **W** | 8/8 | 110.6 | 0.3 | 11.0 s | 149 s |
-| random@6400 | 1270.00 **W** | 8/8 | 110.8 | 0.1 | 9.8 s | 149 s |
-| **ea@6400**  <- step | 1273.70 **W** | 8/8 | 110.5 | 0.0 | 8.4 s | 145 s |
+| thesis | 1261.80 **W** | 6/8 | 108.9 | 1.3 | 15.1 s | 156 s |
+| naive | 41.78 | 0/8 | 59.6 | 4.0 | 22.8 s | — |
+| random | 1246.80 **W** | 5/8 | 107.5 | 2.3 | 19.5 s | 169 s |
+| greedy | 47.77 | 0/8 | 59.8 | 4.0 | 22.4 s | — |
+| random@100 | 32.77 | 0/8 | 49.1 | 4.0 | 21.1 s | — |
+| **ea@100** | 40.78 | 0/8 | 56.5 | 4.0 | 23.4 s | — |
+| random@400 | 39.79 | 0/8 | 56.1 | 4.0 | 22.6 s | — |
+| **ea@400**  <- step | 58.77 | 1/8 | 78.8 | 3.9 | 21.8 s | — |
+| random@1600 | 42.80 | 0/8 | 73.5 | 4.0 | 22.6 s | — |
+| **ea@1600**  <- step | 1263.30 **W** | 8/8 | 110.9 | 0.1 | 13.5 s | 157 s |
+| random@6400 | 1246.80 **W** | 5/8 | 107.5 | 2.3 | 19.5 s | 169 s |
+| **ea@6400**  <- step | 1266.40 **W** | 8/8 | 111.1 | 0.1 | 11.8 s | 153 s |
 
-Ladder (median test score vs budget): 100→27.8 (0/8 won)  400→68.8 (0/8 won)  1600→1269.0 (8/8 won)  6400→1273.7 (8/8 won)  →  **3 step(s)** above a noise band of 0.78.
+Ladder (median test score vs budget): 100→40.8 (0/8 won)  400→58.8 (1/8 won)  1600→1263.3 (8/8 won)  6400→1266.4 (8/8 won)  →  **3 step(s)** above a noise band of 0.32.
 
-Best route-set found (3 loops, 12 stops over 76 cells, 0 gate group(s) crossed) vs thesis (3 loops, 16 stops, 86 cells): Jaccard distance **0.39**.
+Best route-set found (3 loops, 15 stops over 76 cells, 0 gate group(s) crossed) vs thesis (3 loops, 16 stops, 86 cells): Jaccard distance **0.38**.
 
 ```
-card 0 LOOP 24 cells, stops: (7,2) (7,5) (0,5) (0,2)
-card 1 LOOP 24 cells, stops: (2,0) (5,0) (5,7) (2,7)
-card 2 LOOP 28 cells, stops: (2,0) (7,5) (5,7) (0,2)
+card 0 LOOP 28 cells, stops: (2,0) (5,0) (7,2) (7,5) (5,7) (2,7) (0,5)
+card 1 LOOP 24 cells, stops: (0,2) (0,5) (7,5) (7,2)
+card 2 LOOP 24 cells, stops: (5,7) (5,0) (2,0) (2,7)
 ```
 
-**Verdict.** Both the EA and best-of-6400 random win this level; the EA closes it 4 game-seconds faster. The ladder has 3 distinguishable steps, i.e. more search kept buying real score. Our hand-designed thesis is still ahead of the search by 2.2 — either the level's answer is hard to find, or the budget was too small. seed_fragility -0.8: the elite transfers to unseen seeds. Coarse-step search is faithful overall (rho_spread 1.00) but the TOP 30 candidates re-rank freely at STEP 0.1 (rho 0.20) — they are a near-tie plateau, so which one is 'best' is arbitrary.
+**Verdict.** Both the EA and best-of-6400 random win this level; the EA closes it 20 game-seconds faster. The ladder has 3 distinguishable steps, i.e. more search kept buying real score. The optimizer beat our thesis by +4.6 but with much the same shape (Jaccard 0.38) — it found our idea and tuned it. seed_fragility +2.0: the elite transfers to unseen seeds.
 
 <details><summary>EA instrumentation (is the optimizer actually working?)</summary>
 
-- **68 generations** of mu=12+lambda=24 completed; 1631 children proposed; stopped because: budget.
+- **63 generations** of mu=12+lambda=24 completed; 1504 children proposed; stopped because: budget.
 - Seeded from 12 hand-built primitive genomes + 0 random genomes.
-- **33.2% of proposed genes failed to decode** (scored -INF, cost no budget); 20.2% were cache hits (already evaluated, also free).
+- **19.9% of proposed genes failed to decode** (scored -INF, cost no budget); 28.7% were cache hits (already evaluated, also free).
 - Uniform random needed 845 proposals to fill its budget, 45 of which never produced a decodable route-set.
 
 Operator effect is measured against the PARENT's score; immigration has no parent, so its comparison columns are blank by construction, not because it is broken.
 
 | operator | children | comparable | changed the score | improved on parent | mean abs. delta |
 |---|---|---|---|---|---|
-| crossover | 446 | 344 | 68% | 5% | 135.50 |
-| immigrate | 168 | 0 | — | — | — |
-| mutate | 1017 | 577 | 88% | 9% | 241.00 |
+| crossover | 446 | 400 | 70% | 3% | 219.59 |
+| immigrate | 131 | 0 | — | — | — |
+| mutate | 927 | 674 | 94% | 7% | 447.42 |
 
 Best-so-far and population diversity by generation (TRAIN seeds, search step) — `spread` is the mean pairwise Jaccard distance inside the population, so 0 means it has collapsed onto one plan:
 
 ```
 gen   runs   best      pop_best  pop_mean  distinct  spread
-1     248    61.77     61.77     27.45     12        0.583
-6     856    1264.75   1264.75   463.42    12        0.245
-11    1376   1266.25   1266.25   1264.46   12        0.225
-16    1904   1272.75   1272.75   1268.29   12        0.258
-22    2504   1273.00   1273.00   1271.54   12        0.201
-27    2992   1276.25   1276.25   1273.83   12        0.219
-32    3408   1276.25   1276.25   1274.88   12        0.076
-37    3848   1276.25   1276.25   1275.46   12        0.102
-42    4272   1276.25   1276.25   1275.98   12        0.078
-47    4648   1276.25   1276.25   1276.08   12        0.059
-53    5112   1276.25   1276.25   1276.13   12        0.041
-58    5440   1276.25   1276.25   1276.23   12        0.032
-63    5896   1277.25   1277.25   1276.33   12        0.085
-68    6400   1277.25   1277.25   1276.33   12        0.065
+1     248    43.76     43.76     25.19     12        0.575
+6     912    1252.75   1252.75   365.64    12        0.243
+11    1552   1264.50   1264.50   1258.25   12        0.194
+15    2008   1267.75   1267.75   1264.10   12        0.035
+20    2592   1267.75   1267.75   1266.63   12        0.044
+25    3128   1267.75   1267.75   1267.21   12        0.027
+30    3568   1267.75   1267.75   1267.31   12        0.029
+34    3888   1267.75   1267.75   1267.38   12        0.030
+39    4400   1267.75   1267.75   1267.46   12        0.027
+44    4840   1267.75   1267.75   1267.52   12        0.014
+49    5248   1269.00   1269.00   1267.90   12        0.017
+53    5568   1269.00   1269.00   1267.94   12        0.013
+58    6032   1269.00   1269.00   1268.04   12        0.017
+63    6400   1269.00   1269.00   1268.31   12        0.022
 ```
 
 </details>
 
 ## X-1 — Sandbox
 
-Thesis: *the original maze - no thesis, just the toys*
+Thesis: *the original maze - no thesis, just the toys, at a pace that bites*
 
-13 rooms, 3 cards. Search cost: 14096 simulation runs in 588 s wall (random 6400 + greedy 648 + ea 6400, plus the test-seed re-scoring).
+13 rooms, 3 cards. Search cost: 14284 simulation runs in 1745 s wall (random 6400 + greedy 836 + ea 6400, plus the test-seed re-scoring).
 
 | strategy | score | wins | served | lost | avg wait | med. finish |
 |---|---|---|---|---|---|---|
-| thesis | 1207.40 **W** | 7/8 | 89.8 | 0.9 | 19.0 s | 208 s |
-| random | 1217.50 **W** | 8/8 | 90.5 | 0.1 | 16.8 s | 200 s |
-| greedy | 39.72 | 0/8 | 61.4 | 6.0 | 27.7 s | — |
-| random@100 | 40.73 | 0/8 | 58.6 | 6.0 | 31.9 s | — |
-| **ea@100** | 10.65 | 0/8 | 29.1 | 6.0 | 34.4 s | — |
-| random@400 | 69.75 | 3/8 | 79.8 | 4.8 | 23.3 s | — |
-| **ea@400**  <- step | 44.73 | 0/8 | 59.5 | 6.0 | 29.1 s | — |
-| random@1600 | 1213.90 **W** | 8/8 | 90.3 | 0.4 | 17.9 s | 203 s |
-| **ea@1600**  <- step | 1220.60 **W** | 8/8 | 90.5 | 0.3 | 17.0 s | 199 s |
-| random@6400 | 1217.50 **W** | 8/8 | 90.5 | 0.1 | 16.8 s | 200 s |
-| **ea@6400**  <- step | 1223.00 **W** | 8/8 | 90.4 | 0.3 | 17.6 s | 197 s |
+| thesis | 1187.10 **W** | 7/8 | 73.4 | 1.0 | 29.6 s | 228 s |
+| random | 1199.50 **W** | 6/8 | 74.5 | 2.0 | 30.4 s | 219 s |
+| greedy | 1198.10 **W** | 8/8 | 75.3 | 1.3 | 30.0 s | 219 s |
+| random@100 | 42.48 | 1/8 | 62.8 | 5.6 | 47.3 s | — |
+| **ea@100** | 1166.40 **W** | 5/8 | 73.3 | 4.9 | 39.4 s | 241 s |
+| random@400 | 54.60 | 4/8 | 71.6 | 3.8 | 36.9 s | — |
+| **ea@400** | 1161.70 **W** | 5/8 | 73.0 | 4.6 | 40.1 s | 247 s |
+| random@1600 | 1204.80 **W** | 8/8 | 75.4 | 0.3 | 26.1 s | 214 s |
+| **ea@1600**  <- step | 1184.40 **W** | 8/8 | 75.3 | 1.5 | 32.5 s | 234 s |
+| random@6400 | 1199.50 **W** | 6/8 | 74.5 | 2.0 | 30.4 s | 219 s |
+| **ea@6400**  <- step | 1220.60 **W** | 8/8 | 75.3 | 0.1 | 21.2 s | 196 s |
 
-Ladder (median test score vs budget): 100→10.6 (0/8 won)  400→44.7 (0/8 won)  1600→1220.6 (8/8 won)  6400→1223.0 (8/8 won)  →  **3 step(s)** above a noise band of 0.70.
+Ladder (median test score vs budget): 100→1166.4 (5/8 won)  400→1161.7 (5/8 won)  1600→1184.4 (8/8 won)  6400→1220.6 (8/8 won)  →  **2 step(s)** above a noise band of 1.45.
 
-Best route-set found (3 loops, 35 stops over 118 cells, 1 gate group(s) crossed) vs thesis (0 loops, 15 stops, 43 cells): Jaccard distance **0.55**.
+Best route-set found (2 loops, 28 stops over 94 cells, 3 gate group(s) crossed) vs thesis (0 loops, 15 stops, 43 cells): Jaccard distance **0.70**.
 
 ```
-card 0 LOOP 42 cells, stops: (0,3) (0,0) (2,0) (4,0) (6,0) (6,3) (4,5) (6,7) (6,9) (4,9) (0,9) (0,7) (2,5)
-card 1 LOOP 42 cells, stops: (0,3) (0,0) (2,0) (4,0) (6,0) (6,3) (4,5) (6,7) (6,9) (4,9) (0,9) (0,7) (2,5)
-card 2 LOOP 34 cells, stops: (4,9) (6,9) (6,7) (4,5) (4,0) (2,0) (2,5) (0,7) (0,9)
+card 0 line 18 cells, stops: (2,0) (0,0) (0,3) (4,5) (4,9) (6,9)
+card 1 LOOP 38 cells, stops: (6,7) (4,5) (6,3) (6,0) (4,0) (2,0) (2,5) (0,7) (0,9) (4,9) (6,9)
+card 2 LOOP 38 cells, stops: (6,0) (6,3) (4,5) (6,7) (6,9) (4,9) (0,9) (0,7) (2,5) (2,0) (4,0)
 ```
 
-**Verdict.** Both the EA and best-of-6400 random win this level; the EA closes it 6 game-seconds faster. The ladder has 3 distinguishable steps, i.e. more search kept buying real score. The optimizer BEAT our thesis by +15.6 with a structurally DIFFERENT plan (Jaccard 0.55) — this level has an answer we did not design. WARNING: seed_fragility +2.1 — the elite scores materially better on the seeds it was searched against, so treat its margin as optimistic. Coarse-step search is faithful overall (rho_spread 1.00) but the TOP 30 candidates re-rank freely at STEP 0.1 (rho 0.00) — they are a near-tie plateau, so which one is 'best' is arbitrary.
+**Verdict.** Both the EA and best-of-6400 random win this level; the EA closes it 21 game-seconds faster. The ladder has 2 distinguishable steps, i.e. more search kept buying real score. The optimizer BEAT our thesis by +33.5 with a structurally DIFFERENT plan (Jaccard 0.70) — this level has an answer we did not design. seed_fragility +2.2: the elite transfers to unseen seeds. Coarse-step search is faithful overall (rho_spread 1.00) but the TOP 30 candidates re-rank freely at STEP 0.1 (rho 0.42) — they are a near-tie plateau, so which one is 'best' is arbitrary.
 
 <details><summary>EA instrumentation (is the optimizer actually working?)</summary>
 
-- **83 generations** of mu=12+lambda=24 completed; 1981 children proposed; stopped because: budget.
+- **86 generations** of mu=12+lambda=24 completed; 2055 children proposed; stopped because: budget.
 - Seeded from 12 hand-built primitive genomes + 0 random genomes.
-- **47.2% of proposed genes failed to decode** (scored -INF, cost no budget); 14.7% were cache hits (already evaluated, also free).
+- **51.7% of proposed genes failed to decode** (scored -INF, cost no budget); 11.0% were cache hits (already evaluated, also free).
 - Uniform random needed 2145 proposals to fill its budget, 1345 of which never produced a decodable route-set.
 
 Operator effect is measured against the PARENT's score; immigration has no parent, so its comparison columns are blank by construction, not because it is broken.
 
 | operator | children | comparable | changed the score | improved on parent | mean abs. delta |
 |---|---|---|---|---|---|
-| crossover | 553 | 391 | 34% | 4% | 142.33 |
-| immigrate | 73 | 0 | — | — | — |
-| mutate | 1355 | 581 | 70% | 6% | 381.50 |
+| crossover | 537 | 367 | 57% | 7% | 130.90 |
+| immigrate | 76 | 0 | — | — | — |
+| mutate | 1442 | 550 | 68% | 11% | 250.38 |
 
 Best-so-far and population diversity by generation (TRAIN seeds, search step) — `spread` is the mean pairwise Jaccard distance inside the population, so 0 means it has collapsed onto one plan:
 
 ```
 gen   runs   best      pop_best  pop_mean  distinct  spread
-1     240    8.70      8.70      0.34      12        0.606
-7     912    1197.25   1197.25   524.74    12        0.204
-14    1488   1220.25   1220.25   1215.54   12        0.138
-20    1952   1221.50   1221.50   1220.67   12        0.000
-26    2384   1221.50   1221.50   1221.50   12        0.000
-33    2928   1221.50   1221.50   1221.50   12        0.000
-39    3440   1221.50   1221.50   1221.50   12        0.000
-45    3824   1221.50   1221.50   1221.50   12        0.000
-51    4240   1221.50   1221.50   1221.50   12        0.000
-58    4872   1221.50   1221.50   1221.50   12        0.000
-64    5272   1221.50   1221.50   1221.50   12        0.000
-70    5672   1221.50   1221.50   1221.50   12        0.000
-77    6000   1221.50   1221.50   1221.50   12        0.000
-83    6400   1221.50   1221.50   1221.50   12        0.000
+1     240    39.61     39.61     11.63     12        0.589
+8     832    1172.75   1172.75   889.13    12        0.047
+14    1344   1178.75   1178.75   1174.79   12        0.070
+21    1864   1187.00   1187.00   1182.27   12        0.057
+27    2288   1190.25   1190.25   1187.98   12        0.035
+34    2760   1191.50   1191.50   1191.29   12        0.028
+40    3160   1192.50   1192.50   1192.02   12        0.039
+47    3592   1196.00   1196.00   1194.60   12        0.027
+53    3944   1197.00   1197.00   1195.96   12        0.058
+60    4432   1205.00   1205.00   1200.96   12        0.126
+66    4920   1215.50   1215.50   1207.54   12        0.139
+73    5504   1219.25   1219.25   1217.94   12        0.100
+79    5992   1221.75   1221.75   1221.00   12        0.023
+86    6400   1222.75   1222.75   1221.50   12        0.027
 ```
 
 </details>

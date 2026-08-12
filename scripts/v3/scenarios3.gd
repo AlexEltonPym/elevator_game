@@ -20,7 +20,14 @@ extends RefCounted
 ## walked one cell at a time (validated again by the harness against the
 ## level's maze).
 
-const SEEDS := {"L1": 101, "L2": 202, "L3": 303, "L4": 505, "X-1": 404}
+## The canonical WATCH / --quick seed per level. It is a DEMONSTRATION seed,
+## not an assertion: watch mode exists so a player can see naive fail and the
+## thesis work on the identical arrival sequence, so it must be a seed where
+## both of those actually happen. (L4's 505 became one of the ~1-in-16 seeds
+## the thesis loses once v4 acceleration slowed every car; 511 shows the
+## comparison the level is about. The claim "the thesis wins" is made by
+## tests/balance.gd over the 16 held-out SEEDS_ASSERT, never by this number.)
+const SEEDS := {"L1": 101, "L2": 202, "L3": 303, "L4": 511, "X-1": 404}
 
 ## THE SEED SETS (v3.5 level-design pass). A level axiom asserted on ONE seed
 ## measures seed luck, not the level: the 2026-08-12 depth run held L3's
@@ -83,6 +90,13 @@ static func cells_of(entry) -> Array:
 
 static func closed_of(entry) -> bool:
 	return bool(entry.get("closed", false)) if entry is Dictionary else false
+
+
+## The route's HOME cell (v4 phase 2) or null. Part of the route-set data, so
+## a scenario, a watch run and a depth-tool candidate can all express "and
+## this car waits HERE when it has nothing to do".
+static func home_of(entry):
+	return entry.get("home", null) if entry is Dictionary else null
 
 
 ## {"naive": {"desc": String, "routes": Array}, "thesis": {...}} for a level.

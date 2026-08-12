@@ -74,6 +74,8 @@ var loop_done := false
 var loop_checks: Array = [] # filled by the v3.4 loop-mechanics run
 var unit_done := false
 var unit_checks: Array = [] # Route3.validate / gene decode / injected level
+var v4_done := false
+var v4_checks: Array = [] # width / acceleration / home floor (v4 phase 2)
 
 
 func _init() -> void:
@@ -115,6 +117,10 @@ func step(tree: SceneTree) -> bool:
 		unit_done = true
 		unit_checks = _unit_smoke(tree)
 		return false
+	if not v4_done:
+		v4_done = true
+		v4_checks = _v4_mechanics(tree)
+		return false
 	var ok := _report()
 	tree.quit(0 if ok else 1)
 	return true
@@ -150,7 +156,8 @@ func _run_scenario(tree: SceneTree, sc: Dictionary, seed_v: int) -> Dictionary:
 	# change the network after start_run() — see main3.commit_route.
 	for i in sc.routes.size():
 		game.commit_route(i, ScenData.Scen.cells_of(sc.routes[i]),
-				ScenData.Scen.closed_of(sc.routes[i]))
+				ScenData.Scen.closed_of(sc.routes[i]),
+				ScenData.Scen.home_of(sc.routes[i]))
 	game.start_run()
 	var t := 0.0
 	while game.state == game.State.PLAYING and t < TIMEOUT:
@@ -348,6 +355,7 @@ func _checks() -> Array:
 	out.append_array(redeploy_checks)
 	out.append_array(loop_checks)
 	out.append_array(unit_checks)
+	out.append_array(v4_checks)
 	return out
 
 
@@ -1022,6 +1030,301 @@ func _unit_smoke(tree: SceneTree) -> Array:
 	tree.root.remove_child(gi)
 	gi.free()
 	Levels3.injected = null
+	return out
+
+
+# ------------------------------------------------- v4 phase 2 mechanics
+#
+# WIDTH, ACCELERATION and the HOME FLOOR, each checked on a purpose-built
+# injected fixture rather than on a shipped level - these are rules of the
+# simulation, and they must keep holding while levels are redesigned around
+# them. Everything here is deterministic: fixed seeds, no auto-spawn, hand
+# placed parties.
+
+## The width fixture: a 7x3 hall with rooms at both ends and a WIDTH-2
+## corridor ("22") in the middle, carrying one pod, one standard and one cargo
+## car. Wide enough to express every width rule in one level.
+func _width_level() -> Dictionary:
+	var lv := _injected_level()
+	lv.id = "WID"
+	lv.rows = ["R.....R", "..22...", "R.....R"]
+	lv.cards = [
+		{"name": "POD", "type": "pod", "color": Color(0.45, 0.68, 0.95)},
+		{"name": "STANDARD", "type": "standard", "color": Color(0.5, 0.88, 0.55)},
+		{"name": "CARGO", "type": "cargo", "color": Color(0.98, 0.68, 0.2)},
+	]
+	lv.groups = {"low": [Vector2i(0, 0), Vector2i(6, 0)],
+			"high": [Vector2i(0, 2), Vector2i(6, 2)]}
+	return lv
+
+
+## Width: the boarding rule, the capacity accounting and the corridor algebra.
+func _width_checks(tree: SceneTree) -> Array:
+	var out: Array = []
+	Levels3.injected = _width_level()
+	Levels3.current = 0
+	Levels3.watch_strategy = ""
+	var g = load("res://scenes/v3_main.tscn").instantiate()
+	tree.root.add_child(g)
+	g.rng.seed = 8080
+	g.auto_spawn = false
+	g.to_plan()
+	var pod = g.cars[0]
+	var std = g.cars[1]
+	var cargo = g.cars[2]
+	out.append(_c("width: the card table builds pod 1/2, standard 2/4, cargo 3/6",
+			pod.width == 1 and pod.capacity == 2 and std.width == 2
+			and std.capacity == 4 and cargo.width == 3 and cargo.capacity == 6,
+			"%d/%d %d/%d %d/%d" % [pod.width, pod.capacity, std.width,
+					std.capacity, cargo.width, cargo.capacity]))
+	out.append(_c("width: a width-3 party fits only the cargo car",
+			not pod.fits(3) and not std.fits(3) and cargo.fits(3)
+			and std.fits(2) and not pod.fits(2) and pod.fits(1),
+			"pod %s std %s cargo %s" % [str(pod.fits(3)), str(std.fits(3)),
+					str(cargo.fits(3))]))
+	# --- The corridor: two pods share a width-2 tunnel; a standard then does
+	# not fit beside them; a cargo can never be in it at all.
+	var gi := Grid3.gate_group_of(Vector2i(2, 1))
+	out.append(_c("width: the '22' corridor is one group of width 2",
+			gi == 0 and Grid3.gate_group_width(gi) == 2
+			and Grid3.gate_groups()[gi].size() == 2,
+			"group %d width %d" % [gi, Grid3.gate_group_width(gi)]))
+	var pod_b = Car3.new()
+	pod_b.setup(g, 0, Levels3.injected.cards[0])
+	out.append(_c("corridor: two pods share a width-2 corridor",
+			g.gate_request(pod, gi) and g.gate_request(pod_b, gi)
+			and g.gates[gi].used == 2 and g.gates[gi].holders.size() == 2,
+			"used %d" % g.gates[gi].used))
+	out.append(_c("corridor: a standard cannot squeeze in beside them",
+			not g.gate_request(std, gi), "admitted"))
+	g.gate_cancel(pod)
+	g.gate_cancel(pod_b)
+	g.gate_cancel(std)
+	out.append(_c("corridor: releasing both pods frees the whole width",
+			g.gates[gi].used == 0 and g.gates[gi].holders.is_empty(),
+			"used %d" % g.gates[gi].used))
+	out.append(_c("corridor: a cargo car never fits a width-2 corridor",
+			not g.gate_request(cargo, gi) and not g.gate_free_for(cargo, gi)
+			and g.gates[gi].queue.is_empty(), # and does not even queue for it
+			"admitted or queued"))
+	pod_b.free()
+	# ...and a route that would send it there is refused outright, with the
+	# geometry-only validator still accepting the same cells.
+	var through: Array = ScenData.Scen.path([Vector2i(2, 0), Vector2i(2, 2)])
+	out.append(_c("corridor: geometry-only validation ignores width",
+			Route3.validate(through, false) == "", Route3.validate(through, false)))
+	out.append(_c("corridor: committing the cargo car through it is refused",
+			not g.commit_route(2, through) and g.routes[2] == null,
+			"accepted"))
+	out.append(_c("corridor: the pod may take the same line",
+			g.commit_route(0, through) and g.routes[0] != null, "refused"))
+	# --- Boarding + capacity, in width-units, through the real planner.
+	g.commit_route(0, ScenData.Scen.path([Vector2i(0, 0), Vector2i(0, 2)]))
+	g.commit_route(1, ScenData.Scen.path([Vector2i(0, 0), Vector2i(0, 2)]))
+	g.start_run()
+	var big = g.spawn_passenger("big delivery", Vector2i(0, 0), Vector2i(0, 2))
+	out.append(_c("width: a width-3 party will not plan onto width-1/2 cars",
+			big.legs.is_empty() and big.no_path, "legs %d" % big.legs.size()))
+	var pair = g.spawn_passenger("couple", Vector2i(0, 0), Vector2i(0, 2))
+	var pair_car = null if pair.legs.is_empty() else pair.legs[0].car
+	out.append(_c("width: a width-2 couple plans onto the standard, not the pod",
+			pair_car == std, "car %s" % ("none" if pair_car == null else pair_car.card_type)))
+	g.abort_run()
+	g.commit_route(2, ScenData.Scen.path([Vector2i(0, 0), Vector2i(0, 2)]))
+	g.start_run()
+	var b2 = g.spawn_passenger("big delivery", Vector2i(0, 0), Vector2i(0, 2))
+	var t := 0.0
+	while b2.riding == null and t < 60.0:
+		g.advance(STEP)
+		t += STEP
+	out.append(_c("width: the cargo car carries the width-3 party",
+			b2.riding == cargo, "riding %s after %.1fs" % [str(b2.riding), t]))
+	out.append(_c("capacity: a width-3 rider costs 3 of the cargo's 6 units",
+			cargo.used_slots() == 3 and cargo.free_slots() == 3,
+			"used %d free %d" % [cargo.used_slots(), cargo.free_slots()]))
+	# Fill the rest with a second big delivery, then prove a third cannot fit.
+	var b3 = g.spawn_passenger("big delivery", cargo.current_cell(), Vector2i(0, 2))
+	t = 0.0
+	while b3.riding == null and t < 60.0:
+		g.advance(STEP)
+		t += STEP
+	var full: bool = cargo.used_slots() == 6 and cargo.free_slots() == 0
+	out.append(_c("capacity: two width-3 riders fill a cargo car exactly", full,
+			"used %d" % cargo.used_slots()))
+	tree.root.remove_child(g)
+	g.free()
+	Levels3.injected = null
+	return out
+
+
+## Acceleration: cars really do ramp and brake, they arrive at their stops AT
+## REST, a repeated run is bit-identical, and a coarse `advance(dt)` neither
+## overshoots a stop nor changes the answer.
+func _accel_checks(tree: SceneTree) -> Array:
+	var out: Array = []
+	var lv := _injected_level()
+	lv.id = "ACC"
+	lv.rows = ["...........", "R.........R"] # a long straight: room, ten cells, room
+	lv.groups = {"low": [Vector2i(0, 0)], "high": [Vector2i(10, 0)]}
+	# The trace: (served, lost, every car's idx/seg_t/vel) at every step.
+	var trace := func(step: float, ticks: int) -> String:
+		Levels3.injected = lv
+		Levels3.current = 0
+		Levels3.watch_strategy = ""
+		var g = load("res://scenes/v3_main.tscn").instantiate()
+		tree.root.add_child(g)
+		g.rng.seed = 4711
+		g.to_plan()
+		g.commit_route(0, ScenData.Scen.path([Vector2i(0, 0), Vector2i(10, 0)]))
+		g.commit_route(1, ScenData.Scen.path([Vector2i(0, 0), Vector2i(10, 0)]))
+		g.commit_route(2, ScenData.Scen.path([Vector2i(0, 0), Vector2i(10, 0)]))
+		g.start_run()
+		var s := ""
+		for _k in ticks:
+			g.advance(step)
+			for c in g.cars:
+				s += "%d|%.6f|%.6f;" % [c.idx, c.seg_t, c.vel]
+		s += "S%d L%d" % [g.served, g.lost]
+		tree.root.remove_child(g)
+		g.free()
+		Levels3.injected = null
+		return s
+	var a: String = trace.call(0.1, 600)
+	var b: String = trace.call(0.1, 600)
+	out.append(_c("accel: a repeated run is bit-identical", a == b,
+			"traces differ (%d vs %d chars)" % [a.length(), b.length()]))
+	# Engine frame boundaries must not change the answer: the same 60 s of game
+	# time, chopped up four different ways, has to serve the same people.
+	var served_of := func(s: String) -> String:
+		return s.substr(s.find("S"))
+	var fine: String = served_of.call(trace.call(0.05, 1200))
+	var coarse: String = served_of.call(trace.call(0.25, 240))
+	var chunky: String = served_of.call(trace.call(1.0, 60))
+	out.append(_c("accel: the outcome does not depend on the step size",
+			served_of.call(a) == fine and fine == coarse and coarse == chunky,
+			"0.1 %s / 0.05 %s / 0.25 %s / 1.0 %s" % [
+					served_of.call(a), fine, coarse, chunky]))
+	# A single car on a two-stop line, watched closely.
+	Levels3.injected = lv
+	Levels3.current = 0
+	Levels3.watch_strategy = ""
+	var g2 = load("res://scenes/v3_main.tscn").instantiate()
+	tree.root.add_child(g2)
+	g2.rng.seed = 99
+	g2.auto_spawn = false
+	g2.to_plan()
+	g2.commit_route(0, ScenData.Scen.path([Vector2i(0, 0), Vector2i(10, 0)]))
+	g2.start_run()
+	var car = g2.cars[0]
+	g2.spawn_passenger("visitor", Vector2i(0, 0), Vector2i(10, 0))
+	var top := 0.0
+	var ramped := false
+	var stopped_at_end := true
+	var t := 0.0
+	while t < 40.0:
+		g2.advance(0.05)
+		t += 0.05
+		top = maxf(top, car.vel)
+		if car.vel > 1.0 and car.vel < car.speed - 1.0:
+			ramped = true # caught mid-ramp: it is not a step function
+		if car.door_state != Car3.DoorState.CLOSED and car.vel > 0.001:
+			stopped_at_end = false # doors open while still rolling
+		if car.seg_t < 0.0 or car.seg_t >= Grid3.CELL:
+			stopped_at_end = false # overshot a cell boundary
+	out.append(_c("accel: the car ramps rather than jumping to top speed",
+			ramped and top > 0.0 and top <= car.speed + 0.001,
+			"top %.1f of %.1f" % [top, car.speed]))
+	out.append(_c("accel: doors only open once the car is at rest",
+			stopped_at_end, "doors opened while moving, or a cell was overshot"))
+	# The planner has to KNOW about the momentum it now loses: a stop-heavy leg
+	# must be priced above bare distance/speed, and a heavier car must pay more
+	# per stop than a light one.
+	var pen_std: float = g2.cars[0].stop_penalty()
+	var pen_fast: float = g2.cars[2].stop_penalty()
+	tree.root.remove_child(g2)
+	g2.free()
+	Levels3.injected = null
+	out.append(_c("accel: Pathfind3 prices a stop it has to brake for",
+			pen_std > 0.3 and pen_fast > pen_std,
+			"standard %.2f s, express %.2f s" % [pen_std, pen_fast]))
+	return out
+
+
+## HOME FLOOR: an idle EMPTY car with a home deadheads to it and waits there;
+## without one it parks where it stands. Set and cleared by tapping in PLAN,
+## and kept across a RETRY, because it is part of the plan.
+func _home_checks(tree: SceneTree) -> Array:
+	var out: Array = []
+	var lv := _injected_level()
+	lv.id = "HOME"
+	lv.rows = ["...........", "R.........R"] # a bare gantry over the line
+	lv.groups = {"low": [Vector2i(0, 0)], "high": [Vector2i(10, 0)]}
+	Levels3.injected = lv
+	Levels3.current = 0
+	Levels3.watch_strategy = ""
+	var g = load("res://scenes/v3_main.tscn").instantiate()
+	tree.root.add_child(g)
+	g.rng.seed = 606
+	g.auto_spawn = false
+	g.to_plan()
+	var line: Array = ScenData.Scen.path([Vector2i(0, 0), Vector2i(10, 0)])
+	g.commit_route(0, line)
+	g.select_card(0)
+	var car = g.cars[0]
+	out.append(_c("home: a tap off the route sets nothing",
+			not g.toggle_home(0, Vector2i(5, 1)) and car.home_cell == null,
+			"home %s" % str(car.home_cell)))
+	out.append(_c("home: a tap on a route cell sets the home",
+			g.toggle_home(0, Vector2i(10, 0)) and car.home_cell == Vector2i(10, 0),
+			"home %s" % str(car.home_cell)))
+	out.append(_c("home: tapping it again clears it",
+			g.toggle_home(0, Vector2i(10, 0)) and car.home_cell == null,
+			"home %s" % str(car.home_cell)))
+	g.toggle_home(0, Vector2i(10, 0))
+	# An idle EMPTY car deadheads home and stays there.
+	g.start_run()
+	for _k in 600:
+		g.advance(0.1)
+	out.append(_c("home: an idle empty car deadheads to its home cell",
+			car.current_cell() == Vector2i(10, 0) and car.idle,
+			"at %s idle %s" % [str(car.current_cell()), str(car.idle)]))
+	# RETRY keeps it (it is part of the plan, like the polyline).
+	g.abort_run()
+	out.append(_c("home: RETRY keeps the home cell",
+			car.home_cell == Vector2i(10, 0), "home %s" % str(car.home_cell)))
+	# Redrawing somewhere that does not contain it drops it.
+	g.commit_route(0, ScenData.Scen.path([Vector2i(0, 0), Vector2i(4, 0)]))
+	out.append(_c("home: a redraw that strands the home cell clears it",
+			car.home_cell == null, "home %s" % str(car.home_cell)))
+	# Without a home the car parks wherever it happened to stop.
+	g.commit_route(0, line)
+	g.start_run()
+	for _k in 600:
+		g.advance(0.1)
+	out.append(_c("home: with no home set the car parks where it is",
+			car.current_cell() != Vector2i(10, 0) or car.home_cell == null,
+			"at %s" % str(car.current_cell())))
+	# Route-set data can carry it, which is how scenarios / watch mode / the
+	# depth tools express a home.
+	g.abort_run()
+	g.commit_route(0, line, false, Vector2i(10, 0))
+	out.append(_c("home: commit_route carries a home cell (scenario data)",
+			car.home_cell == Vector2i(10, 0), "home %s" % str(car.home_cell)))
+	out.append(_c("home: Scenarios3.home_of reads it out of a route entry",
+			ScenData.Scen.home_of({"cells": line, "home": Vector2i(3, 0)})
+					== Vector2i(3, 0)
+			and ScenData.Scen.home_of(line) == null, "home_of disagrees"))
+	tree.root.remove_child(g)
+	g.free()
+	Levels3.injected = null
+	return out
+
+
+func _v4_mechanics(tree: SceneTree) -> Array:
+	var out: Array = []
+	out.append_array(_width_checks(tree))
+	out.append_array(_accel_checks(tree))
+	out.append_array(_home_checks(tree))
 	return out
 
 

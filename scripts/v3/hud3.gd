@@ -232,8 +232,15 @@ func refresh_cards() -> void:
 				sub = "%d cells - %d stops" % [route.cells.size(), stops]
 			if stops < 2:
 				sub += "\nneeds 2 stops!"
-		var kind: String = "%s - %d slots" % [
-				"express" if card.type == "express" else "standard", int(card.cap)]
+		# The card's own line: what KIND of car it is and, since v4 phase 2, how
+		# WIDE - which decides both who can board it and where it can drive.
+		var kind: String = "%s - w%d, %d slots" % [str(card.type),
+				Levels3.card_width(card), Levels3.card_capacity(card)]
+		if car != null and car.home_cell != null:
+			if Grid3.is_room(car.home_cell):
+				sub += "\nhome: room %s" % Grid3.room_letter(car.home_cell)
+			else:
+				sub += "\nhome set"
 		btn.text = "%s\n%s\n%s" % [card.name, kind, sub]
 		var selected: bool = game.selected_card == i
 		var sb := StyleBoxFlat.new()
@@ -310,7 +317,7 @@ func _refresh_hint() -> void:
 	if game.drawing:
 		hint_label.text = "Drag through open cells - release to commit the route"
 	elif sel >= 0:
-		hint_label.text = "Drag to draw %s's route (redraw replaces; rooms become stops)" % game.CARDS[sel].name
+		hint_label.text = "Drag to redraw %s; TAP a cell of its route to set HOME" % game.CARDS[sel].name
 	else:
 		hint_label.text = "PLAN ready - tap a chip to redraw, or press RUN"
 

@@ -91,7 +91,9 @@ var _passengers_dirty := false
 
 var routes: Array = [null, null, null] # Route3 or null per card
 var cars: Array = [null, null, null] # Car3 per card (always exist, may be idle)
-var gates := {} # gate GROUP index -> {"holder": Car3 or null, "queue": Array[Car3]}
+## gate GROUP index -> {"width": int, "used": int, "holders": Array[Car3],
+## "queue": Array[Car3]} - see gate_request().
+var gates := {}
 var waiting := {} # room cell -> Array[Passenger3] in arrival order
 
 # Session log for stats/harness: one entry per finished passenger,
@@ -122,7 +124,8 @@ func _ready() -> void:
 	routes = []
 	cars = []
 	for gi in Grid3.gate_groups().size():
-		gates[gi] = {"holder": null, "queue": []}
+		gates[gi] = {"width": Grid3.gate_group_width(gi), "used": 0,
+				"holders": [], "queue": []}
 	for r in Grid3.rooms():
 		waiting[r] = []
 	grid.game = self
@@ -141,7 +144,8 @@ func _ready() -> void:
 		var rs: Array = Discovered3.route_set(level.id) if watch == "best" \
 				else Scenarios3.route_set(level.id, watch)
 		for i in mini(rs.size(), CARDS.size()):
-			commit_route(i, Scenarios3.cells_of(rs[i]), Scenarios3.closed_of(rs[i]))
+			commit_route(i, Scenarios3.cells_of(rs[i]), Scenarios3.closed_of(rs[i]),
+					Scenarios3.home_of(rs[i]))
 		start_run()
 	else:
 		rng.randomize() # normal play is unseeded; the harness overrides rng.seed
@@ -188,21 +192,38 @@ func current_interval() -> float:
 ## Pulse spawning: bursts of burst_min..burst_max passengers `gap` s apart,
 ## then quiet for burst_size * interval (average rate == interval, but with
 ## visible lulls where cars go idle and door timing reads).
+## The timers are consumed EXACTLY - a step is spent down to the instant each
+## one fires and the remainder carries on into the next spawn - so the arrival
+## sequence is the same whether the caller advances in 0.05 s or 1 s slices.
+## (Before v4 the leftover past zero was thrown away, which quietly made a
+## coarse search step spawn a slower crowd than the fine reporting step.)
 func _spawn_tick(dt: float) -> void:
 	var s: Dictionary = level.spawn
-	if burst_left > 0:
-		burst_timer -= dt
-		if burst_timer <= 0.0:
-			_spawn_random()
-			burst_left -= 1
-			burst_timer = s.gap
-	else:
-		pulse_timer -= dt
-		if pulse_timer <= 0.0:
-			var n: int = rng.randi_range(s.burst_min, s.burst_max)
-			burst_left = n
-			burst_timer = 0.0 # first of the burst spawns immediately
-			pulse_timer = n * current_interval()
+	var rem := dt
+	var guard := 0
+	while rem > 0.0 and guard < 256:
+		guard += 1
+		if burst_left > 0:
+			if burst_timer > rem:
+				burst_timer -= rem
+				rem = 0.0
+			else:
+				rem -= burst_timer
+				burst_timer = 0.0
+				_spawn_random()
+				burst_left -= 1
+				burst_timer = s.gap
+		else:
+			if pulse_timer > rem:
+				pulse_timer -= rem
+				rem = 0.0
+			else:
+				rem -= pulse_timer
+				pulse_timer = 0.0
+				var n: int = rng.randi_range(s.burst_min, s.burst_max)
+				burst_left = n
+				burst_timer = 0.0 # first of the burst spawns immediately
+				pulse_timer = n * current_interval()
 
 
 # ---------------------------------------------------------------- phase flow
@@ -452,11 +473,16 @@ func _md(a: Vector2i, b: Vector2i) -> int:
 	return absi(a.x - b.x) + absi(a.y - b.y)
 
 
+## Release. A drag of two or more cells commits a route; a TAP (the stroke
+## never left its first cell) sets or clears that card's HOME cell instead -
+## see toggle_home. Both are PLAN-phase actions and nothing else.
 func _end_stroke() -> void:
 	if not drawing:
 		return
 	drawing = false
-	if selected_card >= 0 and stroke.size() > 0:
+	if selected_card >= 0 and stroke.size() == 1:
+		toggle_home(selected_card, stroke[0])
+	elif selected_card >= 0 and stroke.size() > 0:
 		commit_route(selected_card, stroke, stroke_closed)
 	stroke = []
 	stroke_closed = false
@@ -481,11 +507,16 @@ func _end_stroke() -> void:
 ## harness, watch mode and the search tools). An illegal route is REJECTED —
 ## logged, the previous route kept, no crash. An EMPTY cell array clears the
 ## card, exactly as before. Returns true when the commit went through.
-func commit_route(i: int, cells: Array, closed := false) -> bool:
+## `home` (v4 phase 2, optional) is the car's HOME CELL, part of the plan just
+## like the polyline: pass a cell of `cells` and an idle empty car deadheads
+## there instead of parking wherever it happens to be. Scenario data, the
+## harness, watch mode and the depth tools all express it through this one
+## argument, so a route-set is always "where it goes" plus "where it waits".
+func commit_route(i: int, cells: Array, closed := false, home = null) -> bool:
 	if state != State.PLAN and state != State.BRIEFING:
 		push_error("commit_route(%d) refused: routes are locked outside PLAN" % i)
 		return false
-	return _commit(i, cells, closed, false)
+	return _commit(i, cells, closed, false, home)
 
 
 ## MID-RUN commit — the v3.3 recall -> ghost countdown -> redeploy path
@@ -499,10 +530,11 @@ func commit_route_mid_run(i: int, cells: Array, closed := false) -> bool:
 	return _commit(i, cells, closed, true)
 
 
-func _commit(i: int, cells: Array, closed: bool, mid_run: bool) -> bool:
+func _commit(i: int, cells: Array, closed: bool, mid_run: bool, home = null) -> bool:
 	var r: Route3 = null
 	if cells.size() > 0:
-		var err := Route3.validate(cells, closed and cells.size() >= 4)
+		var err := Route3.validate(cells, closed and cells.size() >= 4,
+				cars[i].width)
 		if err != "":
 			push_error("commit_route(%d) rejected: %s" % [i, err])
 			return false
@@ -514,7 +546,28 @@ func _commit(i: int, cells: Array, closed: bool, mid_run: bool) -> bool:
 		cars[i].apply_route(r) # recall riders, then redeploy after a countdown
 	else:
 		cars[i].set_route(r) # PLAN: nothing is running, so the car just appears
+	# The home cell belongs to the ROUTE: an explicit one is taken if it is on
+	# the new polyline, and any older one that the redraw stranded is dropped.
+	if home != null:
+		cars[i].set_home_cell(home if r != null and r.index_of(home) != -1 else null)
+	elif cars[i].home_cell != null \
+			and (r == null or r.index_of(cars[i].home_cell) == -1):
+		cars[i].set_home_cell(null)
 	replan_all()
+	hud.refresh_cards()
+	return true
+
+
+## PLAN-phase tap on a cell of card i's route: make it the car's HOME (idle
+## empty cars deadhead there and wait) or, if it already is, clear it. Returns
+## true when something changed. Taps anywhere else are ignored.
+func toggle_home(i: int, cell: Vector2i) -> bool:
+	if not can_edit() or i < 0 or i >= cars.size():
+		return false
+	var r = routes[i]
+	if r == null or r.index_of(cell) == -1:
+		return false
+	cars[i].set_home_cell(null if cars[i].home_cell == cell else cell)
 	hud.refresh_cards()
 	return true
 
@@ -547,33 +600,57 @@ func route_warning(i: int) -> bool:
 
 # ---------------------------------------------------------------- gates
 
-## FIFO mutex per gate GROUP (a whole corridor of contiguous G cells).
-## Grants the lock iff the group is free and `car` is at the front of the
-## queue; otherwise the car stays queued and must retry.
+## FIFO WIDTH-SHARED corridor per gate GROUP (a whole run of contiguous gate
+## cells). The corridor has a width; a car may be inside only if
+##   car.width <= corridor.width  AND  sum of widths inside <= corridor.width,
+## and only the FRONT of the queue is ever admitted (strict FIFO, so a stream
+## of pods can never starve a standard waiting behind them).
+##
+## With the default corridor width of 2 and every pre-v4 car at width 2 this
+## is EXACTLY the old one-car mutex: the first car takes all the width there
+## is, and the next request cannot fit until it leaves.
 func gate_request(car, group: int) -> bool:
 	var g: Dictionary = gates[group]
-	if g.holder == car:
+	if g.holders.has(car):
 		return true
+	if car.width > g.width:
+		return false # too wide for this corridor, ever: never queue for it
 	if not g.queue.has(car):
 		g.queue.append(car)
-	if g.holder == null and g.queue[0] == car:
+	if g.queue[0] == car and g.used + car.width <= g.width:
 		g.queue.pop_front()
-		g.holder = car
+		g.holders.append(car)
+		g.used += car.width
 		return true
 	return false
 
 
+## Would gate_request() succeed right now? A PURE PREDICATE - it never queues
+## the car. Car3's braking lookahead asks it, because a car that cannot get
+## into the corridor ahead has to arrive at its mouth already stopped.
+func gate_free_for(car, group: int) -> bool:
+	var g: Dictionary = gates[group]
+	if g.holders.has(car):
+		return true
+	if car.width > g.width:
+		return false
+	if not g.queue.is_empty() and g.queue[0] != car:
+		return false
+	return g.used + car.width <= g.width
+
+
 func gate_release(car, group: int) -> void:
-	if gates[group].holder == car:
-		gates[group].holder = null
+	var g: Dictionary = gates[group]
+	if g.holders.has(car):
+		g.holders.erase(car)
+		g.used -= car.width
 
 
 ## Remove a car from every gate queue/lock (route replaced or cleared).
 func gate_cancel(car) -> void:
 	for gi in gates:
 		gates[gi].queue.erase(car)
-		if gates[gi].holder == car:
-			gates[gi].holder = null
+		gate_release(car, gi)
 
 
 # ---------------------------------------------------------------- pathfinding
@@ -587,7 +664,7 @@ func replan_all() -> void:
 
 
 func _compute_path_for(p) -> void:
-	var path = Pathfind3.find_path(p.cur_cell, p.dest_cell, cars, p.salt)
+	var path = Pathfind3.find_path(p.cur_cell, p.dest_cell, cars, p.salt, p.width)
 	if path == null:
 		p.legs = []
 		p.no_path = true
@@ -715,13 +792,21 @@ func gate_transit_total() -> int:
 	return n
 
 
-## Stack waiting passengers inside their room cell (queue beside the room).
+## Stack waiting parties inside their room cell (queue beside the room),
+## packing each row by the WIDTH each party actually draws - a big delivery is
+## three times a visitor, and two of them overlapping would hide exactly the
+## thing the player has to plan around. Visual only; nothing here is read by
+## the simulation.
 func _reflow_queues() -> void:
+	var band := Grid3.CELL - 8.0
 	for r in waiting:
 		var base := Grid3.cell_center(r)
-		var i := 0
+		var x := 0.0
+		var row := 0
 		for p in waiting[r]:
-			var col := i % 3
-			var row := int(i / 3.0)
-			p.position = base + Vector2(-22.0 + col * 22.0, 30.0 - row * 22.0)
-			i += 1
+			var w: float = p.body_w() + 4.0
+			if x > 0.0 and x + w > band:
+				row += 1
+				x = 0.0
+			p.position = base + Vector2(-band / 2.0 + x + w / 2.0, 30.0 - row * 22.0)
+			x += w

@@ -46,9 +46,65 @@ static var injected = null
 
 const STANDARD_SPEED := 260.0
 const EXPRESS_SPEED := 520.0
+const POD_SPEED := 340.0
+const CARGO_SPEED := 200.0
+
+## THE CAR TYPE TABLE (v4 phase 2). One row per elevator kind; a level's card
+## only has to name a `type` and everything else follows, so a card cannot
+## claim a width its capacity does not match.
+##
+##   width    doorway units. Boarding rule (passenger.width <= car.width) AND
+##            corridor rule (car.width <= corridor.width).
+##   cap      capacity in WIDTH-UNITS. Default 2 * width (pod 2, standard 4,
+##            cargo 6); a level may still override it explicitly - L2's and
+##            L3's 6-seat width-2 cars predate this table and keep their number.
+##   speed    max speed, px/s. SEPARATE axis from width: `express` is a fast
+##            width-2 car, not a wider one, so speed and width can be ablated
+##            independently (docs/v4-spec.md).
+##   accel    px/s^2 the car ramps at; decel is DECEL_RATIO x that. Heavier =
+##            wider = worse, which is what makes a stop cost momentum.
+const CAR_TYPES := {
+	"pod": {"width": 1, "speed": POD_SPEED, "accel": 560.0},
+	"standard": {"width": 2, "speed": STANDARD_SPEED, "accel": 300.0},
+	"express": {"width": 2, "speed": EXPRESS_SPEED, "accel": 300.0},
+	"cargo": {"width": 3, "speed": CARGO_SPEED, "accel": 160.0},
+}
+const DECEL_RATIO := 1.25 # brakes bite a little harder than the motor pushes
+
+
+static func _card_type(card: Dictionary) -> Dictionary:
+	return CAR_TYPES.get(str(card.get("type", "standard")), CAR_TYPES.standard)
+
+
+static func card_width(card: Dictionary) -> int:
+	return int(card.get("width", _card_type(card).width))
+
+
+## Capacity in width-units: the card's own number, else 2 x width.
+static func card_capacity(card: Dictionary) -> int:
+	return int(card.get("cap", 2 * card_width(card)))
+
+
+static func card_speed(card: Dictionary) -> float:
+	return float(card.get("speed", _card_type(card).speed))
+
+
+static func card_accel(card: Dictionary) -> float:
+	return float(card.get("accel", _card_type(card).accel))
+
+
+static func card_decel(card: Dictionary) -> float:
+	return float(card.get("decel", card_accel(card) * DECEL_RATIO))
 
 ## static var (not const) so tools can swap the table wholesale for an
 ## experiment; the shipped game never writes it.
+##
+## v4 PHASE 2 RETUNE. Acceleration made every car slower - a standard loses
+## ~0.8 s of momentum per stop, an express ~1.6 s - so the quotas, spawn
+## intervals and patience numbers below were all re-measured against
+## Scenarios3.SEEDS_TUNE until each level's axioms held again on the held-out
+## SEEDS_ASSERT. L1 is the one level that needed NO retune: its thesis is
+## already "few stops, long runs", which is exactly what acceleration rewards.
 static var LEVELS := [
 	{
 		"id": "L1",
@@ -123,21 +179,28 @@ static var LEVELS := [
 					"color": Color(0.45, 0.68, 0.95)},
 			{"name": "CAR B", "type": "standard", "cap": 4, "speed": STANDARD_SPEED,
 					"color": Color(0.5, 0.88, 0.55)},
-			# 6 seats: one perimeter lap is long enough that a 4-seat express
+			# 8 seats. One perimeter lap is long enough that a small express
 			# turns an ordinary burst into a second lap of waiting, which is
-			# knife-edge rather than hard.
-			{"name": "EXPRESS", "type": "express", "cap": 6, "speed": EXPRESS_SPEED,
+			# knife-edge rather than hard - and v4 acceleration made the lap
+			# longer still (it brakes for every stop and for both ends of the
+			# ping-pong), so the cabin has to hold a whole burst of execs. Six
+			# seats measured as structurally short of the exec arrival rate:
+			# the level then turned on which seeds bunched their bursts.
+			{"name": "EXPRESS", "type": "express", "cap": 8, "speed": EXPRESS_SPEED,
 					"color": Color(0.98, 0.68, 0.2)},
 		],
-		"quota": 105,
+		"quota": 95,
 		"max_lost": 6,
-		"spawn": {"interval_start": 1.2, "interval_end": 0.82, "ramp": 95.0,
-				"burst_min": 3, "burst_max": 6, "gap": 0.5},
+		"spawn": {"interval_start": 1.45, "interval_end": 1.0, "ramp": 95.0,
+				"burst_min": 3, "burst_max": 5, "gap": 0.5},
 		"mix": {"visitor": 0.42, "patient": 0.28, "exec": 0.30},
-		# One perimeter lap is ~26 cells even at express speed, so 28 s is the
-		# honest patience here: an exec survives a full lap of bad luck and
-		# still dies queueing behind a stop-everywhere tunnel jam.
-		"patience": {"exec": 28.0},
+		# One perimeter lap is ~26 cells even at express speed - and since v4
+		# acceleration, the express also brakes for every one of its stops and
+		# for both ends of the ping-pong, which pushes a round trip past 35 s.
+		# 50 s is the honest patience against THAT: an exec survives a full lap
+		# of bad luck and still dies queueing behind a stop-everywhere tunnel
+		# jam. (It was 28 s when a lap was ~26 s.)
+		"patience": {"exec": 50.0},
 		"exec_origins": [Vector2i(0, 0)],
 		"exec_dests": [Vector2i(0, 9)],
 		"groups": {
@@ -192,22 +255,23 @@ static var LEVELS := [
 			{"name": "EXPRESS", "type": "express", "cap": 4, "speed": EXPRESS_SPEED,
 					"color": Color(0.98, 0.68, 0.2)},
 		],
-		"quota": 145,
+		"quota": 116,
 		"max_lost": 5,
-		"spawn": {"interval_start": 0.72, "interval_end": 0.46, "ramp": 85.0,
+		"spawn": {"interval_start": 0.88, "interval_end": 0.59, "ramp": 85.0,
 				"burst_min": 4, "burst_max": 6, "gap": 0.45},
 		"mix": {"visitor": 0.43, "patient": 0.42, "exec": 0.15},
-		# The hallway crowd is impatient here (55 / 48 s against a thesis that
-		# holds average waits near 7 s - an 8x margin, not a knife edge). It
+		# The hallway crowd is impatient here (72 / 64 s against a thesis that
+		# holds average waits near 12 s - a 6x margin, not a knife edge). It
 		# is what turns a network with a slowly growing backlog into a LOSS
 		# instead of a slow win: a plan that cannot keep up does not merely
 		# finish late, it starts dropping people.
-		# Execs get 32 s: their honest plan is TWO legs (feeder to the HUB,
-		# express up), and two legs means two headways - 22 s made the
-		# INTENDED plan a coin flip, which is knife-edge, not hard. 32 s
-		# still expires an exec who has to wait out a car queueing under
-		# the loft.
-		"patience": {"visitor": 55.0, "patient": 48.0, "exec": 32.0},
+		# Execs get 44 s: their honest plan is TWO legs (feeder to the HUB,
+		# express up), and two legs means two headways, both of which got
+		# longer when v4 acceleration made every stop cost momentum. It still
+		# expires an exec who has to wait out a car queueing under the loft.
+		# (Was 55 / 48 / 32 s when cars reached top speed instantly; every
+		# number here was re-measured against SEEDS_TUNE for the v4 physics.)
+		"patience": {"visitor": 72.0, "patient": 64.0, "exec": 44.0},
 		"exec_origins": [Vector2i(1, 3), Vector2i(5, 3)],
 		"exec_dests": [Vector2i(3, 9)],
 		"groups": {
@@ -261,13 +325,15 @@ static var LEVELS := [
 		],
 		"quota": 110,
 		"max_lost": 4,
-		"spawn": {"interval_start": 0.85, "interval_end": 0.55, "ramp": 80.0,
+		"spawn": {"interval_start": 0.98, "interval_end": 0.64, "ramp": 80.0,
 				"burst_min": 4, "burst_max": 6, "gap": 0.5},
 		"mix": {"visitor": 0.6, "patient": 0.4},
 		# Generous enough that a WEAVING network never loses anybody; tight
 		# enough that the extra lap-time of stopping at all eight rooms every
-		# lap (>= 1.8 s of doors each) turns into expiries.
-		"patience": {"visitor": 70.0, "patient": 60.0},
+		# lap (>= 1.8 s of doors EACH, plus ~0.8 s of momentum since v4
+		# acceleration - which is why the outer-lane loop got worse, not
+		# better, and why these went 70/60 -> 76/64 with the crowd thinned).
+		"patience": {"visitor": 76.0, "patient": 64.0},
 		"exec_origins": [],
 		"exec_dests": [],
 		"groups": {
@@ -307,11 +373,16 @@ static var LEVELS := [
 			{"name": "EXPRESS", "type": "express", "cap": 4, "speed": EXPRESS_SPEED,
 					"color": Color(0.98, 0.68, 0.2)},
 		],
-		"quota": 90,
+		"quota": 75,
 		"max_lost": 6,
-		"spawn": {"interval_start": 1.6, "interval_end": 1.1, "ramp": 110.0,
+		"spawn": {"interval_start": 2.15, "interval_end": 1.5, "ramp": 110.0,
 				"burst_min": 3, "burst_max": 5, "gap": 0.6},
 		"mix": {"visitor": 0.55, "patient": 0.45},
+		# The sandbox's lines are long and stop at everything, and since
+		# acceleration every one of those stops costs momentum: a room can go
+		# two slow laps between visits. The crowd is patient enough to survive
+		# that, and the level's difficulty lives in the queue it builds instead.
+		"patience": {"visitor": 130.0, "patient": 115.0},
 		"exec_origins": [],
 		"exec_dests": [],
 		"groups": {
@@ -346,18 +417,28 @@ static func get_level(i: int) -> Dictionary:
 # only hand-written strings it shows are the level's own thesis/intro.
 # tests/balance.gd lints every level against this (see _briefing_checks).
 
-## One line per elevator card: type, width (once phase 2 adds it), capacity
-## and speed character — everything a player needs to plan the roster.
+## One line per elevator card: type, WIDTH, capacity, speed and ramp
+## character — everything a player needs to plan the roster. Every number is
+## read back through the same accessors Car3.setup uses, so the briefing
+## cannot describe a car the simulation does not build.
 static func roster_lines(lv: Dictionary) -> Array:
 	var out: Array = []
 	for c in lv.cards:
-		var bits: Array = [str(c.type)]
-		if c.has("width"):
-			bits.append("width %d" % int(c.width))
-		bits.append("%d slots" % int(c.cap))
-		bits.append(speed_word(float(c.speed)))
+		var bits: Array = [str(c.type), "width %d" % card_width(c),
+				"%d slots" % card_capacity(c), speed_word(card_speed(c)),
+				accel_word(card_accel(c))]
 		out.append("%s - %s" % [str(c.name), " - ".join(bits)])
 	return out
+
+
+## Ramp character, derived from the card's own acceleration.
+static func accel_word(a: float) -> String:
+	var std := float(CAR_TYPES.standard.accel)
+	if a >= std * 1.5:
+		return "sharp off the mark"
+	if a <= std * 0.7:
+		return "sluggish"
+	return "steady ramp"
 
 
 ## Speed character, derived from the card's own number so it can never lie.
@@ -389,8 +470,9 @@ static func people_lines(lv: Dictionary) -> Array:
 		var pat := float(Passenger3.PTYPES.get(t, {}).get("patience", 90.0))
 		if lv.has("patience"):
 			pat = float(lv.patience.get(t, pat))
-		var line := "%s - %.0f%% of the crowd - patience %.0f s" % [
-				t, 100.0 * float(mix[t]) / total, pat]
+		var line := "%s - %.0f%% of the crowd - width %d - patience %.0f s" % [
+				t, 100.0 * float(mix[t]) / total,
+				int(Passenger3.PTYPES.get(t, {}).get("width", 1)), pat]
 		if t == "exec":
 			line += " - rides %s to %s" % [
 					_rooms_str(lv.exec_origins), _rooms_str(lv.exec_dests)]

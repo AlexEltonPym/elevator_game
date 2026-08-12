@@ -532,7 +532,11 @@ TUNE: %s" % ("ALL TARGETS MET" if ok else "TARGETS MISSED"))
 func _strategy_routes(id: String, strategy: String) -> Array:
 	var out: Array = []
 	for e in Scenarios3.route_set(id, strategy):
-		out.append({"cells": Scenarios3.cells_of(e), "closed": Scenarios3.closed_of(e)})
+		var r := {"cells": Scenarios3.cells_of(e), "closed": Scenarios3.closed_of(e)}
+		var h = Scenarios3.home_of(e)
+		if h != null:
+			r["home"] = h # a scenario may pin a car's waiting floor (v4 phase 2)
+		out.append(r)
 	return out
 
 
@@ -896,8 +900,19 @@ func _write_discovered(results: Array) -> void:
 			var cells: Array = []
 			for c in rt.cells:
 				cells.append("Vector2i(%d, %d)" % [int(c[0]), int(c[1])])
+			# A home cell (v4 phase 2) is part of a route-set, so it survives the
+			# round trip through JSON and into the watchable table. The search
+			# does not choose homes yet, so in practice this stays absent.
+			var home = rt.get("home", null)
+			var extra := ""
+			if home != null:
+				extra = ", \"home\": Vector2i(%d, %d)" % [int(home[0]), int(home[1])]
 			if rt.closed:
-				L.append("\t\t\t{\"closed\": true, \"cells\": [%s]}," % ", ".join(cells))
+				L.append("\t\t\t{\"closed\": true%s, \"cells\": [%s]}," % [extra,
+						", ".join(cells)])
+			elif extra != "":
+				L.append("\t\t\t{\"closed\": false%s, \"cells\": [%s]}," % [extra,
+						", ".join(cells)])
 			else:
 				L.append("\t\t\t[%s]," % ", ".join(cells))
 		L.append("\t\t],")

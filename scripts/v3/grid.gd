@@ -3,7 +3,18 @@ extends Node2D
 ## Maze data + all grid drawing for prototype v3 "Path Drawing".
 ## The maze is a per-level grid of cells (row 0 = bottom/lobby). Cell types:
 ##   "." open shaft, "#" blocked, "R" room (stop when a route passes it),
-##   "G" gate (open, but a one-car mutex).
+##   "G" gate (a corridor of WIDTH 2 - see below),
+##   "1".."9" gate of that WIDTH (so "2" is a synonym for "G").
+##
+## CORRIDOR WIDTH (v4 phase 2). A gate group is no longer a plain one-car
+## mutex: it has a width, and
+##   * a car may enter only if car.width <= corridor.width, and
+##   * cars share it while the SUM of the widths inside is <= corridor.width.
+## The default "G" is width 2, which reproduces the old behaviour exactly:
+## every pre-v4 car is width 2 and 2 + 2 > 2, so the corridor stays a one-car
+## mutex. A width-1 corridor is a pod-only passage; a width-2 one bars the
+## width-3 cargo car; a width-3 one takes three pods, or one cargo, or a pod
+## plus a standard.
 ## All layout geometry lives here as statics so every v3 script shares one
 ## source of truth. Drawing reads state from
 ## `game` (main3.gd): committed routes, the live drag preview, selection.
@@ -38,9 +49,12 @@ static var COLS := 7
 static var ROWS := 10
 static var ORIGIN := Vector2(45.0, 100.0) # top-left corner of the top-left cell
 
+const DEFAULT_GATE_WIDTH := 2 # what a plain "G" means
+
 static var _rooms_cache: Array = []
 static var _gate_groups: Array = [] # Array of Arrays of Vector2i (corridors)
 static var _gate_group_of := {} # Vector2i -> index into _gate_groups
+static var _gate_group_width: Array = [] # per group: the narrowest cell in it
 static var _gates_dirty := true
 
 ## PERF (v3.5): cell-type lookup sets built once per load_level. cell_char()
@@ -48,7 +62,7 @@ static var _gates_dirty := true
 ## on the hottest path there is (Route3.stop_cells -> Car3.running, every car
 ## every game tick). Pure derived data from maze_rows - same answers.
 static var _room_set := {} # Vector2i -> true
-static var _gate_set := {}
+static var _gate_set := {} # Vector2i -> corridor width (int)
 static var _blocked_set := {}
 static var _cells_dirty := true
 
@@ -89,15 +103,21 @@ static func _ensure_cell_sets() -> void:
 				"R":
 					_room_set[c] = true
 				"G":
-					_gate_set[c] = true
+					_gate_set[c] = DEFAULT_GATE_WIDTH
 				"#":
 					_blocked_set[c] = true
+				_:
+					if ch.is_valid_int(): # "1".."9": a gate of that width
+						_gate_set[c] = int(ch)
 
 
 static func in_bounds(c: Vector2i) -> bool:
 	return c.x >= 0 and c.x < COLS and c.y >= 0 and c.y < ROWS
 
 
+## The RAW maze character. Prefer is_room / is_gate / passable: those read the
+## cell SETS, so they treat a gate written as its width digit ("1", "3") the
+## same as a plain "G", which this cannot.
 static func cell_char(c: Vector2i) -> String:
 	if not in_bounds(c):
 		return "#"
@@ -119,6 +139,12 @@ static func is_room(c: Vector2i) -> bool:
 static func is_gate(c: Vector2i) -> bool:
 	_ensure_cell_sets()
 	return _gate_set.has(c)
+
+
+## Corridor width of a gate CELL (0 for anything that is not a gate).
+static func gate_width(c: Vector2i) -> int:
+	_ensure_cell_sets()
+	return int(_gate_set.get(c, 0))
 
 
 ## All room cells, scanned bottom-up / left-right (stable letter order).
@@ -156,28 +182,52 @@ static func gate_group_of(c: Vector2i) -> int:
 	return _gate_group_of.get(c, -1)
 
 
+## Width of a whole corridor = its NARROWEST cell (a corridor is only as wide
+## as its tightest squeeze). -1 for a non-group index.
+static func gate_group_width(gi: int) -> int:
+	_ensure_gate_groups()
+	if gi < 0 or gi >= _gate_group_width.size():
+		return -1
+	return _gate_group_width[gi]
+
+
+## The narrowest corridor a polyline enters, or a large number when it enters
+## none. THE check behind "this car is too wide for this route".
+static func route_min_gate_width(cells: Array) -> int:
+	var w := 9999
+	for c in cells:
+		var gi := gate_group_of(c)
+		if gi != -1:
+			w = mini(w, gate_group_width(gi))
+	return w
+
+
 static func _ensure_gate_groups() -> void:
 	if not _gates_dirty:
 		return
 	_gates_dirty = false
 	_gate_groups = []
 	_gate_group_of = {}
+	_gate_group_width = []
 	for c in gate_cells():
 		if _gate_group_of.has(c):
 			continue
 		var gi := _gate_groups.size()
 		var group: Array = []
 		var stack: Array = [c]
+		var w := 9999
 		_gate_group_of[c] = gi
 		while not stack.is_empty():
 			var u: Vector2i = stack.pop_back()
 			group.append(u)
+			w = mini(w, gate_width(u))
 			for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
 				var v: Vector2i = u + d
 				if is_gate(v) and not _gate_group_of.has(v):
 					_gate_group_of[v] = gi
 					stack.append(v)
 		_gate_groups.append(group)
+		_gate_group_width.append(w)
 
 
 static func room_letter(c: Vector2i) -> String:
@@ -239,7 +289,7 @@ func _draw() -> void:
 			continue
 		_draw_route(route.cells, game.CARDS[i].color, i,
 				game.selected_card == i, route.stop_cells().size() < 2,
-				route.closed)
+				route.closed, game.cars[i].home_cell if game.cars[i] != null else null)
 	# Live drag preview on top.
 	if game.drawing and game.stroke.size() > 0 and game.selected_card >= 0:
 		_draw_stroke_preview(game.stroke, game.CARDS[game.selected_card].color,
@@ -248,36 +298,53 @@ func _draw() -> void:
 
 func _draw_cell(c: Vector2i) -> void:
 	var rect := cell_rect(c).grow(-1.0)
-	match cell_char(c):
-		"#":
-			draw_rect(rect, Color(0.055, 0.055, 0.075))
-			# Diagonal hatch = solid rock.
-			for t in range(0, int(CELL), 22):
-				draw_line(rect.position + Vector2(t, 0),
-						rect.position + Vector2(0, t), Color(1, 1, 1, 0.05), 3.0)
-		".":
-			draw_rect(rect, Color(0.205, 0.20, 0.245))
-			draw_rect(rect, Color(0, 0, 0, 0.25), false, 1.0)
-		"R":
-			draw_rect(rect, Color(0.23, 0.29, 0.35))
-			draw_rect(rect, Color(0.55, 0.75, 0.9, 0.5), false, 2.0)
-			# Door strip at the cell floor + room letter.
-			draw_rect(Rect2(rect.position.x + 8.0, rect.end.y - 10.0,
-					rect.size.x - 16.0, 6.0), Color(0.55, 0.75, 0.9, 0.7))
-			draw_string(ThemeDB.fallback_font,
-					rect.position + Vector2(8.0, 26.0), room_letter(c),
-					HORIZONTAL_ALIGNMENT_LEFT, -1.0, 20, Color(0.75, 0.88, 1.0, 0.8))
-		"G":
-			draw_rect(rect, Color(0.22, 0.21, 0.20))
-			# Whole-corridor occupied tint: while any car holds this cell's
-			# group, every cell of the group glows faintly in its color.
-			var gi := Grid3.gate_group_of(c)
-			if game != null and gi != -1:
-				var g: Dictionary = game.gates.get(gi, {})
-				var holder = g.get("holder")
-				if holder != null:
-					draw_rect(rect, Color(holder.color, 0.20))
-			_draw_hazard_border(rect, c)
+	# Drawn off the CELL SETS, not the raw character, so a gate written as its
+	# width digit ("1", "3") renders exactly like a plain "G".
+	if not Grid3.passable(c):
+		draw_rect(rect, Color(0.055, 0.055, 0.075))
+		# Diagonal hatch = solid rock.
+		for t in range(0, int(CELL), 22):
+			draw_line(rect.position + Vector2(t, 0),
+					rect.position + Vector2(0, t), Color(1, 1, 1, 0.05), 3.0)
+	elif Grid3.is_room(c):
+		draw_rect(rect, Color(0.23, 0.29, 0.35))
+		draw_rect(rect, Color(0.55, 0.75, 0.9, 0.5), false, 2.0)
+		# Door strip at the cell floor + room letter.
+		draw_rect(Rect2(rect.position.x + 8.0, rect.end.y - 10.0,
+				rect.size.x - 16.0, 6.0), Color(0.55, 0.75, 0.9, 0.7))
+		draw_string(ThemeDB.fallback_font,
+				rect.position + Vector2(8.0, 26.0), room_letter(c),
+				HORIZONTAL_ALIGNMENT_LEFT, -1.0, 20, Color(0.75, 0.88, 1.0, 0.8))
+	elif Grid3.is_gate(c):
+		draw_rect(rect, Color(0.22, 0.21, 0.20))
+		# Whole-corridor occupied tint: while any car is inside this cell's
+		# group, every cell of the group glows faintly in its color.
+		var gi := Grid3.gate_group_of(c)
+		if game != null and gi != -1:
+			for holder in game.gates.get(gi, {}).get("holders", []):
+				draw_rect(rect, Color(holder.color, 0.20))
+		_draw_hazard_border(rect, c)
+		_draw_gate_width(rect, c)
+	else:
+		draw_rect(rect, Color(0.205, 0.20, 0.245))
+		draw_rect(rect, Color(0, 0, 0, 0.25), false, 1.0)
+
+
+## How wide the corridor is, as that many stacked bars down the cell's middle:
+## one bar = pods only, two = the familiar single-file tunnel, three = wide
+## enough for the cargo car. Readable at a glance without reading a number.
+func _draw_gate_width(rect: Rect2, c: Vector2i) -> void:
+	var w := Grid3.gate_width(c)
+	if w <= 0:
+		return
+	var col := Color(0.95, 0.78, 0.20, 0.55)
+	var bar := 7.0
+	var gap := 5.0
+	var total := w * bar + (w - 1) * gap
+	var x0 := rect.position.x + (rect.size.x - total) / 2.0
+	for i in w:
+		draw_rect(Rect2(x0 + i * (bar + gap), rect.get_center().y - 13.0,
+				bar, 26.0), col)
 
 
 ## Alternating yellow/black dashes = gate mutex. Edges shared with another
@@ -328,7 +395,7 @@ func _draw_hazard_border(rect: Rect2, c: Vector2i) -> void:
 
 
 func _draw_route(cells: Array, col: Color, index: int, selected: bool, warn: bool,
-		closed := false) -> void:
+		closed := false, home = null) -> void:
 	var off := Vector2((index - 1) * 9.0, (index - 1) * 9.0)
 	var alpha := 0.9 if selected else 0.55
 	if cells.size() >= 2:
@@ -349,12 +416,28 @@ func _draw_route(cells: Array, col: Color, index: int, selected: bool, warn: boo
 		for e in [cells[0], cells[cells.size() - 1]]:
 			var p: Vector2 = cell_center(e) + off
 			draw_rect(Rect2(p - Vector2(7, 7), Vector2(14, 14)), Color(col, alpha))
+	if home != null:
+		_draw_home(cell_center(home) + off, col)
 	if warn:
 		# Parked: not enough room stops.
 		var wp: Vector2 = cell_center(cells[0]) + off + Vector2(0, -26.0)
 		draw_circle(wp, 12.0, Color(0.9, 0.3, 0.25, 0.9))
 		draw_string(ThemeDB.fallback_font, wp + Vector2(-4.0, 7.0), "!",
 				HORIZONTAL_ALIGNMENT_CENTER, -1.0, 19, Color.WHITE)
+
+
+## The card's HOME cell (v4 phase 2): a little house in the card's colour on
+## the route cell an idle empty car deadheads back to. Drawn filled with a
+## dark outline so it stays legible on top of the route polyline.
+func _draw_home(p: Vector2, col: Color) -> void:
+	var body := PackedVector2Array([
+			p + Vector2(-11, 14), p + Vector2(-11, -2), p + Vector2(0, -13),
+			p + Vector2(11, -2), p + Vector2(11, 14)])
+	draw_colored_polygon(body, Color(col.lightened(0.25), 0.95))
+	var outline := body.duplicate()
+	outline.append(body[0])
+	draw_polyline(outline, Color(0.05, 0.05, 0.08, 0.9), 3.0)
+	draw_rect(Rect2(p + Vector2(-4, 4), Vector2(8, 10)), Color(0.05, 0.05, 0.08, 0.85))
 
 
 ## Direction chevrons for CLOSED routes only: a small arrowhead on every 3rd

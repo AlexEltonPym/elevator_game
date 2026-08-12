@@ -3,12 +3,21 @@ extends RefCounted
 ## Time-based Dijkstra over the STOP graph for v3.
 ##
 ## Nodes = room cells. For each running route, there is an edge between every
-## pair of its room-stops with cost = ride time along the route between them
-## (path distance / route speed) + a flat LEG_WAIT expected wait. Every leg
-## carries its own LEG_WAIT, so each transfer adds 7 s — this is what makes
-## "ride the local to the express stop and switch" emerge when the express is
-## genuinely faster. (7 s, up from 5 s, keeps plans honest against the slower
-## door-phase stops of the balance pass.)
+## pair of its room-stops with cost
+##   ride time (path distance / route speed)
+## + intermediate stops x Car3.stop_penalty()   (v4 phase 2: acceleration)
+## + a flat LEG_WAIT expected wait.
+## Every leg carries its own LEG_WAIT, so each transfer adds 7 s — this is what
+## makes "ride the local to the express stop and switch" emerge when the
+## express is genuinely faster. (7 s, up from 5 s, keeps plans honest against
+## the slower door-phase stops of the balance pass.)
+##
+## THE STOP TERM is the planner's half of acceleration. Distance alone says a
+## milk run and an express leg over the same ground cost the same; they do not,
+## because every intermediate stop costs the car a brake and a ramp back up.
+## The penalty is the car's OWN momentum loss (speed / 2accel + speed / 2decel),
+## so it is largest exactly where it should be - a fast or heavy car pays most
+## for stopping - and it is a static per-route number, never a simulation.
 ##
 ## A path is an ordered list of legs; each leg is a Dictionary
 ## { "car": Car3, "board": Vector2i, "alight": Vector2i }.
@@ -26,26 +35,32 @@ const INF_T := 1.0e18
 ## every passenger deterministically picking the first card; genuinely
 ## different plans (> TIE_EPS apart) are unaffected. Pass a negative salt for
 ## exact costs (debug/tests).
+## `width` (v4 phase 2) is the planner's half of the boarding rule: a party
+## only ever plans onto cars it can actually fit through the doors of, so a
+## width-3 delivery routes over the cargo car's network and nothing else, and
+## shows the "?" bubble when that network cannot reach its destination.
 static func find_path(start: Vector2i, dest: Vector2i, cars: Array,
-		salt: float = -1.0) -> Variant:
+		salt: float = -1.0, width: int = 1) -> Variant:
 	if start == dest:
 		return []
-	# Build the stop-graph edges from every running car.
+	# Build the stop-graph edges from every running car that fits this party.
 	var edges := {} # Vector2i -> Array of {"to", "cost", "car"}
 	for ci in cars.size():
 		var car = cars[ci]
-		if car == null or not car.running():
+		if car == null or not car.running() or not car.fits(width):
 			continue
 		var eps := 0.0
 		if salt >= 0.0:
 			eps = TIE_EPS * _hash01(salt, ci)
 		var route = car.route
+		var pen: float = car.stop_penalty()
 		var stops: Array = route.stop_cells()
 		for i in stops.size():
 			for j in stops.size():
 				if i == j:
 					continue
 				var cost: float = route.ride_dist(stops[i], stops[j]) / car.speed \
+						+ route.stops_between(stops[i], stops[j]) * pen \
 						+ LEG_WAIT + eps
 				if not edges.has(stops[i]):
 					edges[stops[i]] = []
@@ -92,5 +107,8 @@ static func _hash01(salt: float, i: int) -> float:
 static func path_time(legs: Array) -> float:
 	var t := 0.0
 	for leg in legs:
-		t += leg.car.route.ride_dist(leg.board, leg.alight) / leg.car.speed + LEG_WAIT
+		t += leg.car.route.ride_dist(leg.board, leg.alight) / leg.car.speed \
+				+ leg.car.route.stops_between(leg.board, leg.alight) \
+						* leg.car.stop_penalty() \
+				+ LEG_WAIT
 	return t

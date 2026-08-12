@@ -179,6 +179,9 @@ static func _key(level_index: int, routes: Array, seed_v: int, step: float) -> S
 		if r == null:
 			continue
 		s += "C" if r.get("closed", false) else "O"
+		var h = r.get("home", null)
+		if h != null:
+			s += "H%d,%d" % [h.x, h.y] # the home cell changes the run: key on it
 		for c in r.cells:
 			s += "%d,%d;" % [c.x, c.y]
 	return s
@@ -220,7 +223,11 @@ func run(level_index: int, routes: Array, seed_v: int, step: float,
 	for i in mini(routes.size(), game.CARDS.size()):
 		if routes[i] == null:
 			continue
-		var err := Route3.validate(routes[i].cells, routes[i].get("closed", false))
+		# Validated against THIS CARD's width too, so a route that sends a car
+		# down a corridor narrower than it is scores as invalid here rather
+		# than being refused (and push_error'd) by commit_route inside a batch.
+		var err := Route3.validate(routes[i].cells, routes[i].get("closed", false),
+				game.cars[i].width)
 		if err != "":
 			out.valid = false
 			out.err = "card %d: %s" % [i, err]
@@ -235,7 +242,8 @@ func run(level_index: int, routes: Array, seed_v: int, step: float,
 	# start_run() has been called.
 	for i in mini(routes.size(), game.CARDS.size()):
 		if routes[i] != null:
-			game.commit_route(i, routes[i].cells, routes[i].get("closed", false))
+			game.commit_route(i, routes[i].cells, routes[i].get("closed", false),
+					routes[i].get("home", null))
 	game.start_run()
 	var t := 0.0
 	var t0 := Time.get_ticks_usec()
