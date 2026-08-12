@@ -130,6 +130,15 @@ func _ready() -> void:
 	level = Levels3.get_level(Levels3.current)
 	watch = Levels3.watch_strategy
 	Grid3.load_level(level.rows)
+	# Apply the display fit transform (identity for grids that already fit) to
+	# the visual layers. It scales rendering only — logical cell positions, and
+	# therefore the whole simulation, are untouched. Skipped headless (no render,
+	# no input) so a scaled level's node-global positions can't perturb the
+	# fingerprint. HUD is a CanvasLayer and stays in screen space.
+	if not headless:
+		for n in [grid, cars_node, passengers_node]:
+			n.scale = Vector2(Grid3.view_scale, Grid3.view_scale)
+			n.position = Grid3.view_offset
 	CARDS = level.cards
 	QUOTA = level.quota
 	MAX_LOST = level.max_lost

@@ -48,6 +48,14 @@ static var maze_rows: Array = MAZE
 static var COLS := 7
 static var ROWS := 10
 static var ORIGIN := Vector2(45.0, 100.0) # top-left corner of the top-left cell
+# DISPLAY-ONLY fit transform (v3.6). Cells stay CELL px in LOGICAL space — the
+# simulation and every stored position are unchanged — but a grid taller/wider
+# than the grid area is scaled to fit by a transform applied to the visual nodes
+# (main3 sets it on Grid/Cars/Passengers) and inverted in cell_at for input.
+# For a grid that already fits, this is the identity (scale 1, offset 0), so
+# nothing about the existing levels changes.
+static var view_scale := 1.0
+static var view_offset := Vector2.ZERO
 
 const DEFAULT_GATE_WIDTH := 2 # what a plain "G" means
 
@@ -78,6 +86,15 @@ static func load_level(rows: Array) -> void:
 	COLS = (rows[0] as String).length()
 	ORIGIN = Vector2((GRID_X - COLS * CELL) / 2.0,
 			GRID_Y_TOP + (GRID_Y_H - ROWS * CELL) / 2.0)
+	# Fit the logical grid bbox into the grid area, scaling DOWN only (a grid
+	# that already fits keeps scale 1 / offset 0 == the exact old layout).
+	var bbox_w := COLS * CELL
+	var bbox_h := ROWS * CELL
+	view_scale = minf(1.0, minf(GRID_X / bbox_w, GRID_Y_H / bbox_h))
+	var cx := ORIGIN.x + bbox_w / 2.0
+	var cy := ORIGIN.y + bbox_h / 2.0
+	view_offset = Vector2(GRID_X / 2.0 - view_scale * cx,
+			(GRID_Y_TOP + GRID_Y_H / 2.0) - view_scale * cy)
 	_rooms_cache = []
 	_gates_dirty = true
 	_cells_dirty = true
@@ -248,8 +265,10 @@ static func cell_center(c: Vector2i) -> Vector2:
 
 
 ## Cell under a screen position, or (-1, -1) when outside the grid area.
+## Inverts the display fit transform (screen -> logical) before the cell math.
 static func cell_at(pos: Vector2) -> Vector2i:
-	var local := pos - ORIGIN
+	var logical := (pos - view_offset) / view_scale
+	var local := logical - ORIGIN
 	if local.x < 0.0 or local.y < 0.0 or local.x >= COLS * CELL or local.y >= ROWS * CELL:
 		return Vector2i(-1, -1)
 	return Vector2i(int(local.x / CELL), ROWS - 1 - int(local.y / CELL))
