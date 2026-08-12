@@ -33,9 +33,15 @@ extends RefCounted
 ##
 ## Beyond the per-level win/lose assertions it also:
 ## - lints EVERY level for dead rooms (each room must have spawn weight > 0,
-##   be a possible destination, and be covered by the thesis route set), and
-## - smoke-tests the v3.3 redeploy flow (mid-run redraw with riders aboard
-##   recalls + redeploys in ~3 s; session-start commits deploy instantly).
+##   be a possible destination, and be covered by the thesis route set) and
+##   for a BRIEFING that names every card, passenger type and goal number,
+## - checks the v4 phase machine (briefing -> plan -> run -> result, no
+##   editing of any kind during a run, ABORT/RETRY back to PLAN, and no car
+##   ever recalling or redeploying mid-run), and
+## - smoke-tests the v3.3 redeploy flow, which the player can no longer
+##   reach, by driving main3.commit_route_mid_run() directly (mid-run redraw
+##   with riders aboard recalls + redeploys in ~3 s; PLAN commits deploy
+##   instantly).
 ##
 ## Driven by tests/run_balance.gd (one RUN per engine frame so freed nodes
 ## flush between runs):
@@ -60,6 +66,8 @@ var scenarios: Array = ScenData.scenarios()
 var jobs: Array = [] # one {sc, seed} per engine frame
 var next_job := 0
 var results := {} # scenario key -> {"runs": Array of per-seed stats dicts}
+var phase_done := false
+var phase_checks: Array = [] # filled by the v4 phase-machine run
 var redeploy_done := false
 var redeploy_checks: Array = [] # filled by the redeploy smoke run
 var loop_done := false
@@ -90,6 +98,10 @@ func step(tree: SceneTree) -> bool:
 		var j: Dictionary = jobs[next_job]
 		results[j.sc.key].runs.append(_run_scenario(tree, j.sc, j.seed))
 		next_job += 1
+		return false
+	if not phase_done:
+		phase_done = true
+		phase_checks = _phase_checks(tree)
 		return false
 	if not redeploy_done:
 		redeploy_done = true
@@ -133,10 +145,13 @@ func _run_scenario(tree: SceneTree, sc: Dictionary, seed_v: int) -> Dictionary:
 			game.free()
 			return r
 	game.rng.seed = seed_v
-	game.start_session()
+	# The v4 loop: commit the route-set in the PLAN phase (a fresh scene opens
+	# in BRIEFING, where commits are legal), then start the run. Nothing may
+	# change the network after start_run() — see main3.commit_route.
 	for i in sc.routes.size():
 		game.commit_route(i, ScenData.Scen.cells_of(sc.routes[i]),
 				ScenData.Scen.closed_of(sc.routes[i]))
+	game.start_run()
 	var t := 0.0
 	while game.state == game.State.PLAYING and t < TIMEOUT:
 		game.advance(STEP)
@@ -329,6 +344,7 @@ func _checks() -> Array:
 			"share %.0f%%" % (share * 100.0)))
 	out.append(_axiom("X-1 winnable by old smoke strategy", "X1_smoke", "WIN"))
 	out.append_array(_lint_levels())
+	out.append_array(phase_checks)
 	out.append_array(redeploy_checks)
 	out.append_array(loop_checks)
 	out.append_array(unit_checks)
@@ -378,6 +394,171 @@ func _lint_levels() -> Array:
 				"no spawn %s, no dest %s" % [str(no_spawn), str(no_dest)]))
 		out.append(_c("%s thesis routes cover every room" % lv.id,
 				uncovered.is_empty(), "uncovered %s" % str(uncovered)))
+		out.append(_briefing_check(lv))
+	return out
+
+
+## The v4 BRIEFING is generated from the level data (Levels3.briefing_body),
+## which is the whole reason it cannot drift: this asserts the generated text
+## really does name every elevator card, every passenger type that can spawn,
+## and the goal numbers. A level that adds a card or a passenger type and
+## forgets to mention it is now impossible rather than merely discouraged.
+func _briefing_check(lv: Dictionary) -> Dictionary:
+	var body: String = Levels3.briefing_body(lv)
+	var missing: Array = []
+	for c in lv.cards:
+		if body.find(str(c.name)) == -1:
+			missing.append(str(c.name))
+	for t in lv.mix:
+		if float(lv.mix[t]) <= 0.0:
+			continue
+		# An exec weight with no exec rooms degrades to a visitor at spawn
+		# time, so the briefing is right not to advertise it.
+		if t == "exec" and (lv.exec_origins.is_empty() or lv.exec_dests.is_empty()):
+			continue
+		if body.find(str(t)) == -1:
+			missing.append(str(t))
+	if body.find(str(int(lv.quota))) == -1:
+		missing.append("quota %d" % int(lv.quota))
+	if body.find(str(int(lv.max_lost))) == -1:
+		missing.append("max_lost %d" % int(lv.max_lost))
+	return _c("%s briefing names every card, type and goal" % lv.id,
+			missing.is_empty() and Levels3.roster_lines(lv).size() == lv.cards.size()
+			and Levels3.people_lines(lv).size() > 0, "missing %s" % str(missing))
+
+
+# -------------------------------------------------------- v4 phase machine
+
+## THE v4 LOOP (docs/v4-spec.md phase 1): design -> commit -> watch -> learn
+## -> retry, with NO mid-run editing. Checks, in order:
+##   * a fresh level opens on the BRIEFING, and its text is generated from the
+##     level data (that part is linted per level in _briefing_checks);
+##   * PLAN is editable and RUN is gated on every card having a >= 2-stop
+##     route;
+##   * during a RUN every editing path refuses - taps, chip selection, CLEAR
+##     and commit_route itself - and no car ever enters the recall/redeploy
+##     states, because the only commits that happened were PLAN commits;
+##   * ABORT returns to PLAN with the routes intact and the counters reset;
+##   * a PLAN commit AFTER a run still deploys instantly (the car is
+##     ever_deployed by then - this is the check that PLAN bypasses
+##     Car3.apply_route rather than relying on a never-deployed car);
+##   * RESULT -> RETRY lands back in PLAN;
+##   * watch mode skips BRIEFING/PLAN and is already running.
+## Runs on the injected 5x5 fixture: this is main3's state machine under test,
+## not any level's geometry.
+func _phase_checks(tree: SceneTree) -> Array:
+	var out: Array = []
+	Levels3.injected = _draw_level()
+	Levels3.current = 0
+	Levels3.watch_strategy = ""
+	var g = load("res://scenes/v3_main.tscn").instantiate()
+	tree.root.add_child(g)
+	g.rng.seed = 909
+	g.auto_spawn = false
+	out.append(_c("phase: a fresh level opens on the BRIEFING",
+			g.state == g.State.BRIEFING and not g.can_edit(), "state %d" % g.state))
+	g.to_plan()
+	out.append(_c("phase: PLAN is editable and idle",
+			g.state == g.State.PLAN and g.can_edit() and g.active_passengers.is_empty(),
+			"state %d can_edit %s" % [g.state, str(g.can_edit())]))
+	out.append(_c("phase: RUN is blocked while cards are unrouted",
+			not g.ready_to_run() and g.cards_not_ready().size() == 3,
+			"not ready: %s" % str(g.cards_not_ready())))
+	var lines: Array = [[Vector2i(0, 0), Vector2i(0, 4)],
+			[Vector2i(2, 0), Vector2i(2, 4)], [Vector2i(4, 0), Vector2i(4, 4)]]
+	for i in 3:
+		g.select_card(i)
+		g.commit_route(i, ScenData.Scen.path(lines[i]))
+	out.append(_c("phase: RUN unlocks when every card has a 2-stop route",
+			g.ready_to_run(), "not ready: %s" % str(g.cards_not_ready())))
+	# One stop is not enough: the >= 2-room-stop rule gates RUN too.
+	g.commit_route(0, [Vector2i(0, 0), Vector2i(1, 0)])
+	out.append(_c("phase: a 1-stop route re-blocks RUN",
+			not g.ready_to_run() and g.route_warning(0),
+			"not ready: %s" % str(g.cards_not_ready())))
+	g.commit_route(0, ScenData.Scen.path(lines[0]))
+	# --- RUN: the network is frozen.
+	g.start_run()
+	g.select_card(1)
+	var sel_before: int = g.selected_card
+	var cells_before: Array = g.routes[1].cells.duplicate()
+	var touch := InputEventScreenTouch.new()
+	touch.pressed = true
+	touch.position = Grid3.cell_center(Vector2i(2, 2))
+	g._unhandled_input(touch)
+	g.select_card(2)
+	g.clear_route(1)
+	var commit_refused: bool = not g.commit_route(1,
+			ScenData.Scen.path([Vector2i(2, 0), Vector2i(2, 2)]))
+	out.append(_c("phase: RUN state and speed control are live",
+			g.state == g.State.PLAYING and not g.can_edit(), "state %d" % g.state))
+	out.append(_c("phase: no editing during a RUN (tap / select / clear / commit)",
+			not g.drawing and g.selected_card == sel_before and g.routes[1] != null
+			and g.routes[1].cells == cells_before and commit_refused,
+			"drawing %s sel %d refused %s" % [
+					str(g.drawing), g.selected_card, str(commit_refused)]))
+	# Run it for real and confirm the recall/redeploy machinery never fires.
+	g.spawn_passenger("visitor", Vector2i(0, 0), Vector2i(0, 4))
+	g.spawn_passenger("visitor", Vector2i(2, 4), Vector2i(2, 0))
+	var only_running := true
+	for _t in 400:
+		g.advance(STEP)
+		for c in g.cars:
+			if c.car_state == Car3.CarState.RECALLING \
+					or c.car_state == Car3.CarState.REDEPLOYING:
+				only_running = false
+	out.append(_c("phase: no car ever recalls or redeploys during a RUN",
+			only_running, "a car left RUNNING mid-run"))
+	out.append(_c("phase: the run actually served somebody", g.served > 0,
+			"served %d" % g.served))
+	# --- ABORT: back to PLAN, routes intact, counters reset.
+	var served_before: int = g.served
+	g.abort_run()
+	var routed := 0
+	for r in g.routes:
+		if r != null:
+			routed += 1
+	out.append(_c("phase: ABORT returns to PLAN with routes intact, counters reset",
+			g.state == g.State.PLAN and g.can_edit() and routed == 3
+			and g.served == 0 and g.lost == 0 and is_zero_approx(g.elapsed)
+			and g.active_passengers.is_empty() and served_before > 0,
+			"state %d routed %d served %d" % [g.state, routed, g.served]))
+	# --- Re-planning after a run: the cars are ever_deployed now, so this is
+	# where the old mid-game redeploy would have fired. It must not.
+	g.commit_route(0, ScenData.Scen.path([Vector2i(0, 4), Vector2i(4, 4)]))
+	var car0 = g.cars[0]
+	out.append(_c("phase: a PLAN commit after a run still deploys instantly",
+			car0.ever_deployed and car0.car_state == Car3.CarState.RUNNING
+			and car0.current_cell() == Vector2i(0, 4),
+			"state %d cell %s" % [car0.car_state, str(car0.current_cell())]))
+	# --- RESULT -> RETRY.
+	g.start_run()
+	g.advance(1.0)
+	g._win()
+	out.append(_c("phase: the RESULT overlay locks editing",
+			g.state == g.State.WIN and not g.can_edit(), "state %d" % g.state))
+	g.to_plan() # RETRY
+	out.append(_c("phase: RETRY lands back in PLAN with the routes kept",
+			g.state == g.State.PLAN and g.can_edit() and g.routes[0] != null,
+			"state %d" % g.state))
+	tree.root.remove_child(g)
+	g.free()
+	Levels3.injected = null
+	# --- Watch mode skips the briefing entirely (shipped level, real routes).
+	Levels3.current = Levels3.index_of("L4")
+	Levels3.watch_strategy = "thesis"
+	var gw = load("res://scenes/v3_main.tscn").instantiate()
+	tree.root.add_child(gw)
+	var w_routed := 0
+	for r in gw.routes:
+		if r != null:
+			w_routed += 1
+	out.append(_c("phase: WATCH skips BRIEFING/PLAN and is already running",
+			gw.state == gw.State.PLAYING and not gw.can_edit() and w_routed > 0,
+			"state %d routed %d" % [gw.state, w_routed]))
+	Levels3.watch_strategy = ""
+	tree.root.remove_child(gw)
+	gw.free()
 	return out
 
 
@@ -386,7 +567,16 @@ func _lint_levels() -> Array:
 ## Mid-run route replacement with riders aboard must RECALL (drop the riders
 ## at an old-route room stop, not teleport them), keep the car off the grid
 ## for a ~3 s ghost countdown at the new start, then resume service there.
-## Session-start commits (never-deployed cars) must deploy with no delay.
+## PLAN-phase commits (the only kind the v4 player flow produces) must deploy
+## with no delay.
+##
+## v4 NOTE. The player can no longer reach this: every commit happens in PLAN,
+## so main3.commit_route refuses once a run is on and deploys instantly before
+## it. The machinery is still correct and a future place-only mid-run mode
+## wants it, so this check drives it DIRECTLY through
+## main3.commit_route_mid_run() — the one entry point into Car3.apply_route.
+## Deleting the check, or letting it quietly assert nothing because the player
+## path vanished, is exactly the rot the header note below warns about.
 ##
 ## Runs on the injected 5x5 fixture, not a shipped level, for the same reason
 ## Stage A of the loop checks does: this tests Car3's state machine, and it
@@ -401,13 +591,14 @@ func _redeploy_smoke(tree: SceneTree) -> Array:
 	tree.root.add_child(game)
 	game.rng.seed = 4242
 	game.auto_spawn = false # only our hand-placed passengers
-	game.start_session()
+	game.to_plan()
 	var old_route: Array = ScenData.Scen.path([Vector2i(0, 0), Vector2i(4, 0)])
 	game.commit_route(0, old_route)
 	var car = game.cars[0]
-	out.append(_c("redeploy: session-start commit deploys instantly",
+	out.append(_c("redeploy: PLAN commit deploys instantly",
 			car.car_state == Car3.CarState.RUNNING and car.visible,
 			"state %d" % car.car_state))
+	game.start_run()
 	# A rider along the bottom row.
 	var p = game.spawn_passenger("visitor", Vector2i(0, 0), Vector2i(4, 0))
 	var t := 0.0
@@ -417,9 +608,18 @@ func _redeploy_smoke(tree: SceneTree) -> Array:
 	out.append(_c("redeploy: smoke rider boarded", p.riding == car,
 			"riding %s after %.1fs" % [str(p.riding), t]))
 	game.advance(3.0) # doors finish (~1.8 s) and the car gets rolling mid-route
+	# The player path is closed during a run: commit_route must REFUSE and
+	# change nothing. (This is the v4 rule under test; the recall machinery
+	# below is then driven through the explicit mid-run entry point.)
+	var refused: bool = not game.commit_route(0,
+			ScenData.Scen.path([Vector2i(0, 2), Vector2i(4, 2)]))
+	out.append(_c("redeploy: commit_route refused during a run",
+			refused and game.routes[0].cells == old_route
+			and car.car_state == Car3.CarState.RUNNING,
+			"refused %s state %d" % [str(refused), car.car_state]))
 	# Mid-run redraw to a DIFFERENT start while the rider is aboard.
 	var new_route: Array = ScenData.Scen.path([Vector2i(0, 4), Vector2i(4, 4)])
-	game.commit_route(0, new_route)
+	game.commit_route_mid_run(0, new_route)
 	out.append(_c("redeploy: commit with riders aboard recalls first",
 			car.car_state == Car3.CarState.RECALLING,
 			"state %d" % car.car_state))
@@ -489,7 +689,7 @@ func _loop_mechanics(tree: SceneTree) -> Array:
 	tree.root.add_child(g1)
 	g1.rng.seed = 11
 	g1.auto_spawn = false
-	g1.start_session()
+	g1.to_plan() # drawing is a PLAN-phase action in v4
 	g1.select_card(0)
 	# Size guard: a 3-cell stroke whose last cell touches the head must NOT
 	# close (grid parity makes this stroke undrawable, so it is planted
@@ -597,7 +797,7 @@ func _loop_mechanics(tree: SceneTree) -> Array:
 	tree.root.add_child(g)
 	g.rng.seed = 777
 	g.auto_spawn = false
-	g.start_session()
+	g.to_plan()
 	g.select_card(0)
 	var ring: Array = ScenData.Scen.path([Vector2i(0, 0), Vector2i(7, 0),
 			Vector2i(7, 7), Vector2i(0, 7), Vector2i(0, 1)])
@@ -664,7 +864,8 @@ func _loop_mechanics(tree: SceneTree) -> Array:
 			long_ok, "legs %s dist %.0f" % [
 					"none" if legs == null else str(legs.size()), legs_dist]))
 	# Closed car wraps forward-only, smoothly across the seam, and actually
-	# delivers that backward rider.
+	# delivers that backward rider. The plan is committed, so RUN it.
+	g.start_run()
 	var car = g.cars[0]
 	var p = g.spawn_passenger("visitor", Vector2i(5, 0), Vector2i(2, 0))
 	var prev_idx: int = car.idx
@@ -712,7 +913,9 @@ func _loop_mechanics(tree: SceneTree) -> Array:
 		if dd < best:
 			best = dd
 			exp_stop = s
-	g.commit_route(0, ScenData.Scen.path([Vector2i(0, 0), Vector2i(4, 0)]))
+	# Mid-run redraw: unreachable from the v4 player flow, so driven straight
+	# through the explicit entry point (see _redeploy_smoke's note).
+	g.commit_route_mid_run(0, ScenData.Scen.path([Vector2i(0, 0), Vector2i(4, 0)]))
 	out.append(_c("loop: mid-game redraw with riders recalls",
 			car.car_state == Car3.CarState.RECALLING, "state %d" % car.car_state))
 	out.append(_c("loop: recall targets the forward-nearest stop",
@@ -775,7 +978,7 @@ func _unit_smoke(tree: SceneTree) -> Array:
 	var g = load("res://scenes/v3_main.tscn").instantiate()
 	tree.root.add_child(g)
 	g.auto_spawn = false
-	g.start_session()
+	g.to_plan()
 	var refused: bool = not g.commit_route(0, [Vector2i(0, 0), Vector2i(4, 0)])
 	out.append(_c("commit_route rejects illegal geometry",
 			refused and g.routes[0] == null, "route %s" % str(g.routes[0])))
@@ -807,9 +1010,10 @@ func _unit_smoke(tree: SceneTree) -> Array:
 	tree.root.add_child(gi)
 	gi.rng.seed = 31337
 	gi.endless = true
-	gi.start_session()
+	# Commit in the opening phase, then run (to_plan() would clear `endless`).
 	gi.commit_route(0, ScenData.Scen.path([Vector2i(0, 0), Vector2i(0, 3)]))
 	gi.commit_route(1, ScenData.Scen.path([Vector2i(2, 0), Vector2i(2, 3)]))
+	gi.start_run()
 	for _t in 900:
 		gi.advance(0.1)
 	out.append(_c("injected level builds and serves",

@@ -33,9 +33,21 @@ global class cache.
 ## Levels
 
 Each level is a thesis about strategy; serve its quota before losing its
-max. Winning offers **Next Level / Level Select / Keep Playing** (endless);
-losing offers **Retry** (routes stay drawn, counters reset) / **Level
-Select**.
+max. The loop is **design -> commit -> watch -> learn -> retry** (v4 phase 1,
+`docs/v4-spec.md`) and there is **no mid-run editing**:
+
+| phase | what it is | the button |
+|---|---|---|
+| **BRIEFING** | the level's thesis and intro, the **elevator roster** you get (type, capacity, speed character) and the **passenger mix** to expect, plus the goal. Generated from the level data by `Levels3.briefing_body`, so it cannot describe a level the game is not running. | PLAN |
+| **PLAN** | the grid is fully editable and nothing is running — no clock, no passengers. Draw, redraw, CLEAR freely. | RUN (disabled until every card has a route with >= 2 room stops; the hint line names the ones holding it up) |
+| **RUN** | the simulation. **Every editing path is dead**: grid taps, chip selection, CLEAR and `commit_route()` itself all refuse. Speed controls stay live, because watching is now the point. | ABORT (back to PLAN, counters reset, routes kept) |
+| **RESULT** | win or lose, with served/lost, average wait and shift length. | RETRY (back to PLAN with your routes) / NEXT LEVEL (on a win) / LEVEL SELECT |
+
+Because every commit now happens in PLAN, **every car deploys instantly**.
+The v3.3 recall -> ghost-countdown -> redeploy machinery is still in `car3.gd`,
+still correct and still tested, but it is out of the main loop: only
+`main3.commit_route_mid_run()` reaches it and nothing in the player flow calls
+it (a future "place-only mid-run" mode might).
 
 | level | name    | quota / max lost | thesis                                              |
 |-------|---------|------------------|-----------------------------------------------------|
@@ -113,24 +125,23 @@ the harness proves.
   "against" the loop is honestly priced as almost a full lap, so passengers
   take another route or a transfer when one is cheaper. Recall and idle
   deadheads on a loop also only drive forward.
-- **Redraw / redeploy**: drawing again for the same card replaces its route,
-  and **CLEAR** removes it — but mid-game the car no longer teleports. If it
-  has riders it first **recalls**: it finishes driving its old line to the
-  nearest room stop, cycles its doors, and everyone steps out there and
-  replans (an empty car skips this). Then the car vanishes (quick
-  shrink/fade) and a **ghost outline with a 3-second countdown** appears at
-  the new route's start; when the countdown ends the car appears there and
-  starts service. The countdown runs on game time, so pause holds it.
-  Re-committing while a car is recalling or redeploying just retargets the
-  pending route (the countdown only restarts if the start cell moved), and
-  CLEAR mid-recall means the car simply vanishes after the drop. Only the
-  **first** commit of a never-deployed card appears instantly — the delay is
-  the cost of mid-game redesign, not of designing.
-- A route needs **at least 2 room stops** to run; otherwise its car parks
-  with a "!" and the hint line explains.
-- **Speed**: top-right `II` pause / `1x` / `3x` — the grid stays fully
-  editable in every state, including paused. **LEVELS** returns to the level
+- **Redraw / clear**: drawing again for the same card replaces its route and
+  **CLEAR** removes it. Both are PLAN-phase actions, and in PLAN nothing is
+  running, so the car simply appears at the new start — no recall, no
+  countdown, ever, in the shipped loop.
+- A route needs **at least 2 room stops** to run; a card that has fewer keeps
+  RUN disabled (and its car parks with a "!" if a run is somehow started
+  programmatically without it).
+- **Speed**: `II` pause / `1x` / `3x` in the top bar, shown only during a RUN
+  (there is nothing to speed up in PLAN). **LEVELS** returns to the level
   select.
+- **The mid-run redeploy path** (v3.3, kept but unreachable from the UI): a
+  commit through `commit_route_mid_run()` with riders aboard **recalls** — the
+  car finishes driving its old line to the nearest room stop, cycles its doors,
+  everyone steps out and replans — then vanishes and leaves a **ghost outline
+  with a 3-second countdown** at the new start before resuming service. The
+  balance harness drives it directly so it stays honest for whoever wants it
+  back.
 
 ## Rules
 
@@ -198,10 +209,15 @@ iteration and says loudly that it proves nothing about the axioms.
 
 On top of the per-level win/lose axioms it asserts L2's thesis actually USES the gate (>= 10 corridor transits),
 lints every level for dead rooms (every room must spawn, receive, and be
-covered by the thesis routes), smoke-tests the redeploy flow (mid-run
-redraw with riders aboard: recall drop at an old-route room, ~3 s ghost
-countdown, service resuming at the new start; session-start commits stay
-instant), and unit-checks the v3.4 loop mechanics through the real editing
+covered by the thesis routes, and its BRIEFING names every card, passenger
+type and goal number), checks the v4 phase machine (a level opens on the
+briefing; PLAN is editable and gates RUN on every card having a 2-stop route;
+during a RUN taps, chip selection, CLEAR and `commit_route` all refuse and no
+car ever recalls or redeploys; ABORT and RETRY return to PLAN with routes kept
+and counters reset; watch mode skips straight to RUN), smoke-tests the
+redeploy flow through `commit_route_mid_run` (recall drop at an old-route
+room, ~3 s ghost countdown, service resuming at the new start; PLAN commits
+stay instant), and unit-checks the v3.4 loop mechanics through the real editing
 path (closing needs >= 4 cells + adjacency, 3-cell strokes cannot close,
 reopen by reversing onto the tail, closed cars advance forward-only and
 glide across the wrap seam, directional ride_dist identity a→b + b→a = n,
@@ -288,22 +304,26 @@ happens on 8 TRAIN seeds at STEP 0.25; every reported number is a median over
   hazard-striped corridors + occupied tint, route polylines, drag preview).
 - `scripts/v3/route.gd` — a drawn route: cell polyline + stop queries +
   the `closed` loop flag and direction-aware `ride_dist`.
-- `scripts/v3/main3.gd` — game controller: level loading, drag-to-draw
-  editing, per-corridor gate FIFO mutexes, seeded-RNG pulse spawning,
-  replanning, session flow, watch-mode setup, time scale.
+- `scripts/v3/main3.gd` — game controller: level loading, the
+  BRIEFING/PLAN/RUN/RESULT phase machine (`to_plan()`, `start_run()`,
+  `abort_run()`, `can_edit()`, `ready_to_run()`), drag-to-draw editing,
+  per-corridor gate FIFO mutexes, seeded-RNG pulse spawning, replanning,
+  watch-mode setup, time scale.
 - `scripts/v3/pathfind3.gd` — time-based Dijkstra over the stop graph
   (ride time + 7 s per-leg wait + sub-second per-passenger tie-break so
   identical routes share load).
 - `scripts/v3/car3.gd` — polyline ping-pong movement (forward-wrap on
   closed loops), door-phase stops
   (open/exchange/close), the UNDEPLOYED / RUNNING / RECALLING / REDEPLOYING
-  car state machine (mid-game commits recall riders, then redeploy behind a
-  3 s ghost countdown), idle parking + `home_cell` hook, slot-aware
-  load/unload, gate-group acquire/wait/release.
+  car state machine (the RECALLING/REDEPLOYING half is now reachable only
+  through `commit_route_mid_run`, since the v4 loop commits everything in
+  PLAN), idle parking + `home_cell` hook, slot-aware load/unload, gate-group
+  acquire/wait/release.
 - `scripts/v3/passenger3.gd` — visitor/patient/exec, patience (per-level
   overrides), "?" bubble, wait/transfer stats.
-- `scripts/v3/hud3.gd` — top bar, route card chips, CLEAR, hint line,
-  WATCHING banner, intro/win/lose overlays (incl. watch variants).
+- `scripts/v3/hud3.gd` — top bar (speed shown only during a RUN), route card
+  chips, CLEAR, the RUN/ABORT action button, hint line, WATCHING banner, and
+  the briefing/win/lose overlays (incl. watch variants).
 - `scripts/v3/discovered3.gd` — GENERATED by the depth tools: the best
   route-set found per level, in the same shape as `scenarios3.gd`, feeding
   the WATCH BEST button.

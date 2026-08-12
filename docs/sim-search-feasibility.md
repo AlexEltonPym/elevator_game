@@ -242,9 +242,9 @@ game.auto_spawn = true               # false = only hand-placed spawn_passenger(
 game.set_process(false)              # NOT done today; see §2 hazard
 
 # 4. routes: plain Array[Vector2i], no UI involved
-game.start_session()
 for i in routes.size():
     game.commit_route(i, cells_i, closed_i)
+game.start_run()
 
 # 5. tick
 var t := 0.0
@@ -255,15 +255,19 @@ while game.state == game.State.PLAYING and t < TIMEOUT:
 tree.root.remove_child(game); game.free()
 ```
 
-`start_session()` before `commit_route()` matters: the first commit of a
-never-deployed car deploys **instantly**, whereas a mid-run commit triggers the
-recall → 3 s redeploy countdown (`Car3.apply_route`).
+**Updated for v4 phase 1** (this doc records the v3.5 measurement; the order
+above has since inverted). Routes are now committed in the PLAN phase and
+`start_run()` is called after — which is what the player does too, so the
+optimizer and the player solve the same problem. `commit_route()` REFUSES once
+a run has started; the recall → 3 s redeploy countdown (`Car3.apply_route`) is
+reachable only through `commit_route_mid_run()`. Timings are unaffected: the
+scenario fingerprints are byte-identical across the change.
 
 ### Stats available on the finished object
 
 | Field | Type |
 | --- | --- |
-| `game.state` | `INTRO / PLAYING / WIN / LOSE` |
+| `game.state` | `BRIEFING / PLAN / PLAYING / WIN / LOSE` |
 | `game.served`, `game.lost`, `game.elapsed` | int, int, float |
 | `game.QUOTA`, `game.MAX_LOST` | int (from the level dict) |
 | `game.log_served` | `[{type, origin: Vector2i, dest: Vector2i, wait: float, rides: int}]` |

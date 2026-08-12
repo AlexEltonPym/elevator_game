@@ -51,10 +51,12 @@ func _run(tree: SceneTree, sc: Dictionary) -> Dictionary:
 	var game = load("res://scenes/v3_main.tscn").instantiate()
 	tree.root.add_child(game)
 	game.rng.seed = ScenData.Scen.SEEDS[sc.level] # canonical per-level seed
-	game.start_session()
+	# Commit in the PLAN phase, then run (the v4 loop; a fresh scene starts in
+	# BRIEFING, where commits are legal and every car deploys instantly).
 	for i in sc.routes.size():
 		game.commit_route(i, ScenData.Scen.cells_of(sc.routes[i]),
 				ScenData.Scen.closed_of(sc.routes[i]))
+	game.start_run()
 	var t := 0.0
 	var t0 := Time.get_ticks_usec()
 	while game.state == game.State.PLAYING and t < TIMEOUT:

@@ -1,13 +1,19 @@
 extends CanvasLayer
-## v3 HUD, built entirely in code:
+## v3 HUD, built entirely in code, driven by main3's phase machine:
 ## - top bar: level id, Served n/quota, Lost n/max, LEVELS, speed buttons
+##   (speed only matters while a run is on, so it only shows in PLAYING)
 ## - bottom panel: 3 route card chips (colored, route length + stop count),
-##   CLEAR button, contextual hint line
-## - overlays: intro / win (next level, level select, keep playing) /
-##   lose (retry, level select)
+##   CLEAR, a contextual hint line, and ONE big primary action button:
+##     PLAN   -> "RUN", disabled until game.ready_to_run()
+##     RUN    -> "ABORT" (back to PLAN)
+##   Chips and CLEAR are disabled whenever game.can_edit() is false, so the
+##   panel cannot even offer an edit during a run.
+## - overlays: BRIEFING (roster + crowd + thesis, generated from the level
+##   data by Levels3.briefing_body) / win (retry, next level, levels) /
+##   lose (retry, levels)
 ## Watch mode (game.watch != ""): the LEVELS button reads EXIT, a colored
-## WATCHING banner replaces the hint line, chips are display-only, and the
-## win/lose overlays offer Watch Again / Level Select instead.
+## WATCHING banner replaces the hint line, chips are display-only, there is no
+## action button, and the win/lose overlays offer Watch Again / Level Select.
 
 var game = null # main3.gd, set by main before first refresh
 
@@ -25,6 +31,8 @@ var speed_buttons: Array = []
 var hint_label: Label
 var chip_buttons: Array = []
 var clear_btn: Button
+var action_btn: Button # RUN in PLAN, ABORT during a run
+var _action_key := "" # last phase/ready pair the action button was styled for
 var watch_banner: ColorRect = null
 var watch_label: Label = null
 var overlay: Control = null
@@ -55,19 +63,21 @@ func _process(_delta: float) -> void:
 # ---------------------------------------------------------------- top bar
 
 func _build_top() -> void:
+	# The bar fills the 0..100 band above the grid (Grid3.GRID_Y_TOP), which is
+	# what lets every button in it clear the 90 px one-thumb floor.
 	var bg := ColorRect.new()
 	bg.color = Color(0.07, 0.07, 0.10)
 	bg.position = Vector2.ZERO
-	bg.size = Vector2(720, 92)
+	bg.size = Vector2(720, 98)
 	add_child(bg)
-	level_label = _make_label(Vector2(14, 24), 34, Color(0.95, 0.85, 0.5))
+	level_label = _make_label(Vector2(14, 28), 34, Color(0.95, 0.85, 0.5))
 	level_label.text = "X-1"
-	served_label = _make_label(Vector2(110, 10), 24, Color(0.45, 0.95, 0.55))
-	lost_label = _make_label(Vector2(110, 48), 24, Color(1.0, 0.5, 0.45))
+	served_label = _make_label(Vector2(110, 12), 24, Color(0.45, 0.95, 0.55))
+	lost_label = _make_label(Vector2(110, 52), 24, Color(1.0, 0.5, 0.45))
 	menu_btn = Button.new()
 	menu_btn.text = "LEVELS" # reads EXIT in watch mode (see refresh_stats)
-	menu_btn.position = Vector2(330, 6)
-	menu_btn.size = Vector2(100, 80)
+	menu_btn.position = Vector2(330, 4)
+	menu_btn.size = Vector2(100, 90)
 	menu_btn.add_theme_font_size_override("font_size", 20)
 	menu_btn.pressed.connect(func():
 		if game != null:
@@ -76,8 +86,8 @@ func _build_top() -> void:
 	for i in SPEEDS.size():
 		var btn := Button.new()
 		btn.text = SPEEDS[i][1]
-		btn.position = Vector2(438 + i * 94, 6)
-		btn.size = Vector2(88, 80)
+		btn.position = Vector2(438 + i * 94, 4)
+		btn.size = Vector2(88, 90)
 		btn.add_theme_font_size_override("font_size", 30)
 		var s: float = SPEEDS[i][0]
 		btn.pressed.connect(func(): _on_speed(s))
@@ -98,20 +108,20 @@ func _build_panel() -> void:
 	bg.position = Vector2(0, 1010)
 	bg.size = Vector2(720, 270)
 	add_child(bg)
-	hint_label = _make_label(Vector2(14, 1018), 20, Color(1, 1, 1, 0.6))
+	hint_label = _make_label(Vector2(14, 1016), 20, Color(1, 1, 1, 0.6))
 	for i in 3:
 		var btn := Button.new()
-		btn.position = Vector2(14 + i * 172, 1056)
-		btn.size = Vector2(160, 150)
-		btn.add_theme_font_size_override("font_size", 19)
+		btn.position = Vector2(14 + i * 172, 1046)
+		btn.size = Vector2(160, 116)
+		btn.add_theme_font_size_override("font_size", 18)
 		var idx: int = i
 		btn.pressed.connect(func(): game.select_card(idx))
 		add_child(btn)
 		chip_buttons.append(btn)
 	clear_btn = Button.new()
 	clear_btn.text = "CLEAR"
-	clear_btn.position = Vector2(546, 1056)
-	clear_btn.size = Vector2(160, 150)
+	clear_btn.position = Vector2(546, 1046)
+	clear_btn.size = Vector2(160, 116)
 	clear_btn.add_theme_font_size_override("font_size", 26)
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = Color(0.55, 0.18, 0.16)
@@ -120,6 +130,14 @@ func _build_panel() -> void:
 	clear_btn.visible = false
 	clear_btn.pressed.connect(_on_clear)
 	add_child(clear_btn)
+	# The phase's one big action: RUN (commit the plan) or ABORT (back to it).
+	# Full width and 96 px tall - this is the button the thumb lives on.
+	action_btn = Button.new()
+	action_btn.position = Vector2(14, 1174)
+	action_btn.size = Vector2(692, 96)
+	action_btn.add_theme_font_size_override("font_size", 32)
+	action_btn.pressed.connect(_on_action)
+	add_child(action_btn)
 	# WATCHING banner (watch mode only): sits where the hint line lives.
 	watch_banner = ColorRect.new()
 	watch_banner.position = Vector2(0, 1010)
@@ -137,6 +155,46 @@ func _build_panel() -> void:
 func _on_clear() -> void:
 	if game != null and game.selected_card >= 0:
 		game.clear_route(game.selected_card)
+
+
+func _on_action() -> void:
+	if game == null:
+		return
+	if game.state == game.State.PLAN:
+		if game.ready_to_run():
+			game.start_run()
+	elif game.state == game.State.PLAYING:
+		game.abort_run()
+
+
+## Style the RUN/ABORT button for the current phase (and hide it where the
+## phase's action lives on an overlay instead). Called every frame from
+## refresh_stats, so it only rebuilds the StyleBox when the look changes.
+func _refresh_action() -> void:
+	var watching: bool = game.watch != ""
+	action_btn.visible = not watching \
+			and (game.state == game.State.PLAN or game.state == game.State.PLAYING)
+	if not action_btn.visible:
+		return
+	var running: bool = game.state == game.State.PLAYING
+	var ready: bool = running or game.ready_to_run()
+	var key := "%d%s" % [game.state, str(ready)]
+	if key == _action_key:
+		return
+	_action_key = key
+	action_btn.text = "ABORT - BACK TO PLAN" if running else "RUN"
+	action_btn.disabled = not ready
+	var col := Color(0.55, 0.18, 0.16) if running else Color(0.16, 0.45, 0.26)
+	if not ready:
+		col = Color(0.22, 0.22, 0.26)
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = col
+	sb.set_corner_radius_all(10)
+	sb.border_color = col.lightened(0.35)
+	sb.set_border_width_all(3)
+	for s in ["normal", "hover", "pressed", "disabled"]:
+		action_btn.add_theme_stylebox_override(s, sb)
+	action_btn.add_theme_color_override("font_disabled_color", Color(1, 1, 1, 0.35))
 
 
 ## Rebuild the chip visuals; call on any route or selection change.
@@ -174,7 +232,8 @@ func refresh_cards() -> void:
 				sub = "%d cells - %d stops" % [route.cells.size(), stops]
 			if stops < 2:
 				sub += "\nneeds 2 stops!"
-		var kind: String = "fast express" if card.type == "express" else "4 slots"
+		var kind: String = "%s - %d slots" % [
+				"express" if card.type == "express" else "standard", int(card.cap)]
 		btn.text = "%s\n%s\n%s" % [card.name, kind, sub]
 		var selected: bool = game.selected_card == i
 		var sb := StyleBoxFlat.new()
@@ -190,7 +249,8 @@ func refresh_cards() -> void:
 		btn.add_theme_stylebox_override("hover", sb)
 		btn.add_theme_stylebox_override("pressed", sb)
 		btn.add_theme_stylebox_override("disabled", sb)
-		btn.disabled = watching # watch mode: chips are display-only
+		# Selectable in PLAN and nowhere else (watch mode, RUN, RESULT).
+		btn.disabled = not game.can_edit()
 
 
 ## Cheap per-frame refresh of labels + contextual widgets.
@@ -203,16 +263,20 @@ func refresh_stats() -> void:
 	if game.endless:
 		served_label.text = "Served %d (endless)" % game.served
 		lost_label.text = "Lost %d" % game.lost
+	# Speed only means anything while the sim is running.
+	var running: bool = game.state == game.State.PLAYING
 	for i in speed_buttons.size():
 		var active: bool = is_equal_approx(game.time_scale, SPEEDS[i][0])
+		speed_buttons[i].visible = running
 		speed_buttons[i].modulate = Color(1, 1, 1, 1.0) if active else Color(1, 1, 1, 0.45)
 	var watching: bool = game.watch != ""
 	menu_btn.text = "EXIT" if watching else "LEVELS"
 	watch_banner.visible = watching
 	watch_label.visible = watching
 	hint_label.visible = not watching
-	clear_btn.visible = not watching and game.selected_card >= 0 \
+	clear_btn.visible = game.can_edit() and game.selected_card >= 0 \
 			and game.routes[game.selected_card] != null
+	_refresh_action()
 	# Recall/redeploy chips carry a live countdown - rebuild them while any
 	# car is in a pending state (cheap: 3 buttons).
 	for c in game.cars:
@@ -225,38 +289,45 @@ func refresh_stats() -> void:
 
 
 func _refresh_hint() -> void:
+	hint_label.add_theme_color_override("font_color", Color(1, 1, 1, 0.6))
+	if game.state == game.State.PLAYING:
+		hint_label.text = "Running - the network is locked. Watch it, then ABORT to replan."
+		return
+	if game.state != game.State.PLAN:
+		hint_label.text = ""
+		return
 	var sel: int = game.selected_card
 	if sel >= 0 and game.route_warning(sel):
-		hint_label.text = "Route needs at least 2 room stops - car is parked. Drag again to redraw."
+		hint_label.text = "Route needs at least 2 room stops - drag again to redraw."
 		hint_label.add_theme_color_override("font_color", Color(1.0, 0.55, 0.4))
 		return
-	hint_label.add_theme_color_override("font_color", Color(1, 1, 1, 0.6))
+	var missing: Array = game.cards_not_ready()
+	if not missing.is_empty():
+		# The RUN button is disabled; say exactly which card is holding it up.
+		hint_label.text = "PLAN - RUN needs a 2-stop route for: %s" % ", ".join(missing)
+		hint_label.add_theme_color_override("font_color", Color(1.0, 0.75, 0.4))
+		return
 	if game.drawing:
 		hint_label.text = "Drag through open cells - release to commit the route"
 	elif sel >= 0:
-		hint_label.text = "Drag on the grid to draw %s's route (redraw replaces; rooms become stops)" % game.CARDS[sel].name
+		hint_label.text = "Drag to draw %s's route (redraw replaces; rooms become stops)" % game.CARDS[sel].name
 	else:
-		var warn := false
-		for i in 3:
-			if game.route_warning(i):
-				warn = true
-		if warn:
-			hint_label.text = "A route needs at least 2 room stops - its car is parked (!)"
-			hint_label.add_theme_color_override("font_color", Color(1.0, 0.55, 0.4))
-		else:
-			hint_label.text = "Tap a card chip, then drag its route through the maze"
+		hint_label.text = "PLAN ready - tap a chip to redraw, or press RUN"
 
 
 # ---------------------------------------------------------------- overlays
 
-func show_intro() -> void:
+## THE BRIEFING (v4 phase 1). Every word below the title is generated from the
+## level data by Levels3.briefing_body — thesis, intro, the elevator roster
+## (type / capacity / speed character) and the passenger mix that will actually
+## spawn — so it cannot describe a level the simulation is not running.
+func show_briefing() -> void:
 	if headless:
 		return
 	var lv: Dictionary = game.level
 	_show_overlay("%s  %s" % [lv.id, str(lv.name).to_upper()],
-			str(lv.intro) +
-			"\n\nServe %d before losing %d." % [game.QUOTA, game.MAX_LOST],
-			[{"text": "START", "cb": func(): game.start_session()}])
+			Levels3.briefing_body(lv),
+			[{"text": "PLAN", "cb": func(): game.to_plan()}], 18)
 
 
 func show_win(served: int, lost: int) -> void:
@@ -269,10 +340,9 @@ func show_win(served: int, lost: int) -> void:
 	var buttons: Array = []
 	if Levels3.current < Levels3.LEVELS.size() - 1:
 		buttons.append({"text": "NEXT LEVEL", "cb": func(): game.next_level()})
+	buttons.append({"text": "RETRY", "cb": func(): game.to_plan()})
 	buttons.append({"text": "LEVEL SELECT", "cb": func(): game.to_level_select()})
-	buttons.append({"text": "KEEP PLAYING", "cb": func(): game.keep_playing()})
-	_show_overlay("QUOTA MET",
-			"Served %d, lost %d." % [served, lost], buttons)
+	_show_overlay("QUOTA MET", _result_body(served, lost), buttons)
 
 
 func show_lose(served: int, lost: int) -> void:
@@ -282,12 +352,22 @@ func show_lose(served: int, lost: int) -> void:
 		_show_overlay("%s LOSES" % game.watch.to_upper(),
 				"Lost %d passengers (served %d)." % [lost, served], _watch_buttons())
 		return
-	_show_overlay("SHIFT FAILED",
-			"Lost %d passengers (served %d).\nYour routes stay drawn - counters reset." % [lost, served],
+	_show_overlay("SHIFT FAILED", _result_body(served, lost),
 			[
-				{"text": "RETRY", "cb": func(): game.restart_session()},
+				{"text": "RETRY", "cb": func(): game.to_plan()},
 				{"text": "LEVEL SELECT", "cb": func(): game.to_level_select()},
 			])
+
+
+## What the run actually did — the "learn" half of plan/run/learn/retry.
+func _result_body(served: int, lost: int) -> String:
+	var wait := 0.0
+	for e in game.log_served:
+		wait += e.wait
+	if not game.log_served.is_empty():
+		wait /= game.log_served.size()
+	return "Served %d of %d, lost %d of %d.\nAverage wait %.0f s over %.0f s of shift.\nRETRY keeps your routes - redraw and run again." % [
+			served, game.QUOTA, lost, game.MAX_LOST, wait, game.elapsed]
 
 
 func _watch_buttons() -> Array:
@@ -305,20 +385,32 @@ func hide_overlay() -> void:
 		overlay = null
 
 
-func _show_overlay(title_text: String, body_text: String, buttons: Array) -> void:
+func _show_overlay(title_text: String, body_text: String, buttons: Array,
+		body_size := 23) -> void:
 	hide_overlay()
 	overlay = Control.new()
 	add_child(overlay)
-	overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
+	# A Control parented to a CanvasLayer has no anchorable parent rect, so
+	# PRESET_FULL_RECT resolved against 0x0: the dim wash covered nothing and
+	# every overlay sat jammed in the top-left corner. Size all three to the
+	# viewport by hand instead — measured, not assumed (tools/run_depth.gd
+	# --smoke checks the result stays inside 720x1280).
+	var vp: Vector2 = get_viewport().get_visible_rect().size
+	overlay.position = Vector2.ZERO
+	overlay.size = vp
 	var dim := ColorRect.new()
-	dim.color = Color(0, 0, 0, 0.8)
+	dim.color = Color(0, 0, 0, 0.88)
 	overlay.add_child(dim)
-	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	dim.position = Vector2.ZERO
+	dim.size = vp
 	var center := CenterContainer.new()
 	overlay.add_child(center)
-	center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	center.position = Vector2.ZERO
+	center.size = vp
 	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 30)
+	# The briefing is a tall block of text; 30 px gaps push its button off a
+	# 1280-high screen, so long bodies get tighter spacing.
+	box.add_theme_constant_override("separation", 30 if body_size >= 23 else 18)
 	center.add_child(box)
 	var title := Label.new()
 	title.text = title_text
@@ -328,13 +420,17 @@ func _show_overlay(title_text: String, body_text: String, buttons: Array) -> voi
 	box.add_child(title)
 	var body := Label.new()
 	body.text = body_text
-	body.add_theme_font_size_override("font_size", 23)
+	body.add_theme_font_size_override("font_size", body_size)
 	body.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	# Hold the text inside the 720 px screen: a fixed column plus word wrap, so
+	# a level whose intro has a long line wraps instead of running off the edge.
+	body.custom_minimum_size.x = 680.0
+	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	box.add_child(body)
 	for b in buttons:
 		var btn := Button.new()
 		btn.text = b.text
-		btn.custom_minimum_size = Vector2(420, 100)
+		btn.custom_minimum_size = Vector2(420, 100 if body_size >= 23 else 92)
 		btn.add_theme_font_size_override("font_size", 28)
 		btn.pressed.connect(b.cb)
 		box.add_child(btn)

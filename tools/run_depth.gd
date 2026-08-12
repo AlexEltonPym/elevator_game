@@ -214,7 +214,9 @@ func _smoke() -> bool:
 			labels.size() >= Levels3.LEVELS.size(), "%d buttons" % labels.size()) and ok
 	root.remove_child(sel)
 	sel.free()
-	# 2. Every level instantiates and plays in NORMAL play mode.
+	# 2. Every level instantiates and plays THROUGH THE v4 PHASES: a fresh
+	#    scene opens on the BRIEFING, PLAN is where routes may be drawn, and
+	#    RUN locks them.
 	for i in Levels3.LEVELS.size():
 		var lv: Dictionary = Levels3.LEVELS[i]
 		Levels3.current = i
@@ -222,16 +224,37 @@ func _smoke() -> bool:
 		var g = load("res://scenes/v3_main.tscn").instantiate()
 		g.headless = true
 		root.add_child(g)
+		ok = _p("%s: opens on the briefing" % lv.id, g.state == g.State.BRIEFING,
+				"state %d" % g.state) and ok
+		ok = _hud_layout(g, lv) and ok
 		g.rng.seed = 5150
-		g.endless = true # one card only: this checks it BUILDS and TICKS, not that it wins
-		g.start_session()
-		g.commit_route(0, Scenarios3.cells_of(Scenarios3.route_set(lv.id, "thesis")[0]),
-				Scenarios3.closed_of(Scenarios3.route_set(lv.id, "thesis")[0]))
+		# Walk the whole loop through the REAL HUD BUTTONS, not the API: a
+		# phase machine nothing can press is not a game.
+		var to_plan: bool = _press(g, "PLAN")
+		ok = _p("%s: the briefing's PLAN button opens the editable phase" % lv.id,
+				to_plan and g.state == g.State.PLAN and g.can_edit(),
+				"pressed %s state %d" % [str(to_plan), g.state]) and ok
+		var rs: Array = Scenarios3.route_set(lv.id, "thesis")
+		g.commit_route(0, Scenarios3.cells_of(rs[0]), Scenarios3.closed_of(rs[0]))
+		var run_locked: bool = not g.ready_to_run() and not _press(g, "RUN")
+		for k in range(1, mini(rs.size(), g.CARDS.size())):
+			g.commit_route(k, Scenarios3.cells_of(rs[k]), Scenarios3.closed_of(rs[k]))
+		ok = _p("%s: RUN stays disabled until every card is routed" % lv.id,
+				run_locked and g.ready_to_run() and g.state == g.State.PLAN,
+				"locked %s ready %s" % [str(run_locked), str(g.ready_to_run())]) and ok
+		var started: bool = _press(g, "RUN")
 		for _t in 300:
 			g.advance(0.1)
 		ok = _p("%s: plays normally" % lv.id,
-				g.cars.size() == lv.cards.size() and g.state == g.State.PLAYING
-				and g.routes[0] != null, "state %d" % g.state) and ok
+				started and g.cars.size() == lv.cards.size()
+				and g.state == g.State.PLAYING and g.routes[0] != null
+				and not g.can_edit() and g.served > 0,
+				"state %d served %d" % [g.state, g.served]) and ok
+		var aborted: bool = _press(g, "ABORT - BACK TO PLAN")
+		ok = _p("%s: ABORT returns to PLAN with the routes kept" % lv.id,
+				aborted and g.state == g.State.PLAN and g.can_edit()
+				and g.served == 0 and g.routes[0] != null,
+				"pressed %s state %d served %d" % [str(aborted), g.state, g.served]) and ok
 		root.remove_child(g)
 		g.free()
 	# 3. Every WATCH strategy the level select offers actually pre-draws its
@@ -254,11 +277,14 @@ func _smoke() -> bool:
 			for r in g3.routes:
 				if r != null:
 					drawn += 1
+			# Watch mode skips BRIEFING/PLAN: it is already running.
+			var started: bool = g3.state == g3.State.PLAYING and not g3.can_edit()
 			for _t in 600:
 				g3.advance(0.1)
 			ok = _p("%s: WATCH %s draws %d routes and runs" % [lv3.id, strat.to_upper(), want],
-					drawn == want and g3.served > 0,
-					"drew %d/%d, served %d" % [drawn, want, g3.served]) and ok
+					drawn == want and g3.served > 0 and started,
+					"drew %d/%d, served %d, started %s" % [
+							drawn, want, g3.served, str(started)]) and ok
 			Levels3.watch_strategy = ""
 			root.remove_child(g3)
 			g3.free()
@@ -276,10 +302,12 @@ func _smoke() -> bool:
 		for r in g2.routes:
 			if r != null:
 				committed += 1
+		var best_started: bool = g2.state == g2.State.PLAYING
 		for _t in 600:
 			g2.advance(0.1)
 		ok = _p("%s: WATCH BEST commits and runs" % lv2.id,
-				committed == Discovered3.route_set(lv2.id).size() and g2.served > 0,
+				committed == Discovered3.route_set(lv2.id).size() and g2.served > 0
+				and best_started,
 				"%d routes, served %d lost %d" % [committed, g2.served, g2.lost]) and ok
 		print("      %s watch-best 60 s: served %d, lost %d" % [lv2.id, g2.served, g2.lost])
 		Levels3.watch_strategy = ""
@@ -535,6 +563,57 @@ func _n_discovered() -> int:
 		if Discovered3.has(lv.id):
 			n += 1
 	return n
+
+
+## The 720x1280 one-thumb rules, checked rather than asserted in a comment:
+## every button the HUD builds (panel, top bar and the briefing overlay that is
+## open right now) is at least 90 px tall and inside the viewport, and the
+## generated briefing text is short enough that its PLAN button still fits on
+## screen under the title.
+func _hud_layout(g, lv: Dictionary) -> bool:
+	var btns: Array = []
+	_collect_button_nodes(g.hud, btns)
+	var small: Array = []
+	var off: Array = []
+	for b in btns:
+		var label: String = String(b.text).split("\n")[0]
+		# Overlay buttons live in a VBox and have no size until a layout pass,
+		# so their minimum is the honest number there.
+		if maxf(b.size.y, b.custom_minimum_size.y) < 90.0:
+			small.append(label)
+		if b.size.x > 0.0 and (b.position.x < 0.0 or b.position.y < 0.0
+				or b.position.x + b.size.x > 720.0
+				or b.position.y + b.size.y > 1280.0):
+			off.append(label)
+	var lines: int = Levels3.briefing_body(lv).split("\n").size()
+	return _p("%s: HUD fits 720x1280, %d buttons >= 90 px, briefing %d lines" % [
+			lv.id, btns.size(), lines],
+			small.is_empty() and off.is_empty() and btns.size() >= 8 and lines <= 34,
+			"short %s offscreen %s" % [str(small), str(off)])
+
+
+## Press the HUD button whose label starts with `label`, exactly as a thumb
+## would. Refreshes the HUD first, because nothing here runs engine frames and
+## a button's enabled state is set in refresh_stats(). Returns false when no
+## such button exists or it is disabled — which is itself an assertion (RUN
+## must be unpressable until the plan is legal).
+func _press(g, label: String) -> bool:
+	g.hud.refresh_stats()
+	g.hud.refresh_cards()
+	var btns: Array = []
+	_collect_button_nodes(g.hud, btns)
+	for b in btns:
+		if String(b.text).begins_with(label) and b.visible and not b.disabled:
+			b.pressed.emit()
+			return true
+	return false
+
+
+func _collect_button_nodes(node: Node, out: Array) -> void:
+	for c in node.get_children():
+		if c is Button:
+			out.append(c)
+		_collect_button_nodes(c, out)
 
 
 func _collect_buttons(node: Node, out: Array) -> void:

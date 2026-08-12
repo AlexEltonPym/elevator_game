@@ -2,20 +2,45 @@ extends Node2D
 ## Game controller for prototype v3 "Path Drawing".
 ## Owns: the level config (data-driven via Levels3), the three route cards +
 ## cars, drag-to-draw route editing, the gate FIFO mutexes, PULSE-based
-## passenger spawning + time-based replanning, session flow (win -> next
-## level / level select / keep playing, lose -> retry / level select), and
+## passenger spawning + time-based replanning, the phase machine below, and
 ## the game time scale (pause/1x/3x - a plain variable multiplied into game
-## ticks, so UI and route editing keep working while paused).
+## ticks).
 ##
-## Mid-game route commits/CLEAR do NOT teleport cars: Car3.apply_route runs
-## the recall -> redeploy state machine (see car3.gd); only a never-deployed
-## card's first commit appears instantly.
+## ------------------------------------------------- THE v4 LOOP: plan, then run
+##
+## design -> commit -> watch -> learn -> retry. There is NO mid-run editing:
+##
+##   BRIEFING  the level's thesis line, the elevator ROSTER you get and the
+##             passenger MIX to expect (hud3 reads both straight out of the
+##             level data, so a briefing can never drift from what spawns).
+##             No clock, no passengers.        -> PLAN
+##   PLAN      the grid is fully editable and NOTHING is running: no clock, no
+##             passengers, no spawner. Draw / redraw / clear freely.
+##             -> RUN, gated on ready_to_run() (every card has a route with
+##             >= 2 room stops).
+##   PLAYING   the run. can_edit() is false, so every editing path - taps,
+##             drags, CLEAR, chip selection, commit_route() itself - refuses.
+##             Speed controls stay live; watching is the point now.
+##             -> ABORT back to PLAN (counters reset, routes kept).
+##   WIN/LOSE  the result overlay + stats. -> RETRY (back to PLAN with the
+##             routes intact), NEXT LEVEL (win only), LEVELS.
+##
+## Because EVERY commit now happens in PLAN, every car deploys INSTANTLY
+## (commit_route -> Car3.set_route). Car3's recall -> ghost-countdown ->
+## redeploy machinery is still correct and still tested, but it is out of the
+## main loop: only commit_route_mid_run() can reach it, and nothing in the
+## player flow calls that. See car3.gd and commit_route_mid_run() below.
+##
+## Watch mode (Levels3.watch_strategy) skips BRIEFING/PLAN entirely: the
+## scenario routes are committed and the run starts at once.
 ##
 ## All randomness flows through `rng` (one RandomNumberGenerator): normal
 ## play randomizes it, the balance harness sets a fixed seed for
 ## deterministic runs.
 
-enum State { INTRO, PLAYING, WIN, LOSE }
+## PLAYING is the RUN phase; WIN/LOSE together are the RESULT phase. The names
+## are kept because the harness and the depth tools test against them.
+enum State { BRIEFING, PLAN, PLAYING, WIN, LOSE }
 
 ## Safety bound on one magnetic-extend walk (a drag sample can never legitimately
 ## cross more cells than the grid holds; each step is strictly closer anyway).
@@ -26,7 +51,7 @@ var CARDS: Array = [] # this level's 3 elevator cards
 var QUOTA := 30
 var MAX_LOST := 8
 
-var state: int = State.INTRO
+var state: int = State.BRIEFING
 var time_scale := 1.0
 var served := 0
 var lost := 0
@@ -109,17 +134,18 @@ func _ready() -> void:
 		cars_node.add_child(c)
 		cars.append(c)
 	if watch != "":
-		# Watch mode: canonical harness seed (identical demand for both
-		# strategies), scenario routes pre-drawn, editing disabled, no intro.
+		# Watch mode: canonical harness seed (identical demand for every
+		# strategy), scenario routes committed in the PLAN phase exactly like a
+		# player's, then straight into the run - no briefing, no editing.
 		rng.seed = Scenarios3.SEEDS[level.id]
-		start_session()
 		var rs: Array = Discovered3.route_set(level.id) if watch == "best" \
 				else Scenarios3.route_set(level.id, watch)
 		for i in mini(rs.size(), CARDS.size()):
 			commit_route(i, Scenarios3.cells_of(rs[i]), Scenarios3.closed_of(rs[i]))
+		start_run()
 	else:
 		rng.randomize() # normal play is unseeded; the harness overrides rng.seed
-		hud.show_intro()
+		hud.show_briefing()
 	hud.refresh_cards()
 
 
@@ -179,33 +205,48 @@ func _spawn_tick(dt: float) -> void:
 			pulse_timer = n * current_interval()
 
 
-# ---------------------------------------------------------------- session flow
+# ---------------------------------------------------------------- phase flow
 
-func start_session() -> void:
-	hud.hide_overlay()
-	state = State.PLAYING
-	_reset_spawner()
-
-
-func keep_playing() -> void:
-	endless = true
-	hud.hide_overlay()
-	state = State.PLAYING
-
-
-## Reset counters/passengers (routes are KEPT — free redraw makes wiping them
-## pointless); used by the lose "Retry".
-func restart_session() -> void:
+## Enter the editable PLAN phase. THE one way in: the briefing's PLAN button,
+## ABORT during a run, and RETRY on a result overlay all land here. Routes are
+## KEPT (that is the whole point of retry); everything else - counters, the
+## passenger pool, the clock, the spawner, any car left mid-recall by the
+## mid-run commit path - is reset, so a plan always starts from a clean
+## building.
+func to_plan() -> void:
+	state = State.PLAN
+	time_scale = 1.0
+	drawing = false
+	stroke = []
+	stroke_closed = false
 	served = 0
 	lost = 0
 	elapsed = 0.0
 	endless = false
 	log_served = []
 	log_lost = []
-	_clear_passengers()
+	_clear_passengers() # also re-parks every car at its route start
+	_reset_spawner()
+	hud.hide_overlay()
+	hud.refresh_cards()
+
+
+## Commit the plan and start the simulation. THE "start run" entry point: the
+## RUN button, watch mode, the balance harness and the depth tools all use it,
+## and all of them commit their routes BEFORE calling it (see commit_route).
+##
+## It deliberately does NOT enforce ready_to_run(); that is the RUN BUTTON's
+## gate. The search tools evaluate route-sets that leave a card undrawn on
+## purpose, and an unrouted card simply parks.
+func start_run() -> void:
 	hud.hide_overlay()
 	state = State.PLAYING
 	_reset_spawner()
+
+
+## RUN -> PLAN. Same reset as any other way into PLAN.
+func abort_run() -> void:
+	to_plan()
 
 
 func next_level() -> void:
@@ -260,9 +301,32 @@ func set_speed(s: float) -> void:
 
 # ---------------------------------------------------------------- input
 
+## THE editing gate. Route editing is a PLAN-phase action and nothing else:
+## during a RUN, on a result overlay, on the briefing, or in watch mode the
+## network is frozen. Every editing entry point checks this - the drag
+## handlers, chip selection, CLEAR, and commit_route itself - so there is no
+## path (input, HUD, or API) that redraws a route while the sim is running.
+func can_edit() -> bool:
+	return watch == "" and state == State.PLAN
+
+
+## Cards that cannot run as drawn: no route, or a route with < 2 room stops
+## (the existing "car is parked" rule). RUN is gated on this being empty.
+func cards_not_ready() -> Array:
+	var out: Array = []
+	for i in CARDS.size():
+		if routes[i] == null or routes[i].stop_cells().size() < 2:
+			out.append(CARDS[i].name)
+	return out
+
+
+func ready_to_run() -> bool:
+	return cards_not_ready().is_empty()
+
+
 func _unhandled_input(event: InputEvent) -> void:
-	if watch != "" or state != State.PLAYING:
-		return # watch mode: routes are the scenario's, taps do nothing
+	if not can_edit():
+		return # RUN / RESULT / watch mode: the grid is read-only
 	if event is InputEventScreenTouch:
 		if event.pressed:
 			_begin_stroke(event.position)
@@ -273,8 +337,8 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func select_card(i: int) -> void:
-	if watch != "":
-		return # card chips are display-only while watching
+	if not can_edit():
+		return # chips are display-only outside PLAN
 	selected_card = -1 if selected_card == i else i
 	drawing = false
 	stroke = []
@@ -283,7 +347,7 @@ func select_card(i: int) -> void:
 
 
 func _begin_stroke(pos: Vector2) -> void:
-	if selected_card < 0:
+	if selected_card < 0 or not can_edit():
 		return
 	var cell := Grid3.cell_at(pos)
 	if cell.x < 0 or not Grid3.passable(cell):
@@ -400,13 +464,17 @@ func _end_stroke() -> void:
 
 # ---------------------------------------------------------------- route edits
 
-## Commit `cells` as card i's route (REPLACES any previous route). The car
-## decides how to get there (Car3.apply_route): a never-deployed car appears
-## instantly; a deployed one recalls its riders to the nearest old-route room
-## stop first, then redeploys at the new start after a ghost countdown.
-## `closed` marks a loop (stroke closed onto its head — the car will travel
-## forward around the cycle forever). Every waiting passenger replans against
-## the NEW route immediately.
+## Commit `cells` as card i's route (REPLACES any previous route), the way the
+## player does: in the PLAN phase, where nothing is running, so the car simply
+## APPEARS at the new start (Car3.set_route). `closed` marks a loop (stroke
+## closed onto its head — the car will travel forward around the cycle
+## forever).
+##
+## REFUSED outside PLAN/BRIEFING. That is the v4 rule in one line: the network
+## is frozen for the whole run, so no caller — player, harness or tool — can
+## reshape it mid-simulation by accident. The harness and the depth tools
+## therefore commit first and call start_run() after; commit_route_mid_run()
+## is the deliberate way in for the code that still tests recall/redeploy.
 ##
 ## Geometry is checked by Route3.validate (the drag code can only produce
 ## legal strokes, so this is the safety net for PROGRAMMATIC callers: the
@@ -414,6 +482,24 @@ func _end_stroke() -> void:
 ## logged, the previous route kept, no crash. An EMPTY cell array clears the
 ## card, exactly as before. Returns true when the commit went through.
 func commit_route(i: int, cells: Array, closed := false) -> bool:
+	if state != State.PLAN and state != State.BRIEFING:
+		push_error("commit_route(%d) refused: routes are locked outside PLAN" % i)
+		return false
+	return _commit(i, cells, closed, false)
+
+
+## MID-RUN commit — the v3.3 recall -> ghost countdown -> redeploy path
+## (Car3.apply_route). NOTHING in the v4 player flow calls this: every commit
+## happens in PLAN, so every car deploys instantly and the recall machinery
+## never fires during a run. It is kept, working and tested, because it is
+## still correct and a future "place-only mid-run" mode wants it; tests/
+## balance.gd drives the redeploy checks through here rather than through a
+## player path that no longer exists.
+func commit_route_mid_run(i: int, cells: Array, closed := false) -> bool:
+	return _commit(i, cells, closed, true)
+
+
+func _commit(i: int, cells: Array, closed: bool, mid_run: bool) -> bool:
 	var r: Route3 = null
 	if cells.size() > 0:
 		var err := Route3.validate(cells, closed and cells.size() >= 4)
@@ -424,17 +510,20 @@ func commit_route(i: int, cells: Array, closed := false) -> bool:
 		r.cells = cells.duplicate()
 		r.closed = closed and cells.size() >= 4
 	routes[i] = r
-	cars[i].apply_route(r)
+	if mid_run:
+		cars[i].apply_route(r) # recall riders, then redeploy after a countdown
+	else:
+		cars[i].set_route(r) # PLAN: nothing is running, so the car just appears
 	replan_all()
 	hud.refresh_cards()
 	return true
 
 
+## CLEAR button. PLAN-phase only, like every other edit.
 func clear_route(i: int) -> void:
-	routes[i] = null
-	cars[i].apply_route(null)
-	replan_all()
-	hud.refresh_cards()
+	if not can_edit():
+		return
+	_commit(i, [], false, false)
 
 
 ## A recalled car dumped a rider at `cell` (a room stop of its OLD route):

@@ -228,10 +228,15 @@ func run(level_index: int, routes: Array, seed_v: int, step: float,
 			return out
 	game.rng.seed = seed_v
 	game.endless = false # play the REAL level: quota / max_lost / win / lose
-	game.start_session()
+	# v4 loop: commit the whole route-set in the PLAN phase, THEN start the run
+	# — which is exactly what the player now does, so the optimizer and the
+	# player are solving the same problem (docs/v4-spec.md phase 1). A fresh
+	# scene sits in BRIEFING, where commits are legal; no route may change once
+	# start_run() has been called.
 	for i in mini(routes.size(), game.CARDS.size()):
 		if routes[i] != null:
 			game.commit_route(i, routes[i].cells, routes[i].get("closed", false))
+	game.start_run()
 	var t := 0.0
 	var t0 := Time.get_ticks_usec()
 	while t < TIMEOUT and game.state == game.State.PLAYING:

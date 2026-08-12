@@ -337,6 +337,103 @@ static func get_level(i: int) -> Dictionary:
 	return LEVELS[clampi(i, 0, LEVELS.size() - 1)]
 
 
+# ------------------------------------------------------ briefing (v4 phase 1)
+#
+# The BRIEFING screen is GENERATED from the very fields the simulation reads —
+# `cards` for the roster, `mix` + `patience` + `exec_*` for the crowd, `spawn`
+# for the pace, `quota`/`max_lost` for the goal. Nothing about a level is
+# described twice, so a briefing cannot drift from what actually spawns; the
+# only hand-written strings it shows are the level's own thesis/intro.
+# tests/balance.gd lints every level against this (see _briefing_checks).
+
+## One line per elevator card: type, width (once phase 2 adds it), capacity
+## and speed character — everything a player needs to plan the roster.
+static func roster_lines(lv: Dictionary) -> Array:
+	var out: Array = []
+	for c in lv.cards:
+		var bits: Array = [str(c.type)]
+		if c.has("width"):
+			bits.append("width %d" % int(c.width))
+		bits.append("%d slots" % int(c.cap))
+		bits.append(speed_word(float(c.speed)))
+		out.append("%s - %s" % [str(c.name), " - ".join(bits)])
+	return out
+
+
+## Speed character, derived from the card's own number so it can never lie.
+static func speed_word(speed: float) -> String:
+	var r := speed / STANDARD_SPEED
+	var word := "normal"
+	if r >= 1.5:
+		word = "fast"
+	elif r <= 0.75:
+		word = "slow"
+	return "%s (%.1fx)" % [word, r]
+
+
+## One line per passenger type that can actually spawn: share of the crowd,
+## patience (level override if any) and, for execs, the rooms they use.
+## A type with an exec weight but no exec rooms degrades to a visitor at spawn
+## time (main3._spawn_random), so it is not advertised here either.
+static func people_lines(lv: Dictionary) -> Array:
+	var mix: Dictionary = lv.mix
+	var total := 0.0
+	for t in mix:
+		total += maxf(0.0, float(mix[t]))
+	var out: Array = []
+	for t in mix:
+		if float(mix[t]) <= 0.0 or total <= 0.0:
+			continue
+		if t == "exec" and (lv.exec_origins.is_empty() or lv.exec_dests.is_empty()):
+			continue
+		var pat := float(Passenger3.PTYPES.get(t, {}).get("patience", 90.0))
+		if lv.has("patience"):
+			pat = float(lv.patience.get(t, pat))
+		var line := "%s - %.0f%% of the crowd - patience %.0f s" % [
+				t, 100.0 * float(mix[t]) / total, pat]
+		if t == "exec":
+			line += " - rides %s to %s" % [
+					_rooms_str(lv.exec_origins), _rooms_str(lv.exec_dests)]
+		out.append(line)
+	return out
+
+
+## Room cells as their on-grid letters ("A/D"). Needs the level's maze loaded.
+static func _rooms_str(cells: Array) -> String:
+	var parts: Array = []
+	for c in cells:
+		parts.append("room " + Grid3.room_letter(c))
+	return "/".join(parts)
+
+
+## Average spawn pace, straight out of the pulse-spawner config.
+static func pace_line(lv: Dictionary) -> String:
+	var s: Dictionary = lv.spawn
+	return "They arrive in bursts of %d-%d: one every %.1f s at first, %.1f s once the rush builds." % [
+			int(s.burst_min), int(s.burst_max),
+			float(s.interval_start), float(s.interval_end)]
+
+
+## The whole briefing body (hud3.show_briefing renders this verbatim).
+static func briefing_body(lv: Dictionary) -> String:
+	var L: Array = []
+	if str(lv.get("thesis", "")) != "":
+		L.append("\"%s\"" % lv.thesis)
+		L.append("")
+	if str(lv.get("intro", "")) != "":
+		L.append(str(lv.intro))
+		L.append("")
+	L.append("YOUR ELEVATORS")
+	L.append_array(roster_lines(lv))
+	L.append("")
+	L.append("WHO SHOWS UP")
+	L.append_array(people_lines(lv))
+	L.append(pace_line(lv))
+	L.append("")
+	L.append("GOAL: serve %d before losing %d." % [int(lv.quota), int(lv.max_lost)])
+	return "\n".join(L)
+
+
 static func index_of(id: String) -> int:
 	for i in LEVELS.size():
 		if LEVELS[i].id == id:
