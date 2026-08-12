@@ -21,6 +21,9 @@ extends SceneTree
 ##                    and reports the win/lose split, the losing-branch spread
 ##                    and the empirical win-vs-loss separation (docs/depth-
 ##                    tools-spec.md §1)
+##   --tune           LEVEL DESIGN loop: per level, the uniform-random win rate
+##                    (is the level trivial?) next to thesis/naive win counts
+##                    over Scenarios3.SEEDS_TUNE. Never touches SEEDS_ASSERT.
 ##   --smoke          headless check that the GAME still works: the level
 ##                    select builds, every level instantiates and plays, and
 ##                    every discovered route-set runs under WATCH BEST
@@ -58,6 +61,8 @@ func _init() -> void:
 		mode = "smoke"
 	elif args.has("--scorecheck"):
 		mode = "scorecheck"
+	elif args.has("--tune"):
+		mode = "tune"
 	var i := args.find("--levels")
 	if i >= 0 and i + 1 < args.size():
 		for s in String(args[i + 1]).split(","):
@@ -85,6 +90,9 @@ func _process(_delta: float) -> bool:
 			return true
 		"scorecheck":
 			quit(0 if _scorecheck() else 1)
+			return true
+		"tune":
+			quit(0 if _tune() else 1)
 			return true
 	if queue.is_empty():
 		print("\nALL LEVELS DONE in %.1f s" % ((Time.get_ticks_msec() - t_start) / 1000.0))
@@ -226,7 +234,35 @@ func _smoke() -> bool:
 				and g.routes[0] != null, "state %d" % g.state) and ok
 		root.remove_child(g)
 		g.free()
-	# 3. WATCH BEST actually runs the discovered set.
+	# 3. Every WATCH strategy the level select offers actually pre-draws its
+	#    routes and plays them (this is the gate on "the shipped scenario data
+	#    still fits the shipped geometry" - a route set left behind by a level
+	#    redesign is rejected by commit_route and would otherwise only show up
+	#    as a car that never appears).
+	for i in Levels3.LEVELS.size():
+		var lv3: Dictionary = Levels3.LEVELS[i]
+		for strat in ["naive", "thesis"]:
+			var want: int = Scenarios3.route_set(lv3.id, strat).size()
+			if want == 0:
+				continue
+			Levels3.current = i
+			Levels3.watch_strategy = strat
+			var g3 = load("res://scenes/v3_main.tscn").instantiate()
+			g3.headless = true
+			root.add_child(g3)
+			var drawn := 0
+			for r in g3.routes:
+				if r != null:
+					drawn += 1
+			for _t in 600:
+				g3.advance(0.1)
+			ok = _p("%s: WATCH %s draws %d routes and runs" % [lv3.id, strat.to_upper(), want],
+					drawn == want and g3.served > 0,
+					"drew %d/%d, served %d" % [drawn, want, g3.served]) and ok
+			Levels3.watch_strategy = ""
+			root.remove_child(g3)
+			g3.free()
+	# 4. WATCH BEST actually runs the discovered set.
 	for i in Levels3.LEVELS.size():
 		var lv2: Dictionary = Levels3.LEVELS[i]
 		if not Discovered3.has(lv2.id):
@@ -340,6 +376,138 @@ func _scorecheck() -> bool:
 	return ok
 
 
+# ---------------------------------------------------------------- tuning loop
+
+## THE LEVEL-DESIGN LOOP (v3.5 axiom pass). One command, three numbers per
+## level — the three the axioms are actually made of:
+##
+##   random  uniform random route-sets, each scored on one SEEDS_TUNE seed
+##           (round robin, so the rate is not an artifact of one arrival
+##           sequence). Its WIN RATE is the difficulty signal: a level where
+##           random plans win outright is not a level. Target <= 5 %.
+##   thesis  how many of the 16 SEEDS_TUNE seeds the intended strategy WINS.
+##   naive   how many of the same 16 the honest-beginner strategy LOSES.
+##
+## It uses SEEDS_TUNE and NEVER SEEDS_ASSERT. Tuning against the seeds you
+## then assert on is exactly the overfitting this pass exists to remove; the
+## held-out read is tests/run_balance.gd, which is the gate, not this.
+##
+##   ... --script tools/run_depth.gd -- --tune [--n 200] [--levels L1,L2]
+func _tune() -> bool:
+	var n := 200
+	var i := args.find("--n")
+	if i >= 0 and i + 1 < args.size():
+		n = int(args[i + 1])
+	var seeds: Array = Scenarios3.SEEDS_TUNE
+	print("=== level tuning: %d random route-sets + thesis/naive over %d TUNE seeds ===" % [
+			n, seeds.size()])
+	print("targets: random win rate <= 5 %, thesis WINS >= 15/16, naive LOSES >= 15/16")
+	var sim = SimApi.new(self)
+	var rng := RandomNumberGenerator.new()
+	var ok := true
+	for id in level_ids:
+		var li := Levels3.index_of(id)
+		if li < 0:
+			continue
+		var lv: Dictionary = Levels3.LEVELS[li]
+		SimApi.load_maze(lv)
+		var rooms: Array = Grid3.rooms()
+		rng.seed = 4242 + li
+		var wins := 0
+		var valid := 0
+		var win_t: Array = []
+		var win_lost: Array = []
+		var win_shape: Array = []
+		for k in n:
+			var g := RG.random_genome(rng, rooms, lv.cards.size())
+			if g.is_empty():
+				continue
+			var dec := RG.decode_genome(g)
+			if dec.err != "":
+				continue
+			valid += 1
+			var r: Dictionary = sim.run(li, dec.routes, seeds[k % seeds.size()],
+					SimApi.STEP_COARSE)
+			if r.result == "win":
+				wins += 1
+				win_t.append(r.t_end)
+				win_lost.append(float(r.lost))
+				win_shape.append(RG.describe(dec.routes))
+		var sp: Dictionary = lv.spawn
+		print("
+--- %s %s: %d rooms, quota %d, max_lost %d, interval %.2f->%.2f over %.0f s, burst %d-%d" % [
+				lv.id, lv.name, rooms.size(), int(lv.quota), int(lv.max_lost),
+				sp.interval_start, sp.interval_end, sp.ramp,
+				int(sp.burst_min), int(sp.burst_max)])
+		var rate := 100.0 * float(wins) / maxf(1.0, float(valid))
+		ok = _p("%s: random win rate <= 5%%" % id, rate <= 5.0,
+				"%d/%d valid = %.1f%%" % [wins, valid, rate]) and ok
+		print("    random : %d/%d valid samples WIN = %.1f %%   (%d of %d undecodable)" % [
+				wins, valid, rate, n - valid, n])
+		if wins > 0:
+			var lp := 0.0
+			var cp := 0.0
+			var sp2 := 0.0
+			for sh in win_shape:
+				lp += sh.loops
+				cp += sh.cells
+				sp2 += sh.stops
+			print("      winners: lost med %.0f max %.0f | finish med %.0f s | avg %.1f loop(s), %.0f stops, %.0f cells" % [
+					SimApi.median(win_lost), _amax(win_lost), SimApi.median(win_t),
+					lp / wins, sp2 / wins, cp / wins])
+		for strat in ["thesis", "naive"]:
+			var routes := _strategy_routes(id, strat)
+			if routes.is_empty():
+				continue
+			var w := 0
+			var odd: Array = []
+			var served: Array = []
+			var lostv: Array = []
+			var fin: Array = []
+			var qend: Array = []
+			var waitv: Array = []
+			for sd in seeds:
+				var r: Dictionary = sim.run(li, routes, sd, SimApi.STEP_FINE)
+				served.append(float(r.served))
+				lostv.append(float(r.lost))
+				qend.append(float(r.waiting_end))
+				waitv.append(r.avg_wait)
+				if r.result == "win":
+					w += 1
+					fin.append(r.t_end)
+					if strat == "naive":
+						odd.append("%d WIN" % sd)
+				elif strat == "thesis":
+					odd.append("%d %s" % [sd, r.result.to_upper()])
+			if strat == "thesis":
+				print("      thesis worst: lost %.0f, queued@end %.0f, wait %.0f s" % [
+						_amax(lostv), _amax(qend), _amax(waitv)])
+			var want: int = seeds.size() - 1
+			var hit: bool = w >= want if strat == "thesis" else (seeds.size() - w) >= want
+			ok = _p("%s: %s %s >= %d/%d" % [id, strat,
+					"WINS" if strat == "thesis" else "LOSES", want, seeds.size()],
+					hit, "%d/%d won" % [w, seeds.size()]) and ok
+			print("    %-7s: %s %d/%d   served ~%.0f  lost ~%.1f  wait ~%.0f s  queued@end ~%.0f  finish ~%.0f s (worst %.0f)%s" % [
+					strat, "WIN" if strat == "thesis" else "LOSE",
+					w if strat == "thesis" else seeds.size() - w, seeds.size(),
+					SimApi.median(served), SimApi.median(lostv),
+					SimApi.median(waitv), SimApi.median(qend),
+					SimApi.median(fin) if not fin.is_empty() else 0.0,
+					_amax(fin) if not fin.is_empty() else 0.0,
+					("   ODD: " + ", ".join(odd)) if not odd.is_empty() else ""])
+	print("
+TUNE: %s" % ("ALL TARGETS MET" if ok else "TARGETS MISSED"))
+	return ok
+
+
+## Route-set for a level + strategy in SimApi shape ([] when there is none).
+func _strategy_routes(id: String, strategy: String) -> Array:
+	var out: Array = []
+	for e in Scenarios3.route_set(id, strategy):
+		out.append({"cells": Scenarios3.cells_of(e), "closed": Scenarios3.closed_of(e)})
+	return out
+
+
 func _amin(a: Array) -> float:
 	var m: float = a[0]
 	for x in a:
@@ -382,10 +550,7 @@ func _p(name: String, ok: bool, detail: String) -> bool:
 
 
 func _thesis_routes(id: String) -> Array:
-	var out: Array = []
-	for e in Scenarios3.route_set(id, "thesis"):
-		out.append({"cells": Scenarios3.cells_of(e), "closed": Scenarios3.closed_of(e)})
-	return out
+	return _strategy_routes(id, "thesis")
 
 
 # ---------------------------------------------------------------- outputs
@@ -461,6 +626,7 @@ func _write_report(results: Array) -> void:
 	L.append("- The EA was seeded with generic primitives (spine, stop-everywhere, angular ring open/closed, per-group shuttles, hub feeders, heaviest-demand direct lines). It was **not** seeded with our thesis route-sets, so `beat_thesis` is not begging the question.")
 	L.append("- The ladder is one anytime run per level, not independent restarts per budget; it therefore reads as an upper bound on what each budget achieves.")
 	L.append("- `plan_fragility` only counts perturbations that still decode; a perturbation that makes a route undecodable is a representation artifact, not a plan-quality signal.")
+	L.append("- **Read `plan_frag` as a yes/no, not a size.** Since the v3.5 level pass the levels have a real difficulty floor, so moving one stop in an elite route-set usually turns a WIN into a LOSS — and that drop is measured across the ~%.0f-point branch gap, which is why the column reads in the thousands. It means \"one stop matters\", not \"the plan is 1200 units worse\". A small plan_frag now means the perturbation stayed on the winning branch." % SimApi.WIN_BONUS)
 	L.append("- **Scoring supersedes the original spec.** The first version of this tool scored a fixed 240 s of ENDLESS play (win/lose disabled). That measured a game nobody plays: every level stops at its quota, so most of each evaluation happened in an overload regime the player never faces, and it punished route-sets that win the shipped level comfortably but degrade under an unbounded demand ramp (L4's one-way-loop thesis was the clearest victim) while rewarding coverage-heavy plans. Scores here come from playing the REAL level to its own win/lose conditions.")
 	L.append("- **The two branches are different currencies.** Above %.0f the units are game-seconds saved; below it they are passengers. Do not read the arithmetic difference between a win and a loss as meaningful beyond \"the win is better\". Differences WITHIN a branch are meaningful." % SimApi.WIN_BONUS)
 	L.append("- A run ends the moment the level does, so a budget unit is no longer a constant amount of simulated time: strong candidates are cheaper to evaluate than weak ones. The budget is still one run, which is what makes the rungs comparable.")

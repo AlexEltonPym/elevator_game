@@ -17,6 +17,15 @@ Four changes, in dependency order.
 
 ## 2. Retune: naive must LOSE everywhere
 
+> **SUPERSEDED, v3.5 level pass.** The last line below — "assertions only bind on the
+> canonical seed" — was the bug. A one-seed axiom measures seed luck: when the depth
+> tools held these claims out on 8 unseen seeds, L3's naive strategy won 6 of them. The
+> suite now asserts `thesis WINS >= 15/16` and `naive LOSES >= 15/16` over 16 HELD-OUT
+> seeds (`Scenarios3.SEEDS_ASSERT`), tuned against a disjoint 16 (`SEEDS_TUNE`), and
+> prints the per-seed split. Everything else in this section still stands, including
+> "the naive scenarios themselves must stay HONEST".
+
+
 New harness assertions (replace the old per-level ones; keep the stats table):
 - L1, L2, L3: naive scenario LOSES (hits max_lost before quota). Intended scenario WINS
   with lost ≤ 3.

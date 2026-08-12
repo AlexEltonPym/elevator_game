@@ -22,6 +22,34 @@ extends RefCounted
 
 const SEEDS := {"L1": 101, "L2": 202, "L3": 303, "L4": 505, "X-1": 404}
 
+## THE SEED SETS (v3.5 level-design pass). A level axiom asserted on ONE seed
+## measures seed luck, not the level: the 2026-08-12 depth run held L3's
+## "naive LOSES" claim out on 8 unseen seeds and naive WON 6 of them. So the
+## balance suite now asserts over a SET, and the sets have disjoint jobs:
+##
+##   SEEDS          one canonical seed per level. WATCH mode only (naive and
+##                  thesis must face the identical demand for the comparison
+##                  to read), plus the harness's `--quick` iteration mode.
+##   SEEDS_TUNE     16 seeds. The ONLY seeds level geometry/demand was tuned
+##                  against while chasing the axioms.
+##   SEEDS_ASSERT   16 HELD-OUT seeds. tests/balance.gd asserts on these and
+##                  nothing was ever tuned against them, which is the whole
+##                  point: "thesis wins 15/16" is then a measurement, not a
+##                  memory. Never tune against these — if a level needs work,
+##                  iterate on SEEDS_TUNE and re-run the gate.
+##
+## Both are also disjoint from the depth tools' SEEDS_TRAIN / SEEDS_TEST
+## (tools/sim_api.gd), so the search experiment and the regression gate never
+## share an arrival sequence either.
+##
+## 16 is the smallest set where "15/16" is a meaningful claim (a single bad
+## seed is tolerated, two is a failure) and the whole 16-seed suite still runs
+## in well under a minute — see tests/balance.gd's header for the timing.
+const SEEDS_TUNE := [7001, 7013, 7027, 7039, 7057, 7069, 7079, 7103,
+		7121, 7129, 7151, 7177, 7193, 7207, 7219, 7229]
+const SEEDS_ASSERT := [9001, 9013, 9029, 9041, 9059, 9067, 9091, 9103,
+		9127, 9133, 9151, 9161, 9173, 9187, 9199, 9203]
+
 
 ## Expand [w0, w1, w2, ...] waypoints into an inclusive cell polyline.
 static func path(waypoints: Array) -> Array:
@@ -64,37 +92,68 @@ static func route_sets(level_id: String) -> Dictionary:
 		"L1":
 			return {
 				"naive": {
-					"desc": "all 3 cards full height (everyone serves everything)",
+					"desc": "every card drawn as far as it reaches: two wing->penthouse U's + a cross sweep",
 					"routes": [
-						path([Vector2i(2, 0), Vector2i(1, 0), Vector2i(1, 9), Vector2i(2, 9)]),
-						path([Vector2i(2, 0), Vector2i(1, 0), Vector2i(1, 9), Vector2i(2, 9)]),
-						path([Vector2i(2, 0), Vector2i(1, 0), Vector2i(1, 9), Vector2i(2, 9)]),
+						# The honest first instinct: draw each line as long as the
+						# building allows, so every car reaches the penthouse and every
+						# room is covered twice over. It fails for a reason that is
+						# invisible until you watch it: the EXPRESS sweep below is the
+						# cheapest plan ON PAPER for every wing rider in the building,
+						# so all of them queue for its four seats while the two long
+						# locals drive around half empty.
+						path([Vector2i(0, 8), Vector2i(0, 0), Vector2i(3, 0),
+								Vector2i(3, 9)]),
+						path([Vector2i(6, 8), Vector2i(6, 0), Vector2i(3, 0),
+								Vector2i(3, 9)]),
+						path([Vector2i(0, 8), Vector2i(0, 0), Vector2i(6, 0),
+								Vector2i(6, 8)]),
 					],
 				},
 				"thesis": {
-					"desc": "express lobby->penthouse on the spine, locals low",
+					"desc": "a local per wing, express dedicated to the lobby->penthouse spine",
 					"routes": [
-						path([Vector2i(2, 0), Vector2i(1, 0), Vector2i(1, 8)]),
-						path([Vector2i(2, 0), Vector2i(1, 0), Vector2i(1, 4)]),
-						path([Vector2i(2, 0), Vector2i(2, 9)]),
+						path([Vector2i(3, 0), Vector2i(0, 0), Vector2i(0, 8)]),
+						path([Vector2i(3, 0), Vector2i(6, 0), Vector2i(6, 8)]),
+						path([Vector2i(3, 0), Vector2i(3, 9)]),
 					],
 				},
 			}
 		"L2":
 			return {
 				"naive": {
-					"desc": "all 3 cars full height through the gate tunnel",
+					"desc": "all 3 cars full height, weaving through every room and the tunnel",
 					"routes": [
-						path([Vector2i(0, 0), Vector2i(0, 9)]),
-						path([Vector2i(0, 0), Vector2i(0, 9)]),
-						path([Vector2i(0, 0), Vector2i(0, 9)]),
+						# Honest and thorough: each car threads both clusters AND the
+						# tunnel, so every room is covered three times over. Three cars
+						# that all want the single-file corridor is exactly the jam the
+						# level is about.
+						path([Vector2i(0, 0), Vector2i(0, 1), Vector2i(1, 1),
+								Vector2i(1, 2), Vector2i(0, 2), Vector2i(0, 7),
+								Vector2i(1, 7), Vector2i(1, 8), Vector2i(0, 8),
+								Vector2i(0, 9)]),
+						path([Vector2i(0, 0), Vector2i(0, 1), Vector2i(1, 1),
+								Vector2i(1, 2), Vector2i(0, 2), Vector2i(0, 7),
+								Vector2i(1, 7), Vector2i(1, 8), Vector2i(0, 8),
+								Vector2i(0, 9)]),
+						path([Vector2i(0, 0), Vector2i(0, 1), Vector2i(1, 1),
+								Vector2i(1, 2), Vector2i(0, 2), Vector2i(0, 7),
+								Vector2i(1, 7), Vector2i(1, 8), Vector2i(0, 8),
+								Vector2i(0, 9)]),
 					],
 				},
 				"thesis": {
-					"desc": "gate shuttle for the cross crowds + bottom local + perimeter express",
+					"desc": "lower local + ONE gate shuttle + perimeter express, transferring at (0,2)",
 					"routes": [
-						path([Vector2i(0, 0), Vector2i(0, 2)]),
-						path([Vector2i(0, 1), Vector2i(0, 8)]),
+						# CAR A: the lower cluster and the bottom lobby. Never enters
+						# the tunnel, so it never queues for it.
+						path([Vector2i(0, 0), Vector2i(0, 1), Vector2i(1, 1),
+								Vector2i(1, 2), Vector2i(0, 2)]),
+						# CAR B: THE tunnel car - the only one that spends the gate.
+						# It meets CAR A at (0,2) and the express at (0,7)/(0,8).
+						path([Vector2i(0, 2), Vector2i(0, 8), Vector2i(1, 8),
+								Vector2i(1, 7)]),
+						# EXPRESS: the long way round the outside, for the execs and
+						# the upper cluster's run to the top.
 						path([Vector2i(0, 0), Vector2i(7, 0), Vector2i(7, 9),
 								Vector2i(0, 9), Vector2i(0, 7)]),
 					],
@@ -105,6 +164,9 @@ static func route_sets(level_id: String) -> Dictionary:
 				"naive": {
 					"desc": "two direct winding climbs (no shared hub) + spine",
 					"routes": [
+						# Direct is the obvious read: each arm gets its own line
+						# straight up the outside to the penthouse. Both of them live
+						# in the loft, and so does the spine.
 						path([Vector2i(2, 3), Vector2i(1, 3), Vector2i(1, 8),
 								Vector2i(3, 8), Vector2i(3, 9)]),
 						path([Vector2i(4, 3), Vector2i(5, 3), Vector2i(5, 8),
@@ -113,10 +175,14 @@ static func route_sets(level_id: String) -> Dictionary:
 					],
 				},
 				"thesis": {
-					"desc": "two short feeder shuttles into the HUB + express spine",
+					"desc": "each feeder runs its arm -> HUB -> lobby; express owns the spine",
 					"routes": [
-						path([Vector2i(1, 3), Vector2i(3, 3)]),
-						path([Vector2i(5, 3), Vector2i(3, 3)]),
+						# A feeder that carries on DOWN to the lobby serves its own
+						# half of the building in one leg, and never touches the loft.
+						path([Vector2i(1, 3), Vector2i(3, 3), Vector2i(3, 0)]),
+						path([Vector2i(5, 3), Vector2i(3, 3), Vector2i(3, 0)]),
+						# The only car in the loft, and the only fast one: penthouse
+						# traffic only, boarding at the HUB or the lobby.
 						path([Vector2i(3, 0), Vector2i(3, 9)]),
 					],
 				},
@@ -124,30 +190,43 @@ static func route_sets(level_id: String) -> Dictionary:
 		"L4":
 			return {
 				"naive": {
-					"desc": "honest ping-pong coverage: full-ring C sweep + two arc shuttles",
+					"desc": "three full outer-lane loops, staggered a third of a lap apart",
 					"routes": [
-						# What a player who hasn't discovered closing draws: the
-						# same ring corridor as open ping-pong lines. Full
-						# coverage — but every sweep drives back against the
-						# one-way crowd, doubling the effective headway.
-						path([Vector2i(0, 0), Vector2i(6, 0), Vector2i(6, 6)]),
-						path([Vector2i(6, 6), Vector2i(0, 6), Vector2i(0, 0)]),
-						path([Vector2i(0, 0), Vector2i(6, 0), Vector2i(6, 6),
-								Vector2i(0, 6), Vector2i(0, 1)]),
+						# The honest thing a player does once they have learned to
+						# CLOSE a route: ride the ring one-way, and cover every room
+						# while you are at it. Correct mechanic, wrong network - each
+						# lap pays eight door cycles for the two rooms it needed.
+						loop([Vector2i(0, 0), Vector2i(7, 0), Vector2i(7, 7),
+								Vector2i(0, 7), Vector2i(0, 1)]),
+						loop([Vector2i(7, 3), Vector2i(7, 7), Vector2i(0, 7),
+								Vector2i(0, 0), Vector2i(7, 0), Vector2i(7, 2)]),
+						loop([Vector2i(3, 7), Vector2i(0, 7), Vector2i(0, 0),
+								Vector2i(7, 0), Vector2i(7, 7), Vector2i(4, 7)]),
 					],
 				},
 				"thesis": {
-					"desc": "three clockwise closed loops, staggered 1/3 lap apart",
+					"desc": "a weave per commute (express on the heavy one) + a ring catch-all",
 					"routes": [
-						# The identical ring, CLOSED — one-way with the demand
-						# cycle. Different start cells stagger the cars around
-						# the loop so the headway stays ~lap/3.
-						loop([Vector2i(0, 0), Vector2i(6, 0), Vector2i(6, 6),
-								Vector2i(0, 6), Vector2i(0, 1)]),
-						loop([Vector2i(6, 2), Vector2i(6, 6), Vector2i(0, 6),
-								Vector2i(0, 0), Vector2i(6, 0), Vector2i(6, 1)]),
-						loop([Vector2i(2, 6), Vector2i(0, 6), Vector2i(0, 0),
-								Vector2i(6, 0), Vector2i(6, 6), Vector2i(3, 6)]),
+						# CAR A: the left<->right commute. Outer lane up the lounge side
+						# and down the offices side, INNER lane along the top and bottom
+						# straights, so it never opens its doors for homes or canteen.
+						loop([Vector2i(0, 0), Vector2i(0, 6), Vector2i(7, 6),
+								Vector2i(7, 1), Vector2i(1, 1), Vector2i(1, 0)]),
+						# CAR B: the whole outer lane, one-way. The only car that touches
+						# all eight rooms, so it carries the quarter-lap trickle and is
+						# the transfer between the two commutes - which share no room.
+						# It is deliberately the SLOW car: a fast car here would be the
+						# cheapest plan for every pair on the board and would swallow
+						# both commutes into one four-seat cabin.
+						loop([Vector2i(0, 0), Vector2i(7, 0), Vector2i(7, 7),
+								Vector2i(0, 7), Vector2i(0, 1)]),
+						# EXPRESS: the heavier bottom<->top commute, woven the same way -
+						# outer along the bottom and the top (homes, canteen), inner up
+						# and down the sides.
+						loop([Vector2i(0, 0), Vector2i(7, 0), Vector2i(7, 1),
+								Vector2i(6, 1), Vector2i(6, 6), Vector2i(7, 6),
+								Vector2i(7, 7), Vector2i(0, 7), Vector2i(0, 6),
+								Vector2i(1, 6), Vector2i(1, 1), Vector2i(0, 1)]),
 					],
 				},
 			}

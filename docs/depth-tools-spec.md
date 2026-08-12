@@ -63,24 +63,31 @@ conservative reading: a candidate counts as winning only if it wins the majority
 seeds. Report the win count alongside the score so a 4/8 straddle is visible rather than
 hidden inside an average.
 
-**Measured gradient** (200 uniform random route-sets per level, one train seed, STEP 0.25;
-`--scorecheck --n 200`). Undecodable samples are skipped, which is why the counts differ:
+**Measured gradient** (600 uniform random route-sets per level, one train seed, STEP 0.25;
+`--scorecheck --n 600`, re-measured after the v3.5 level-design pass). Undecodable samples
+are skipped, which is why the counts differ:
 
-| level | valid samples | win | lose | win-score spread | losing-score spread | distinct losing scores | worst win − best loss |
+| level | valid samples | win | lose | win rate | losing-score spread | distinct losing scores | worst win − best loss |
 |---|---|---|---|---|---|---|---|
-| L1 Tower | 163 | 44 | 119 | 39.3 | 44.0 | 100 / 119 | 1054.2 |
-| L2 Detour | 194 | 91 | 103 | 32.3 | 40.1 | 96 / 103 | 1125.8 |
-| L3 Junction | 91 | 2 | 89 | 12.8 | 81.9 | 78 / 89 | 1077.9 |
-| L4 Ring | 121 | 54 | 67 | 40.8 | 56.2 | 67 / 67 | 1095.2 |
-| X-1 Sandbox | 73 | 24 | 49 | 71.5 | 28.3 | 48 / 49 | 1051.2 |
+| L1 Tower | 102 | 1 | 101 | 1.0 % | 84.1 | 99 / 101 | 1161.4 |
+| L2 Detour | 305 | 1 | 304 | 0.3 % | 86.0 | 295 / 304 | 1150.2 |
+| L3 Junction | 292 | 8 | 284 | 2.7 % | 137.1 | 250 / 284 | 1106.2 |
+| L4 Ring | 565 | 7 | 558 | 1.2 % | 107.1 | 546 / 558 | 1143.3 |
+| X-1 Sandbox | 229 | 7 | 222 | 3.1 % | 94.8 | 222 / 222 | 1114.3 |
 
-Read: **every level has a usable gradient on both branches.** No level is all-win (which
-would make the metric a constant) and no level is all-lose. L3 is the one that comes close
-— only 2 of 91 random samples win — and that is exactly the case the losing branch has to
-carry: there it discriminates *best* of any level, 78 distinct scores across an 81.9-point
-range (served ranges 0→82 against a quota of 90), so an optimizer on L3 has a dense,
-monotone signal to climb all the way to the win boundary. Every win outranks every loss on
-every level, with ≥1051 points to spare against a `WIN_BONUS` of 1000.
+Read: **every level has a usable gradient**, and it now lives almost entirely on the losing
+branch, which is exactly right — a level where a third of uniformly random plans WIN
+(L1 27 %, L2 47 %, L4 45 % before this pass) is not measuring skill, it is measuring
+nothing. The losing branch carries the signal with 250-546 distinct scores per level over
+84-137 point ranges, so an optimizer has a dense, monotone climb all the way to the win
+boundary. Every win still outranks every loss on every level, with ≥1106 points to spare
+against a `WIN_BONUS` of 1000.
+
+> **The random win rate IS the difficulty metric.** `skill_gap` and the ladder describe how
+> much *search* buys you; the random win rate describes whether the level has a floor at
+> all. Target: **≤ 5 % per level**. Report it next to the ladder, always as a share of
+> DECODABLE samples (the undecodable share is a fact about the gene representation on that
+> maze, not about the level's difficulty).
 
 - `STEP` is part of the experiment spec (it changes results). Search at `STEP = 0.25`, then
   re-evaluate the top candidates at `STEP = 0.1` for reported numbers.
@@ -93,6 +100,22 @@ every level, with ≥1051 points to spare against a `WIN_BONUS` of 1000.
 - Optimizers see ONLY train seeds; every reported number is the **median over test seeds**.
 - Report `seed_fragility` = median(train score) - median(test score). A large positive gap means
   the optimizer memorised the arrival schedule and the result is not real.
+
+**The same pitfall bites LEVEL DESIGN, and it bit us (v3.5).** The balance suite used to
+assert "thesis WINS / naive LOSES" on ONE canonical seed per level. This tool held that
+claim out on 8 unseen seeds and L3's naive strategy won 6 of them: the axiom had been
+measuring seed luck for months. Four disjoint seed roles now exist, and nothing crosses:
+
+| set | size | who sees it | job |
+|---|---|---|---|
+| `Scenarios3.SEEDS` | 1 per level | the game | WATCH mode, so naive and thesis face identical demand |
+| `Scenarios3.SEEDS_TUNE` | 16 | the designer | the ONLY seeds levels are tuned against (`--tune`) |
+| `Scenarios3.SEEDS_ASSERT` | 16 | `tests/balance.gd` | held out; the axioms are asserted here |
+| `SEEDS_TRAIN` / `SEEDS_TEST` | 8 + 8 | this tool | search / reporting |
+
+The assertion form is a COUNT, not a single outcome: `thesis WINS ≥ 15/16` and
+`naive LOSES ≥ 15/16`, with the per-seed split and the name of every dissenting seed printed,
+so a 14/16 straddle is visible instead of averaged away.
 
 ## 3. Route representation (do NOT search raw polylines)
 

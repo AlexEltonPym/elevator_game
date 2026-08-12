@@ -39,15 +39,28 @@ Select**.
 
 | level | name    | quota / max lost | thesis                                              |
 |-------|---------|------------------|-----------------------------------------------------|
-| L1    | Tower   | 45 / 5           | dedicate the express: straight spine for the execs, locals milk the side rooms |
-| L2    | Detour  | 50 / 6           | spend the gate wisely: a dedicated shuttle crosses the tunnel for the mid-cluster crowds, a local keeps the bottom, and the express takes the long gate-free perimeter for the execs |
-| L3    | Junction| 90 / 6           | short feeder shuttles sweep the room hallway into the HUB and only the express climbs the single-file service loft; direct winding climbs all queue up there |
-| L4    | Ring    | 60 / 7           | a donut corridor with a strongly clockwise demand cycle: CLOSE the ring into one-way loops (staggered starts = short headways) and ride the tide; honest ping-pong coverage of the same rooms wastes half of every sweep driving back against the flow |
-| X-1   | Sandbox | 30 / 8           | the original maze, original tuning (plus the global door/pulse changes) |
+| L1    | Tower   | 90 / 5           | two wings that meet only in the lobby: a local per wing, and the express spine dedicated to the execs. One long line that reaches everything is the cheapest plan *on paper* for every rider in the building, so every rider queues for its four seats |
+| L2    | Detour  | 105 / 6          | spend the gate wisely: ONE shuttle crosses the 4-cell tunnel for the cross-cluster crowds, a local weaves the bottom cluster, and the express takes the long gate-free perimeter for the execs. Three cars that all want a single-file corridor spend the level queueing |
+| L3    | Junction| 145 / 5          | most of this building only wants the LOBBY: run each feeder arm → HUB → lobby so it serves its own half on its own, and let the express be the only car that ever enters the single-file service loft. Direct winding climbs carry a rider who wanted downstairs over the roof, then queue under the penthouse |
+| L4    | Ring    | 110 / 4          | a two-lane ring: the outer lane passes every room, the inner lane passes none. Every commute crosses the building (half a lap), so CLOSE your routes into one-way loops — and WEAVE them, swinging out only for your own crowd. A loop that hugs the outer lane pays eight door cycles a lap for the two rooms it needed |
+| X-1   | Sandbox | 90 / 6           | the original maze, no thesis, just the toys — with the demand turned up until coverage alone stops being enough |
 
 Every room in every level generates and receives demand — there are no
 decoy rooms — and each level's thesis route set serves every room (the
 balance harness lints both).
+
+**How hard is a level?** The honest measure is the *uniform-random* win
+rate: what fraction of randomly drawn route-sets beat the level outright.
+A level most random plans win is not a level. Measured with
+`tools/run_depth.gd -- --scorecheck --n 600` (share of DECODABLE samples):
+
+| level | random win rate, before the v3.5 pass | after |
+|---|---|---|
+| L1 Tower    | 27.0 % (44/163) | **1.0 % (1/102)** |
+| L2 Detour   | 46.9 % (91/194) | **0.3 % (1/305)** |
+| L3 Junction |  2.2 % (2/91)   | **2.7 % (8/292)** |
+| L4 Ring     | 44.6 % (54/121) | **1.2 % (7/565)** |
+| X-1 Sandbox | 32.9 % (24/73)  | **3.1 % (7/229)** |
 
 ## Watch mode
 
@@ -162,11 +175,28 @@ the harness proves.
 
 ## Balance harness (persistent, keep it green)
 
-Fixed-seed headless scenarios prove each level's intended strategy WINS
-(lost <= 3) where the naive one LOSES (route sets shared with watch mode in
-`scripts/v3/scenarios3.gd`; harness adapter in `tests/scenarios3.gd`;
-assertions in `tests/balance.gd`). On top of the per-level win/lose checks
-it asserts L2's thesis actually USES the gate (>= 10 corridor transits),
+Headless scenarios prove each level's intended strategy WINS where the
+naive one LOSES — **over a 16-seed set, not one seed** (route sets shared
+with watch mode in `scripts/v3/scenarios3.gd`; harness adapter in
+`tests/scenarios3.gd`; assertions in `tests/balance.gd`).
+
+The seed set is the assertion. A single-seed axiom measures seed luck: the
+2026-08-12 depth run held the old one-seed claim out on 8 unseen seeds and
+L3's *naive* strategy won 6 of them. So every level now asserts
+`thesis WINS >= 15/16` and `naive LOSES >= 15/16` on
+`Scenarios3.SEEDS_ASSERT`, and the report prints the per-seed win count for
+every scenario plus the name of any seed that broke ranks, so a straddle is
+visible rather than hidden inside a median.
+
+Those 16 seeds are **held out**: levels were tuned against the disjoint
+`SEEDS_TUNE` (see `tools/run_depth.gd -- --tune`), and both sets are
+disjoint from the depth tools' own train/test seeds. Never tune against the
+assertion seeds — that reintroduces exactly the overfitting this replaced.
+The full 16-seed suite is 144 simulated levels in **~16 s**, so it is the
+default gate; `-- --quick` runs one canonical seed per level for fast
+iteration and says loudly that it proves nothing about the axioms.
+
+On top of the per-level win/lose axioms it asserts L2's thesis actually USES the gate (>= 10 corridor transits),
 lints every level for dead rooms (every room must spawn, receive, and be
 covered by the thesis routes), smoke-tests the redeploy flow (mid-run
 redraw with riders aboard: recall drop at an old-route room, ~3 s ghost
@@ -180,10 +210,12 @@ command, from the project root:
 
 ```
 & "C:\Program Files\Godot_v4.2.2-stable_mono_win64\Godot_v4.2.2-stable_mono_win64_console.exe" --headless --path . --script tests/run_balance.gd
+& "C:\Program Files\...\Godot_..._console.exe" --headless --path . --script tests/run_balance.gd -- --quick
 ```
 
-Prints a per-scenario stats table (served, lost, avg/p90 wait, transfers,
-gate wait), PASS/FAIL per assertion, and a final `BALANCE: ALL PASS` line
+Prints a per-scenario stats table (W/L split over the seed set, then medians
+of served, lost, avg/p90 wait, transfers, gate wait), PASS/FAIL per
+assertion, and a final `BALANCE: ALL PASS` line
 (trust that line over the exit code — the mono wrapper exits 1 benignly).
 Tuning lives in `scripts/v3/levels3.gd` (spawn/patience/quota numbers);
 never fix a red harness by weakening its assertions.
@@ -207,6 +239,14 @@ button on every level row whose search found a route-set.
 powershell -File tools/run_depth.ps1            # all 5 levels, ~1 h
 powershell -File tools/run_depth.ps1 -Quick     # small budgets, ~3.5 min
 powershell -File tools/run_depth.ps1 -Levels L3,L4
+```
+
+Two lighter modes of the same tool are the level-DESIGN loop, and they are
+what you iterate on before touching the balance gate:
+
+```
+... --script tools/run_depth.gd -- --tune --n 300      # random win rate + thesis/naive over SEEDS_TUNE
+... --script tools/run_depth.gd -- --scorecheck --n 600 # score validity + the reported random win rate
 ```
 
 One long-lived Godot process per level (Grid3's maze is static, so a process
@@ -238,8 +278,11 @@ happens on 8 TRAIN seeds at STEP 0.25; every reported number is a median over
   quotas, pulse-spawn configs, type mixes, exec rooms, trip tables, intros)
   — this is where balance tuning lives. Also carries the `watch_strategy`
   handoff flag the level select sets.
-- `scripts/v3/scenarios3.gd` — SHARED naive/thesis route sets + canonical
-  per-level seeds (game watch mode and harness both read this).
+- `scripts/v3/scenarios3.gd` — SHARED naive/thesis route sets + the three
+  seed sets: `SEEDS` (one canonical per level, for watch mode), `SEEDS_TUNE`
+  (16, the only seeds levels are tuned on) and `SEEDS_ASSERT` (16 held out,
+  what the balance harness asserts on). Game watch mode and harness both
+  read this file, so they can never drift apart.
 - `scripts/v3/grid.gd` — per-level maze data (X-1 layout as the default),
   geometry helpers, gate-corridor flood fill, and all grid drawing (rooms,
   hazard-striped corridors + occupied tint, route polylines, drag preview).

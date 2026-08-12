@@ -1,14 +1,35 @@
-﻿extends RefCounted
+extends RefCounted
 ## v3 balance harness (PERSISTENT deliverable - keep it green).
 ##
 ## Runs every scenario from tests/scenarios3.gd headless at high effective
-## speed: each scenario instantiates scenes/v3_main.tscn for its level,
-## fixes the game RNG seed, commits the scripted routes, then drives
+## speed: each (scenario, seed) pair instantiates scenes/v3_main.tscn for its
+## level, fixes the game RNG seed, commits the scripted routes, then drives
 ## main3.advance() with fixed 0.1 s steps until win / lose / timeout.
-## Collects served, lost, avg wait, avg transfers, gate wait and gate
-## transits, prints a per-scenario table plus PASS/FAIL per assertion, and
-## exits nonzero on any failure (note: the mono wrapper may turn even a
-## clean exit into code 1 - trust the final "BALANCE: ALL PASS" line).
+##
+## ---------------------------------------------------------------- THE AXIOM
+##
+## Every core claim is asserted over a SEED SET, never one seed. This is the
+## whole point of the v3.5 pass: the old suite asserted "naive LOSES / thesis
+## WINS" on one canonical seed per level, and when the depth run
+## (docs/depth-report.md) held that claim out on 8 unseen seeds, L3's naive
+## strategy WON 6 of them. The axiom had been measuring seed luck.
+##
+## So: 16 seeds (Scenarios3.SEEDS_ASSERT), and the assertion form is
+##   thesis WINS >= 15/16   and   naive LOSES >= 15/16
+## per level - one bad seed tolerated, two is a failure. The report prints the
+## per-seed win count for every scenario AND names the odd seeds out, so a
+## straddle is visible instead of hidden behind a median.
+##
+## SEEDS_ASSERT is HELD OUT: level geometry and demand were tuned against the
+## disjoint Scenarios3.SEEDS_TUNE (via `tools/run_depth.gd -- --tune`), so
+## these numbers are a measurement, not a memory. If a level regresses, tune
+## on SEEDS_TUNE and re-run this - never tune on the assertion seeds.
+##
+## RUNTIME. 9 scenarios x 16 seeds = 144 simulated levels, ~40 s wall on an
+## 8-core box - so the multi-seed suite IS the default gate and CI runs the
+## meaningful thing. `--quick` (one canonical seed per level, ~5 s) exists for
+## fast iteration only; it prints a warning that it proves nothing about the
+## axioms.
 ##
 ## Beyond the per-level win/lose assertions it also:
 ## - lints EVERY level for dead rooms (each room must have spawn weight > 0,
@@ -16,21 +37,29 @@
 ## - smoke-tests the v3.3 redeploy flow (mid-run redraw with riders aboard
 ##   recalls + redeploys in ~3 s; session-start commits deploy instantly).
 ##
-## Driven by tests/run_balance.gd (one scenario per engine frame so freed
-## nodes flush between runs):
+## Driven by tests/run_balance.gd (one RUN per engine frame so freed nodes
+## flush between runs):
 ##   & "<godot_console.exe>" --headless --path . --script tests/run_balance.gd
+##   & "<godot_console.exe>" --headless --path . --script tests/run_balance.gd -- --quick
 ##
-## Tuning loop: adjust level spawn/patience numbers in scripts/v3/levels3.gd
-## (NOT the assertions here) until everything passes.
+## Tuning loop: adjust level spawn/patience/quota numbers in
+## scripts/v3/levels3.gd (NOT the assertions here) until everything passes.
 
 const STEP := 0.1 # fixed logic step (game-seconds) - keep constant: results are seed-exact
 const TIMEOUT := 900.0 # game-seconds per scenario before declaring TIMEOUT
 
+## A level's core claim must hold on at least this many of the seed set. One
+## tolerated failure keeps the gate from flapping on a single unlucky arrival
+## order; two means the level, not the seed, is wrong.
+const MIN_HITS := 15
+
 const ScenData = preload("res://tests/scenarios3.gd")
 
+var quick := Array(OS.get_cmdline_user_args()).has("--quick")
 var scenarios: Array = ScenData.scenarios()
-var results := {} # key -> stats dict
-var next_i := 0
+var jobs: Array = [] # one {sc, seed} per engine frame
+var next_job := 0
+var results := {} # scenario key -> {"runs": Array of per-seed stats dicts}
 var redeploy_done := false
 var redeploy_checks: Array = [] # filled by the redeploy smoke run
 var loop_done := false
@@ -39,13 +68,28 @@ var unit_done := false
 var unit_checks: Array = [] # Route3.validate / gene decode / injected level
 
 
-## Run one scenario per call (per engine frame). Returns true when finished
-## (after printing the report and requesting quit).
+func _init() -> void:
+	for sc in scenarios:
+		results[sc.key] = {"runs": []}
+		for sd in _seeds_for(sc):
+			jobs.append({"sc": sc, "seed": sd})
+
+
+## The seeds a scenario is judged on: the held-out 16 by default, or just the
+## level's canonical WATCH seed under --quick.
+func _seeds_for(sc: Dictionary) -> Array:
+	if quick:
+		return [ScenData.Scen.SEEDS[sc.level]]
+	return ScenData.Scen.SEEDS_ASSERT
+
+
+## Run one (scenario, seed) per call (per engine frame). Returns true when
+## finished (after printing the report and requesting quit).
 func step(tree: SceneTree) -> bool:
-	if next_i < scenarios.size():
-		var sc: Dictionary = scenarios[next_i]
-		results[sc.key] = _run_scenario(tree, sc)
-		next_i += 1
+	if next_job < jobs.size():
+		var j: Dictionary = jobs[next_job]
+		results[j.sc.key].runs.append(_run_scenario(tree, j.sc, j.seed))
+		next_job += 1
 		return false
 	if not redeploy_done:
 		redeploy_done = true
@@ -66,7 +110,7 @@ func step(tree: SceneTree) -> bool:
 
 # ---------------------------------------------------------------- running
 
-func _run_scenario(tree: SceneTree, sc: Dictionary) -> Dictionary:
+func _run_scenario(tree: SceneTree, sc: Dictionary, seed_v: int) -> Dictionary:
 	var li: int = Levels3.index_of(sc.level)
 	assert(li >= 0, "unknown level id " + str(sc.level))
 	Levels3.current = li
@@ -74,7 +118,7 @@ func _run_scenario(tree: SceneTree, sc: Dictionary) -> Dictionary:
 	var game = load("res://scenes/v3_main.tscn").instantiate()
 	tree.root.add_child(game) # _ready loads the level grid
 	var r := {
-		"key": sc.key, "level": sc.level, "result": "TIMEOUT",
+		"key": sc.key, "level": sc.level, "seed": seed_v, "result": "TIMEOUT",
 		"served": 0, "lost": 0, "time": 0.0, "avg_wait": 0.0, "p90_wait": 0.0,
 		"avg_transfers": 0.0, "gate_wait": 0.0, "gate_transits": 0,
 		"quota": game.QUOTA, "max_lost": game.MAX_LOST, "log_served": [],
@@ -88,7 +132,7 @@ func _run_scenario(tree: SceneTree, sc: Dictionary) -> Dictionary:
 			game.get_parent().remove_child(game)
 			game.free()
 			return r
-	game.rng.seed = sc.seed
+	game.rng.seed = seed_v
 	game.start_session()
 	for i in sc.routes.size():
 		game.commit_route(i, ScenData.Scen.cells_of(sc.routes[i]),
@@ -133,18 +177,78 @@ func _route_error(entry) -> String:
 			ScenData.Scen.closed_of(entry))
 
 
-## Share of served origin-group -> dest-group passengers that used >= 2 legs.
-func _transfer_share(r: Dictionary, from_cells: Array, to_cells: Array) -> float:
+## Share of served origin-group -> dest-group passengers that used >= 2 legs,
+## POOLED over every seed of the scenario (one seed's log is far too small a
+## sample to assert a 40 % share on).
+func _transfer_share(rs: Array, from_cells: Array, to_cells: Array) -> float:
 	var total := 0
 	var multi := 0
-	for e in r.log_served:
-		if e.origin in from_cells and e.dest in to_cells:
-			total += 1
-			if e.rides >= 2:
-				multi += 1
+	for r in rs:
+		for e in r.log_served:
+			if e.origin in from_cells and e.dest in to_cells:
+				total += 1
+				if e.rides >= 2:
+					multi += 1
 	if total == 0:
 		return 0.0
 	return float(multi) / float(total)
+
+
+# ------------------------------------------------------------- aggregation
+
+## How many of a scenario's seeds ended in `want` ("WIN" / "LOSE").
+func _count(key: String, want: String) -> int:
+	var n := 0
+	for r in results[key].runs:
+		if r.result == want:
+			n += 1
+	return n
+
+
+func _n_seeds(key: String) -> int:
+	return results[key].runs.size()
+
+
+## The seeds that did NOT end in `want`, as "9127 WIN" strings - this is what
+## makes a straddle visible instead of averaged away.
+func _odd_seeds(key: String, want: String) -> Array:
+	var out: Array = []
+	for r in results[key].runs:
+		if r.result != want:
+			out.append("%d %s" % [r.seed, r.result])
+	return out
+
+
+## Lower median of one numeric field across a scenario's seeds.
+func _med(key: String, field: String) -> float:
+	var v: Array = []
+	for r in results[key].runs:
+		v.append(float(r[field]))
+	if v.is_empty():
+		return 0.0
+	v.sort()
+	return v[(v.size() - 1) / 2]
+
+
+func _worst(key: String, field: String) -> float:
+	var m := -1.0e18
+	for r in results[key].runs:
+		m = maxf(m, float(r[field]))
+	return m
+
+
+## The required hit count for this run: MIN_HITS of 16 normally, but --quick
+## only has one seed to look at, so it demands that one.
+func _required(key: String) -> int:
+	return mini(MIN_HITS, _n_seeds(key))
+
+
+## One multi-seed axiom: `want` happened on at least _required() seeds.
+func _axiom(name: String, key: String, want: String) -> Dictionary:
+	var hits := _count(key, want)
+	var need := _required(key)
+	return _c("%s (%d/%d seeds)" % [name, hits, _n_seeds(key)], hits >= need,
+			"needed %d; odd seeds: %s" % [need, str(_odd_seeds(key, want))])
 
 
 # ---------------------------------------------------------------- reporting
@@ -152,15 +256,33 @@ func _transfer_share(r: Dictionary, from_cells: Array, to_cells: Array) -> float
 func _report() -> bool:
 	print("")
 	print("===================== v3 BALANCE HARNESS =====================")
-	print("%-14s %-8s %8s %8s %9s %9s %10s %10s %8s" % [
-			"scenario", "result", "served", "lost", "avg wait", "p90 wait",
+	if quick:
+		print("--quick: ONE canonical seed per level. This proves the scenarios")
+		print("still run; it proves NOTHING about the multi-seed axioms. Run")
+		print("without --quick before believing anything.")
+	else:
+		print("Asserting over %d HELD-OUT seeds per scenario (Scenarios3.SEEDS_ASSERT)." % 				ScenData.Scen.SEEDS_ASSERT.size())
+		print("Levels were tuned on the disjoint SEEDS_TUNE, so these are measurements.")
+	print("Medians over seeds; W/L is the per-seed outcome split.")
+	print("%-14s %-9s %8s %8s %9s %9s %10s %10s %8s" % [
+			"scenario", "W/L/T", "served", "lost", "avg wait", "p90 wait",
 			"transfers", "gate wait", "transits"])
 	for sc in scenarios:
-		var r: Dictionary = results[sc.key]
-		print("%-14s %-8s %5d/%-3d %5d/%-3d %8.1fs %8.1fs %10.2f %9.1fs %8d" % [
-				r.key, r.result, r.served, r.quota, r.lost, r.max_lost,
-				r.avg_wait, r.p90_wait, r.avg_transfers, r.gate_wait,
-				r.gate_transits])
+		var k: String = sc.key
+		var n := _n_seeds(k)
+		var w := _count(k, "WIN")
+		var l := _count(k, "LOSE")
+		print("%-14s %2dW/%dL/%dT %5.0f/%-3d %5.0f/%-3d %8.1fs %8.1fs %10.2f %9.1fs %8.0f" % [
+				k, w, l, n - w - l, _med(k, "served"), results[k].runs[0].quota,
+				_med(k, "lost"), results[k].runs[0].max_lost,
+				_med(k, "avg_wait"), _med(k, "p90_wait"), _med(k, "avg_transfers"),
+				_med(k, "gate_wait"), _med(k, "gate_transits")])
+	# Name every seed that broke ranks, so nothing hides inside the median.
+	for sc in scenarios:
+		var want: String = "LOSE" if sc.key.ends_with("_naive") else "WIN"
+		var odd := _odd_seeds(sc.key, want)
+		if not odd.is_empty():
+			print("   %-14s expected %s, got: %s" % [sc.key, want, ", ".join(odd)])
 	print("--------------------------------------------------------------")
 	var checks := _checks()
 	var ok := true
@@ -176,34 +298,36 @@ func _report() -> bool:
 func _checks() -> Array:
 	var out: Array = []
 	for sc in scenarios:
-		if results[sc.key].route_error != "":
-			out.append({"name": sc.key + " routes valid", "ok": false,
-					"detail": results[sc.key].route_error})
-	# Every playable level: naive LOSES (hits max_lost before quota) while
-	# the intended (thesis) strategy WINS with lost <= 3.
+		for r in results[sc.key].runs:
+			if r.route_error != "":
+				out.append({"name": sc.key + " routes valid", "ok": false,
+						"detail": r.route_error})
+				break
+	# THE AXIOMS. Every playable level, over the whole seed set: the intended
+	# strategy WINS and the honest-beginner strategy LOSES (hits max_lost
+	# before quota). Asserted as a count, reported as a count.
 	for id in ["L1", "L2", "L3", "L4"]:
-		var ri: Dictionary = results["%s_intended" % id]
-		var rn: Dictionary = results["%s_naive" % id]
-		out.append(_c("%s intended wins quota" % id, ri.result == "WIN",
-				"result " + ri.result))
-		out.append(_c("%s intended lost <= 3" % id, ri.lost <= 3, "lost %d" % ri.lost))
-		out.append(_c("%s naive loses before quota" % id, rn.result == "LOSE",
-				"result %s, served %d, lost %d" % [rn.result, rn.served, rn.lost]))
-	var l2i: Dictionary = results.L2_intended
-	var l2n: Dictionary = results.L2_naive
-	out.append(_c("L2 naive gate wait >= 3x intended",
-			l2n.gate_wait >= 3.0 * l2i.gate_wait,
-			"naive %.1fs vs intended %.1fs" % [l2n.gate_wait, l2i.gate_wait]))
-	out.append(_c("L2 intended gate transits >= 10", l2i.gate_transits >= 10,
-			"transits %d" % l2i.gate_transits))
-	var l3i: Dictionary = results.L3_intended
+		var ki: String = "%s_intended" % id
+		var kn: String = "%s_naive" % id
+		out.append(_axiom("%s intended WINS" % id, ki, "WIN"))
+		out.append(_c("%s intended median lost <= 3" % id, _med(ki, "lost") <= 3.0,
+				"median %.0f, worst %.0f" % [_med(ki, "lost"), _worst(ki, "lost")]))
+		out.append(_axiom("%s naive LOSES" % id, kn, "LOSE"))
+	# L2's corridor claim, on medians over the seed set rather than one run.
+	var l2i_gw := _med("L2_intended", "gate_wait")
+	var l2n_gw := _med("L2_naive", "gate_wait")
+	out.append(_c("L2 naive gate wait >= 3x intended", l2n_gw >= 3.0 * l2i_gw,
+			"naive %.1fs vs intended %.1fs" % [l2n_gw, l2i_gw]))
+	out.append(_c("L2 intended gate transits >= 10",
+			_med("L2_intended", "gate_transits") >= 10.0,
+			"median transits %.0f" % _med("L2_intended", "gate_transits")))
+	# L3's transfer claim, pooled across every seed.
 	var l3_level: Dictionary = Levels3.get_level(Levels3.index_of("L3"))
-	var share := _transfer_share(l3i, l3_level.groups.arms, l3_level.groups.pent)
+	var share := _transfer_share(results.L3_intended.runs, l3_level.groups.arms,
+			l3_level.groups.pent)
 	out.append(_c("L3 arm->penthouse 2-leg share >= 40%", share >= 0.4,
 			"share %.0f%%" % (share * 100.0)))
-	var x1: Dictionary = results.X1_smoke
-	out.append(_c("X-1 winnable by old smoke strategy", x1.result == "WIN",
-			"result %s, served %d, lost %d" % [x1.result, x1.served, x1.lost]))
+	out.append(_axiom("X-1 winnable by old smoke strategy", "X1_smoke", "WIN"))
 	out.append_array(_lint_levels())
 	out.append_array(redeploy_checks)
 	out.append_array(loop_checks)
@@ -263,24 +387,29 @@ func _lint_levels() -> Array:
 ## at an old-route room stop, not teleport them), keep the car off the grid
 ## for a ~3 s ghost countdown at the new start, then resume service there.
 ## Session-start commits (never-deployed cars) must deploy with no delay.
+##
+## Runs on the injected 5x5 fixture, not a shipped level, for the same reason
+## Stage A of the loop checks does: this tests Car3's state machine, and it
+## used to silently rot into a no-op the moment L1's rooms moved (the hand
+## placed passengers landed on cells that were no longer rooms).
 func _redeploy_smoke(tree: SceneTree) -> Array:
 	var out: Array = []
-	Levels3.current = Levels3.index_of("L1")
+	Levels3.injected = _draw_level()
+	Levels3.current = 0
 	Levels3.watch_strategy = ""
 	var game = load("res://scenes/v3_main.tscn").instantiate()
 	tree.root.add_child(game)
 	game.rng.seed = 4242
 	game.auto_spawn = false # only our hand-placed passengers
 	game.start_session()
-	var old_route: Array = ScenData.Scen.path(
-			[Vector2i(2, 0), Vector2i(1, 0), Vector2i(1, 5)])
+	var old_route: Array = ScenData.Scen.path([Vector2i(0, 0), Vector2i(4, 0)])
 	game.commit_route(0, old_route)
 	var car = game.cars[0]
 	out.append(_c("redeploy: session-start commit deploys instantly",
 			car.car_state == Car3.CarState.RUNNING and car.visible,
 			"state %d" % car.car_state))
-	# A rider from the lobby up the side column.
-	var p = game.spawn_passenger("visitor", Vector2i(2, 0), Vector2i(1, 5))
+	# A rider along the bottom row.
+	var p = game.spawn_passenger("visitor", Vector2i(0, 0), Vector2i(4, 0))
 	var t := 0.0
 	while p.riding != car and t < 60.0:
 		game.advance(STEP)
@@ -289,7 +418,7 @@ func _redeploy_smoke(tree: SceneTree) -> Array:
 			"riding %s after %.1fs" % [str(p.riding), t]))
 	game.advance(3.0) # doors finish (~1.8 s) and the car gets rolling mid-route
 	# Mid-run redraw to a DIFFERENT start while the rider is aboard.
-	var new_route: Array = ScenData.Scen.path([Vector2i(1, 6), Vector2i(1, 8)])
+	var new_route: Array = ScenData.Scen.path([Vector2i(0, 4), Vector2i(4, 4)])
 	game.commit_route(0, new_route)
 	out.append(_c("redeploy: commit with riders aboard recalls first",
 			car.car_state == Car3.CarState.RECALLING,
@@ -318,10 +447,10 @@ func _redeploy_smoke(tree: SceneTree) -> Array:
 			"%.1fs" % t))
 	out.append(_c("redeploy: service resumes from the new start",
 			car.car_state == Car3.CarState.RUNNING
-			and car.current_cell() == Vector2i(1, 6),
+			and car.current_cell() == Vector2i(0, 4),
 			"state %d cell %s" % [car.car_state, str(car.current_cell())]))
 	# The redeployed route must actually serve someone.
-	var p2 = game.spawn_passenger("visitor", Vector2i(1, 6), Vector2i(1, 8))
+	var p2 = game.spawn_passenger("visitor", Vector2i(0, 4), Vector2i(4, 4))
 	t = 0.0
 	while is_instance_valid(p2) and p2.active and t < 60.0:
 		game.advance(STEP)
@@ -330,6 +459,7 @@ func _redeploy_smoke(tree: SceneTree) -> Array:
 			not is_instance_valid(p2) or not p2.active, "still waiting after %.1fs" % t))
 	tree.root.remove_child(game)
 	game.free()
+	Levels3.injected = null
 	return out
 
 
@@ -347,8 +477,13 @@ func _redeploy_smoke(tree: SceneTree) -> Array:
 ## - recall on a loop drives FORWARD to the nearest stop.
 func _loop_mechanics(tree: SceneTree) -> Array:
 	var out: Array = []
-	# --- Stage A (L1 grid): the minimal 4-cell square + the size guard.
-	Levels3.current = Levels3.index_of("L1")
+	# --- Stage A: the minimal 4-cell square, the size guard and the magnetic
+	# head. These test the DRAWING CODE, not any level, so they run on an
+	# injected 5x5 open room (Levels3.injected) instead of borrowing whichever
+	# shipped level happens to have an open corner this month - level geometry
+	# is redesigned far more often than main3's stroke logic.
+	Levels3.injected = _draw_level()
+	Levels3.current = 0
 	Levels3.watch_strategy = ""
 	var g1 = load("res://scenes/v3_main.tscn").instantiate()
 	tree.root.add_child(g1)
@@ -454,6 +589,7 @@ func _loop_mechanics(tree: SceneTree) -> Array:
 			"cells %s" % str(g1.stroke)))
 	tree.root.remove_child(g1)
 	g1.free()
+	Levels3.injected = null
 	# --- Stage B (L4 ring): full closing UX + movement + pathfinding.
 	Levels3.current = Levels3.index_of("L4")
 	Levels3.watch_strategy = ""
@@ -463,49 +599,49 @@ func _loop_mechanics(tree: SceneTree) -> Array:
 	g.auto_spawn = false
 	g.start_session()
 	g.select_card(0)
-	var ring: Array = ScenData.Scen.path([Vector2i(0, 0), Vector2i(6, 0),
-			Vector2i(6, 6), Vector2i(0, 6), Vector2i(0, 1)])
+	var ring: Array = ScenData.Scen.path([Vector2i(0, 0), Vector2i(7, 0),
+			Vector2i(7, 7), Vector2i(0, 7), Vector2i(0, 1)])
 	g._begin_stroke(Grid3.cell_center(ring[0]))
 	for k in range(1, ring.size()):
 		g.stroke_try_extend(ring[k])
-	out.append(_c("loop: 24-cell ring stroke drawn", g.stroke.size() == 24,
+	out.append(_c("loop: 28-cell ring stroke drawn", g.stroke.size() == 28,
 			"size %d" % g.stroke.size()))
 	var cl: bool = g.stroke_try_extend(Vector2i(0, 0))
 	out.append(_c("loop: ring stroke closes", cl and g.stroke_closed,
 			"closed %s" % str(g.stroke_closed)))
 	var fwd: bool = g.stroke_try_extend(Vector2i(1, 0))
 	out.append(_c("loop: forward drags ignored while closed",
-			not fwd and g.stroke_closed and g.stroke.size() == 24,
+			not fwd and g.stroke_closed and g.stroke.size() == 28,
 			"size %d closed %s" % [g.stroke.size(), str(g.stroke_closed)]))
 	var retr: bool = g.stroke_try_extend(g.stroke[g.stroke.size() - 2])
 	out.append(_c("loop: cannot retract while closed",
-			not retr and g.stroke.size() == 24, "size %d" % g.stroke.size()))
+			not retr and g.stroke.size() == 28, "size %d" % g.stroke.size()))
 	var ro: bool = g.stroke_try_extend(Vector2i(0, 1)) # the tail cell
 	out.append(_c("loop: reversing onto the tail reopens",
-			ro and not g.stroke_closed and g.stroke.size() == 24,
+			ro and not g.stroke_closed and g.stroke.size() == 28,
 			"closed %s size %d" % [str(g.stroke_closed), g.stroke.size()]))
 	var back: bool = g.stroke_try_extend(Vector2i(0, 2)) # normal backtrack resumes
 	out.append(_c("loop: backtrack retracts after reopening",
-			back and g.stroke.size() == 23, "size %d" % g.stroke.size()))
+			back and g.stroke.size() == 27, "size %d" % g.stroke.size()))
 	g.stroke_try_extend(Vector2i(0, 1)) # redraw the tail...
 	g.stroke_try_extend(Vector2i(0, 0)) # ...close again...
 	g._end_stroke() # ...and commit (session-start: deploys instantly)
 	var r0 = g.routes[0]
-	out.append(_c("loop: committed ring is a closed 10-stop loop",
-			r0 != null and r0.closed and r0.cells.size() == 24
-			and r0.stop_cells().size() == 10,
+	out.append(_c("loop: committed ring is a closed 8-stop loop",
+			r0 != null and r0.closed and r0.cells.size() == 28
+			and r0.stop_cells().size() == 8,
 			"null" if r0 == null else "closed %s stops %d" % [
 					str(r0.closed), r0.stop_cells().size()]))
 	# Directional ride_dist: forward short, and a->b + b->a == n for ALL
 	# distinct stop pairs.
 	var n: int = r0.cells.size()
 	out.append(_c("loop: ride_dist forward-only ((ib-ia) mod n)",
-			is_equal_approx(r0.ride_dist(Vector2i(0, 0), Vector2i(3, 0)),
-					3.0 * Grid3.CELL)
-			and is_equal_approx(r0.ride_dist(Vector2i(3, 0), Vector2i(0, 0)),
-					21.0 * Grid3.CELL),
-			"fwd %.0f bwd %.0f" % [r0.ride_dist(Vector2i(0, 0), Vector2i(3, 0)),
-					r0.ride_dist(Vector2i(3, 0), Vector2i(0, 0))]))
+			is_equal_approx(r0.ride_dist(Vector2i(0, 0), Vector2i(5, 0)),
+					5.0 * Grid3.CELL)
+			and is_equal_approx(r0.ride_dist(Vector2i(5, 0), Vector2i(0, 0)),
+					23.0 * Grid3.CELL),
+			"fwd %.0f bwd %.0f" % [r0.ride_dist(Vector2i(0, 0), Vector2i(5, 0)),
+					r0.ride_dist(Vector2i(5, 0), Vector2i(0, 0))]))
 	var ident := true
 	var stops: Array = r0.stop_cells()
 	for i in stops.size():
@@ -517,20 +653,20 @@ func _loop_mechanics(tree: SceneTree) -> Array:
 			ident, "n %d" % n))
 	# A passenger with backward demand prices the long way (single loop car:
 	# the only plan is the almost-full lap; it must be honest, not |a-b|).
-	var legs = Pathfind3.find_path(Vector2i(3, 0), Vector2i(0, 0), g.cars, -1.0)
+	var legs = Pathfind3.find_path(Vector2i(5, 0), Vector2i(2, 0), g.cars, -1.0)
 	var long_ok: bool = legs != null and not legs.is_empty()
 	var legs_dist := 0.0
 	if long_ok:
 		for leg in legs:
 			legs_dist += leg.car.route.ride_dist(leg.board, leg.alight)
-		long_ok = legs_dist >= 21.0 * Grid3.CELL - 0.01
+		long_ok = legs_dist >= 25.0 * Grid3.CELL - 0.01
 	out.append(_c("loop: backward demand priced the long way",
 			long_ok, "legs %s dist %.0f" % [
 					"none" if legs == null else str(legs.size()), legs_dist]))
 	# Closed car wraps forward-only, smoothly across the seam, and actually
 	# delivers that backward rider.
 	var car = g.cars[0]
-	var p = g.spawn_passenger("visitor", Vector2i(3, 0), Vector2i(0, 0))
+	var p = g.spawn_passenger("visitor", Vector2i(5, 0), Vector2i(2, 0))
 	var prev_idx: int = car.idx
 	var prev_pos: Vector2 = car.position
 	var wrapped := false
@@ -556,7 +692,7 @@ func _loop_mechanics(tree: SceneTree) -> Array:
 			not is_instance_valid(p) or not p.active,
 			"still waiting after %.1fs" % t))
 	# Recall on a loop drives FORWARD to the nearest stop (never backwards).
-	var p2 = g.spawn_passenger("visitor", Vector2i(6, 0), Vector2i(6, 4))
+	var p2 = g.spawn_passenger("visitor", Vector2i(2, 0), Vector2i(7, 5))
 	t = 0.0
 	while p2.riding != car and t < 60.0:
 		g.advance(STEP)
@@ -576,7 +712,7 @@ func _loop_mechanics(tree: SceneTree) -> Array:
 		if dd < best:
 			best = dd
 			exp_stop = s
-	g.commit_route(0, ScenData.Scen.path([Vector2i(0, 0), Vector2i(3, 0)]))
+	g.commit_route(0, ScenData.Scen.path([Vector2i(0, 0), Vector2i(4, 0)]))
 	out.append(_c("loop: mid-game redraw with riders recalls",
 			car.car_state == Car3.CarState.RECALLING, "state %d" % car.car_state))
 	out.append(_c("loop: recall targets the forward-nearest stop",
@@ -616,8 +752,8 @@ func _unit_smoke(tree: SceneTree) -> Array:
 	var RG = load("res://tools/routegen.gd")
 	# --- 1. validator, on L4's ring (the only level with a legal loop).
 	Grid3.load_level(Levels3.get_level(Levels3.index_of("L4")).rows)
-	var ring: Array = ScenData.Scen.path([Vector2i(0, 0), Vector2i(6, 0),
-			Vector2i(6, 6), Vector2i(0, 6), Vector2i(0, 1)])
+	var ring: Array = ScenData.Scen.path([Vector2i(0, 0), Vector2i(7, 0),
+			Vector2i(7, 7), Vector2i(0, 7), Vector2i(0, 1)])
 	out.append(_c("validate: legal open route accepted",
 			Route3.validate(ring, false) == "", Route3.validate(ring, false)))
 	out.append(_c("validate: legal closed loop accepted",
@@ -626,7 +762,7 @@ func _unit_smoke(tree: SceneTree) -> Array:
 		["1 cell", [Vector2i(0, 0)], false],
 		["non-adjacent step", [Vector2i(0, 0), Vector2i(3, 0)], false],
 		["duplicate cell", [Vector2i(0, 0), Vector2i(1, 0), Vector2i(0, 0)], false],
-		["blocked cell", [Vector2i(0, 0), Vector2i(1, 0), Vector2i(1, 1)], false],
+		["blocked cell", [Vector2i(2, 1), Vector2i(2, 2), Vector2i(3, 2)], false],
 		["3-cell loop", [Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0)], true],
 		["loop head/tail apart", ring.slice(0, 8), true],
 	]
@@ -640,14 +776,14 @@ func _unit_smoke(tree: SceneTree) -> Array:
 	tree.root.add_child(g)
 	g.auto_spawn = false
 	g.start_session()
-	var refused: bool = not g.commit_route(0, [Vector2i(0, 0), Vector2i(3, 0)])
+	var refused: bool = not g.commit_route(0, [Vector2i(0, 0), Vector2i(4, 0)])
 	out.append(_c("commit_route rejects illegal geometry",
 			refused and g.routes[0] == null, "route %s" % str(g.routes[0])))
 	out.append(_c("commit_route still accepts legal geometry",
 			g.commit_route(0, ring, true) and g.routes[0] != null and g.routes[0].closed,
 			"rejected"))
 	# --- 2. gene decode round-trip: every stop survives, in order.
-	var stops: Array = [Vector2i(0, 0), Vector2i(6, 0), Vector2i(6, 4), Vector2i(0, 6)]
+	var stops: Array = [Vector2i(2, 0), Vector2i(5, 0), Vector2i(7, 5), Vector2i(0, 5)]
 	var dec: Dictionary = RG.decode({"stops": stops, "closed": false})
 	var got: Array = RG.stops_of_cells(dec.cells)
 	var order_ok := true
@@ -683,6 +819,18 @@ func _unit_smoke(tree: SceneTree) -> Array:
 	gi.free()
 	Levels3.injected = null
 	return out
+
+
+## A 5x5 room with nothing in it but four corner rooms: the fixture the
+## stroke/magnetic-head checks are drawn on, so they never break when a level
+## is redesigned. Rooms only exist so commit_route has something to stop at.
+func _draw_level() -> Dictionary:
+	var lv := _injected_level()
+	lv.id = "DRAW"
+	lv.rows = ["R.R.R", ".....", ".....", ".....", "R.R.R"]
+	lv.groups = {"low": [Vector2i(0, 0), Vector2i(2, 0), Vector2i(4, 0)],
+			"high": [Vector2i(0, 4), Vector2i(2, 4), Vector2i(4, 4)]}
+	return lv
 
 
 ## A tiny generated level: two shafts joined at top and bottom. Three cards

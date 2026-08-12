@@ -50,7 +50,7 @@ func _run(tree: SceneTree, sc: Dictionary) -> Dictionary:
 	Levels3.watch_strategy = ""
 	var game = load("res://scenes/v3_main.tscn").instantiate()
 	tree.root.add_child(game)
-	game.rng.seed = sc.seed
+	game.rng.seed = ScenData.Scen.SEEDS[sc.level] # canonical per-level seed
 	game.start_session()
 	for i in sc.routes.size():
 		game.commit_route(i, ScenData.Scen.cells_of(sc.routes[i]),

@@ -63,7 +63,14 @@ extends RefCounted
 
 ## Generous cap on one run. Every level's quota is reachable in well under
 ## this; a run that hits it has genuinely failed to close the level out.
-const TIMEOUT := 300.0 # game-seconds
+##
+## Raised 300 -> 420 in the v3.5 level pass. The levels got longer (quotas
+## 90..145 instead of 30..90) and the shipped theses now finish at 150-220
+## game-seconds, so a 300 s cap sat only ~35 % above the intended answer: it
+## was scoring "a bit slower than our thesis" as a LOSS, which is a measuring
+## artifact, not a fact about the level. 420 s keeps the cap ~2x the thesis on
+## every level. It costs CPU only on candidates that were losing anyway.
+const TIMEOUT := 420.0 # game-seconds
 const STEP_COARSE := 0.25 # search step
 const STEP_FINE := 0.1 # reporting step (what every balance number is tuned at)
 
