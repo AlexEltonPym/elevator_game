@@ -81,6 +81,11 @@ func _ready() -> void:
 	page = Control.new()
 	page.position = Vector2.ZERO
 	page.size = vp
+	# The page spans the whole viewport and is the topmost sibling, so with the
+	# default STOP filter it would swallow clicks aimed at the arrow buttons
+	# underneath it. IGNORE lets those clicks fall through while the page's own
+	# level buttons (children) still receive theirs.
+	page.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(page)
 	_rebuild()
 

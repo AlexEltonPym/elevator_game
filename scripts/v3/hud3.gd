@@ -157,14 +157,19 @@ func _build_panel() -> void:
 	action_btn.pressed.connect(_on_action)
 	add_child(action_btn)
 	# WATCHING banner (watch mode only): sits where the hint line lives.
+	# Watch banner: a two-line band that owns the top of the panel; the chips
+	# drop below it in watch mode (see refresh_cards). The label is width-bounded
+	# and word-wraps so a long scenario description can never run off the screen.
 	watch_banner = ColorRect.new()
 	watch_banner.position = Vector2(0, 1010)
-	watch_banner.size = Vector2(720, 44)
+	watch_banner.size = Vector2(720, 66)
 	watch_banner.visible = false
 	add_child(watch_banner)
 	watch_label = Label.new()
-	watch_label.position = Vector2(14, 1016)
-	watch_label.add_theme_font_size_override("font_size", 21)
+	watch_label.position = Vector2(14, 1014)
+	watch_label.size = Vector2(692, 58)
+	watch_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	watch_label.add_theme_font_size_override("font_size", 20)
 	watch_label.add_theme_color_override("font_color", Color(1, 1, 1, 0.95))
 	watch_label.visible = false
 	add_child(watch_label)
@@ -230,8 +235,12 @@ func refresh_cards() -> void:
 			var sets: Dictionary = Scenarios3.route_sets(game.level.id)
 			desc = sets.get(game.watch, {}).get("desc", "")
 		watch_label.text = "WATCHING: %s - %s" % [game.watch.to_upper(), desc]
+	# In watch mode the chips sit BELOW the two-line watch banner; in PLAN/RUN
+	# they sit under the hint line at the normal height.
+	var chip_y: float = 1086.0 if watching else 1046.0
 	for i in chip_buttons.size():
 		var btn: Button = chip_buttons[i]
+		btn.position.y = chip_y
 		var card: Dictionary = game.CARDS[i]
 		var route = game.routes[i]
 		var car = game.cars[i]
