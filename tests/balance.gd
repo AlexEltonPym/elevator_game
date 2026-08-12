@@ -5,10 +5,16 @@ extends RefCounted
 ## speed: each scenario instantiates scenes/v3_main.tscn for its level,
 ## fixes the game RNG seed, commits the scripted routes, then drives
 ## main3.advance() with fixed 0.1 s steps until win / lose / timeout.
-## Collects served, lost, avg wait, avg transfers and gate wait, prints a
-## per-scenario table plus PASS/FAIL per assertion, and exits nonzero on any
-## failure (note: the mono wrapper may turn even a clean exit into code 1 -
-## trust the final "BALANCE: ALL PASS" line).
+## Collects served, lost, avg wait, avg transfers, gate wait and gate
+## transits, prints a per-scenario table plus PASS/FAIL per assertion, and
+## exits nonzero on any failure (note: the mono wrapper may turn even a
+## clean exit into code 1 - trust the final "BALANCE: ALL PASS" line).
+##
+## Beyond the per-level win/lose assertions it also:
+## - lints EVERY level for dead rooms (each room must have spawn weight > 0,
+##   be a possible destination, and be covered by the thesis route set), and
+## - smoke-tests the v3.3 redeploy flow (mid-run redraw with riders aboard
+##   recalls + redeploys in ~3 s; session-start commits deploy instantly).
 ##
 ## Driven by tests/run_balance.gd (one scenario per engine frame so freed
 ## nodes flush between runs):
@@ -25,6 +31,8 @@ const ScenData = preload("res://tests/scenarios3.gd")
 var scenarios: Array = ScenData.scenarios()
 var results := {} # key -> stats dict
 var next_i := 0
+var redeploy_done := false
+var redeploy_checks: Array = [] # filled by the redeploy smoke run
 
 
 ## Run one scenario per call (per engine frame). Returns true when finished
@@ -34,6 +42,10 @@ func step(tree: SceneTree) -> bool:
 		var sc: Dictionary = scenarios[next_i]
 		results[sc.key] = _run_scenario(tree, sc)
 		next_i += 1
+		return false
+	if not redeploy_done:
+		redeploy_done = true
+		redeploy_checks = _redeploy_smoke(tree)
 		return false
 	var ok := _report()
 	tree.quit(0 if ok else 1)
@@ -46,13 +58,15 @@ func _run_scenario(tree: SceneTree, sc: Dictionary) -> Dictionary:
 	var li: int = Levels3.index_of(sc.level)
 	assert(li >= 0, "unknown level id " + str(sc.level))
 	Levels3.current = li
+	Levels3.watch_strategy = "" # harness commits routes itself
 	var game = load("res://scenes/v3_main.tscn").instantiate()
 	tree.root.add_child(game) # _ready loads the level grid
 	var r := {
 		"key": sc.key, "level": sc.level, "result": "TIMEOUT",
 		"served": 0, "lost": 0, "time": 0.0, "avg_wait": 0.0, "p90_wait": 0.0,
-		"avg_transfers": 0.0, "gate_wait": 0.0, "quota": game.QUOTA,
-		"max_lost": game.MAX_LOST, "log_served": [], "route_error": "",
+		"avg_transfers": 0.0, "gate_wait": 0.0, "gate_transits": 0,
+		"quota": game.QUOTA, "max_lost": game.MAX_LOST, "log_served": [],
+		"route_error": "",
 	}
 	for i in sc.routes.size():
 		var err := _route_error(sc.routes[i])
@@ -74,6 +88,7 @@ func _run_scenario(tree: SceneTree, sc: Dictionary) -> Dictionary:
 	r.served = game.served
 	r.lost = game.lost
 	r.gate_wait = game.gate_wait_total()
+	r.gate_transits = game.gate_transit_total()
 	r.log_served = game.log_served.duplicate(true)
 	if game.state == game.State.WIN:
 		r.result = "WIN"
@@ -133,23 +148,24 @@ func _transfer_share(r: Dictionary, from_cells: Array, to_cells: Array) -> float
 
 func _report() -> bool:
 	print("")
-	print("================ v3 BALANCE HARNESS ================")
-	print("%-14s %-8s %8s %8s %9s %9s %10s %10s" % [
+	print("===================== v3 BALANCE HARNESS =====================")
+	print("%-14s %-8s %8s %8s %9s %9s %10s %10s %8s" % [
 			"scenario", "result", "served", "lost", "avg wait", "p90 wait",
-			"transfers", "gate wait"])
+			"transfers", "gate wait", "transits"])
 	for sc in scenarios:
 		var r: Dictionary = results[sc.key]
-		print("%-14s %-8s %5d/%-3d %5d/%-3d %8.1fs %8.1fs %10.2f %9.1fs" % [
+		print("%-14s %-8s %5d/%-3d %5d/%-3d %8.1fs %8.1fs %10.2f %9.1fs %8d" % [
 				r.key, r.result, r.served, r.quota, r.lost, r.max_lost,
-				r.avg_wait, r.p90_wait, r.avg_transfers, r.gate_wait])
-	print("----------------------------------------------------")
+				r.avg_wait, r.p90_wait, r.avg_transfers, r.gate_wait,
+				r.gate_transits])
+	print("--------------------------------------------------------------")
 	var checks := _checks()
 	var ok := true
 	for c in checks:
 		var mark: String = "PASS" if c.ok else "FAIL"
 		print("[%s] %s%s" % [mark, c.name, "" if c.ok else "  (" + c.detail + ")"])
 		ok = ok and c.ok
-	print("----------------------------------------------------")
+	print("--------------------------------------------------------------")
 	print("BALANCE: ALL PASS" if ok else "BALANCE: FAILURES PRESENT")
 	return ok
 
@@ -160,38 +176,155 @@ func _checks() -> Array:
 		if results[sc.key].route_error != "":
 			out.append({"name": sc.key + " routes valid", "ok": false,
 					"detail": results[sc.key].route_error})
-	var l1i: Dictionary = results.L1_intended
-	var l1n: Dictionary = results.L1_naive
-	out.append(_c("L1 intended wins quota", l1i.result == "WIN",
-			"result " + l1i.result))
-	out.append(_c("L1 intended lost <= 2", l1i.lost <= 2, "lost %d" % l1i.lost))
-	out.append(_c("L1 naive loses before quota", l1n.result == "LOSE",
-			"result %s, served %d, lost %d" % [l1n.result, l1n.served, l1n.lost]))
+	# Every playable level: naive LOSES (hits max_lost before quota) while
+	# the intended (thesis) strategy WINS with lost <= 3.
+	for id in ["L1", "L2", "L3"]:
+		var ri: Dictionary = results["%s_intended" % id]
+		var rn: Dictionary = results["%s_naive" % id]
+		out.append(_c("%s intended wins quota" % id, ri.result == "WIN",
+				"result " + ri.result))
+		out.append(_c("%s intended lost <= 3" % id, ri.lost <= 3, "lost %d" % ri.lost))
+		out.append(_c("%s naive loses before quota" % id, rn.result == "LOSE",
+				"result %s, served %d, lost %d" % [rn.result, rn.served, rn.lost]))
 	var l2i: Dictionary = results.L2_intended
 	var l2n: Dictionary = results.L2_naive
-	out.append(_c("L2 intended wins quota", l2i.result == "WIN",
-			"result " + l2i.result))
-	out.append(_c("L2 intended lost <= 3", l2i.lost <= 3, "lost %d" % l2i.lost))
-	out.append(_c("L2 naive lost >= 2x intended (or loses)",
-			l2n.result == "LOSE" or l2n.lost >= 2 * l2i.lost,
-			"naive %d vs intended %d" % [l2n.lost, l2i.lost]))
-	out.append(_c("L2 naive gate wait >= 2x intended",
-			l2n.gate_wait >= 2.0 * l2i.gate_wait,
+	out.append(_c("L2 naive gate wait >= 3x intended",
+			l2n.gate_wait >= 3.0 * l2i.gate_wait,
 			"naive %.1fs vs intended %.1fs" % [l2n.gate_wait, l2i.gate_wait]))
+	out.append(_c("L2 intended gate transits >= 10", l2i.gate_transits >= 10,
+			"transits %d" % l2i.gate_transits))
 	var l3i: Dictionary = results.L3_intended
-	var l3n: Dictionary = results.L3_naive
 	var l3_level: Dictionary = Levels3.get_level(Levels3.index_of("L3"))
 	var share := _transfer_share(l3i, l3_level.groups.arms, l3_level.groups.pent)
-	out.append(_c("L3 intended wins quota", l3i.result == "WIN",
-			"result " + l3i.result))
-	out.append(_c("L3 intended lost <= 3", l3i.lost <= 3, "lost %d" % l3i.lost))
 	out.append(_c("L3 arm->penthouse 2-leg share >= 40%", share >= 0.4,
 			"share %.0f%%" % (share * 100.0)))
-	out.append(_c("L3 naive worse on lost count", l3n.lost > l3i.lost,
-			"naive %d vs intended %d" % [l3n.lost, l3i.lost]))
 	var x1: Dictionary = results.X1_smoke
 	out.append(_c("X-1 winnable by old smoke strategy", x1.result == "WIN",
 			"result %s, served %d, lost %d" % [x1.result, x1.served, x1.lost]))
+	out.append_array(_lint_levels())
+	out.append_array(redeploy_checks)
+	return out
+
+
+# ------------------------------------------------------------- global lints
+
+## Every level: every R cell generates demand (spawn weight > 0), every R
+## cell is a possible destination, and the level's thesis route set covers
+## every room (each room is a cell of some route). No dead/decoy rooms and
+## no room the intended strategy abandons - X-1's smoke set included.
+func _lint_levels() -> Array:
+	var out: Array = []
+	for lv in Levels3.LEVELS:
+		Grid3.load_level(lv.rows)
+		var origins := {}
+		var dests := {}
+		if lv.mix.get("exec", 0.0) > 0.0:
+			for c in lv.exec_origins:
+				origins[c] = true
+			for c in lv.exec_dests:
+				dests[c] = true
+		for row in lv.trips:
+			if row.w <= 0.0:
+				continue
+			for c in lv.groups[row.from]:
+				origins[c] = true
+			for c in lv.groups[row.to]:
+				dests[c] = true
+		var covered := {}
+		for cells in ScenData.Scen.route_set(lv.id, "thesis"):
+			for c in cells:
+				covered[c] = true
+		var no_spawn: Array = []
+		var no_dest: Array = []
+		var uncovered: Array = []
+		for r in Grid3.rooms():
+			if not origins.has(r):
+				no_spawn.append(r)
+			if not dests.has(r):
+				no_dest.append(r)
+			if not covered.has(r):
+				uncovered.append(r)
+		out.append(_c("%s every room spawns and receives" % lv.id,
+				no_spawn.is_empty() and no_dest.is_empty(),
+				"no spawn %s, no dest %s" % [str(no_spawn), str(no_dest)]))
+		out.append(_c("%s thesis routes cover every room" % lv.id,
+				uncovered.is_empty(), "uncovered %s" % str(uncovered)))
+	return out
+
+
+# ---------------------------------------------------------- redeploy smoke
+
+## Mid-run route replacement with riders aboard must RECALL (drop the riders
+## at an old-route room stop, not teleport them), keep the car off the grid
+## for a ~3 s ghost countdown at the new start, then resume service there.
+## Session-start commits (never-deployed cars) must deploy with no delay.
+func _redeploy_smoke(tree: SceneTree) -> Array:
+	var out: Array = []
+	Levels3.current = Levels3.index_of("L1")
+	Levels3.watch_strategy = ""
+	var game = load("res://scenes/v3_main.tscn").instantiate()
+	tree.root.add_child(game)
+	game.rng.seed = 4242
+	game.auto_spawn = false # only our hand-placed passengers
+	game.start_session()
+	var old_route: Array = ScenData.Scen.path(
+			[Vector2i(2, 0), Vector2i(1, 0), Vector2i(1, 5)])
+	game.commit_route(0, old_route)
+	var car = game.cars[0]
+	out.append(_c("redeploy: session-start commit deploys instantly",
+			car.car_state == Car3.CarState.RUNNING and car.visible,
+			"state %d" % car.car_state))
+	# A rider from the lobby up the side column.
+	var p = game.spawn_passenger("visitor", Vector2i(2, 0), Vector2i(1, 5))
+	var t := 0.0
+	while p.riding != car and t < 60.0:
+		game.advance(STEP)
+		t += STEP
+	out.append(_c("redeploy: smoke rider boarded", p.riding == car,
+			"riding %s after %.1fs" % [str(p.riding), t]))
+	game.advance(3.0) # doors finish (~1.8 s) and the car gets rolling mid-route
+	# Mid-run redraw to a DIFFERENT start while the rider is aboard.
+	var new_route: Array = ScenData.Scen.path([Vector2i(1, 6), Vector2i(1, 8)])
+	game.commit_route(0, new_route)
+	out.append(_c("redeploy: commit with riders aboard recalls first",
+			car.car_state == Car3.CarState.RECALLING,
+			"state %d" % car.car_state))
+	t = 0.0
+	while car.car_state == Car3.CarState.RECALLING and t < 60.0:
+		game.advance(STEP)
+		t += STEP
+	var old_stops: Array = []
+	for c in old_route:
+		if Grid3.is_room(c):
+			old_stops.append(c)
+	var dropped: bool = (not is_instance_valid(p)) \
+			or (p.riding == null and old_stops.has(p.cur_cell))
+	out.append(_c("redeploy: rider dropped at an old-route room", dropped,
+			"cur_cell %s" % (str(p.cur_cell) if is_instance_valid(p) else "served")))
+	out.append(_c("redeploy: car absent from grid during countdown",
+			car.car_state == Car3.CarState.REDEPLOYING and not car.on_grid()
+			and car.current_cell() == Vector2i(-1, -1),
+			"state %d" % car.car_state))
+	t = 0.0
+	while car.car_state == Car3.CarState.REDEPLOYING and t < 10.0:
+		game.advance(STEP)
+		t += STEP
+	out.append(_c("redeploy: countdown lasts ~3 s", t >= 2.8 and t <= 3.4,
+			"%.1fs" % t))
+	out.append(_c("redeploy: service resumes from the new start",
+			car.car_state == Car3.CarState.RUNNING
+			and car.current_cell() == Vector2i(1, 6),
+			"state %d cell %s" % [car.car_state, str(car.current_cell())]))
+	# The redeployed route must actually serve someone.
+	var p2 = game.spawn_passenger("visitor", Vector2i(1, 6), Vector2i(1, 8))
+	t = 0.0
+	while is_instance_valid(p2) and p2.active and t < 60.0:
+		game.advance(STEP)
+		t += STEP
+	out.append(_c("redeploy: new route serves a rider",
+			not is_instance_valid(p2) or not p2.active, "still waiting after %.1fs" % t))
+	tree.root.remove_child(game)
+	game.free()
 	return out
 
 

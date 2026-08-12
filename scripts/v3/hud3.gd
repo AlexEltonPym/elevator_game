@@ -1,23 +1,33 @@
 extends CanvasLayer
-## v3 HUD, built entirely in code (v2 style):
-## - top bar: level id, Served n/quota, Lost n/max, MENU, speed buttons
+## v3 HUD, built entirely in code:
+## - top bar: level id, Served n/quota, Lost n/max, LEVELS, speed buttons
 ## - bottom panel: 3 route card chips (colored, route length + stop count),
 ##   CLEAR button, contextual hint line
 ## - overlays: intro / win (next level, level select, keep playing) /
 ##   lose (retry, level select)
+## Watch mode (game.watch != ""): the LEVELS button reads EXIT, a colored
+## WATCHING banner replaces the hint line, chips are display-only, and the
+## win/lose overlays offer Watch Again / Level Select instead.
 
 var game = null # main3.gd, set by main before first refresh
 
 var level_label: Label
 var served_label: Label
 var lost_label: Label
+var menu_btn: Button
 var speed_buttons: Array = []
 var hint_label: Label
 var chip_buttons: Array = []
 var clear_btn: Button
+var watch_banner: ColorRect = null
+var watch_label: Label = null
 var overlay: Control = null
 
 const SPEEDS := [[0.0, "II"], [1.0, "1x"], [3.0, "3x"]]
+const WATCH_TONES := {
+	"naive": Color(0.62, 0.24, 0.20), # the obvious plan, in warning red
+	"thesis": Color(0.16, 0.45, 0.26), # the level's answer, in confident green
+}
 
 
 func _ready() -> void:
@@ -43,13 +53,14 @@ func _build_top() -> void:
 	level_label.text = "X-1"
 	served_label = _make_label(Vector2(110, 10), 24, Color(0.45, 0.95, 0.55))
 	lost_label = _make_label(Vector2(110, 48), 24, Color(1.0, 0.5, 0.45))
-	var menu_btn := Button.new()
-	menu_btn.text = "MENU"
+	menu_btn = Button.new()
+	menu_btn.text = "LEVELS" # reads EXIT in watch mode (see refresh_stats)
 	menu_btn.position = Vector2(330, 6)
 	menu_btn.size = Vector2(100, 80)
-	menu_btn.add_theme_font_size_override("font_size", 22)
+	menu_btn.add_theme_font_size_override("font_size", 20)
 	menu_btn.pressed.connect(func():
-		get_tree().change_scene_to_file("res://scenes/menu.tscn"))
+		if game != null:
+			game.to_level_select())
 	add_child(menu_btn)
 	for i in SPEEDS.size():
 		var btn := Button.new()
@@ -98,6 +109,18 @@ func _build_panel() -> void:
 	clear_btn.visible = false
 	clear_btn.pressed.connect(_on_clear)
 	add_child(clear_btn)
+	# WATCHING banner (watch mode only): sits where the hint line lives.
+	watch_banner = ColorRect.new()
+	watch_banner.position = Vector2(0, 1010)
+	watch_banner.size = Vector2(720, 44)
+	watch_banner.visible = false
+	add_child(watch_banner)
+	watch_label = Label.new()
+	watch_label.position = Vector2(14, 1016)
+	watch_label.add_theme_font_size_override("font_size", 21)
+	watch_label.add_theme_color_override("font_color", Color(1, 1, 1, 0.95))
+	watch_label.visible = false
+	add_child(watch_label)
 
 
 func _on_clear() -> void:
@@ -109,12 +132,24 @@ func _on_clear() -> void:
 func refresh_cards() -> void:
 	if game == null:
 		return
+	var watching: bool = game.watch != ""
+	if watching:
+		# One-time-ish banner setup (values never change mid-session).
+		watch_banner.color = WATCH_TONES.get(game.watch, Color(0.3, 0.3, 0.3))
+		var sets: Dictionary = Scenarios3.route_sets(game.level.id)
+		var desc: String = sets.get(game.watch, {}).get("desc", "")
+		watch_label.text = "WATCHING: %s - %s" % [game.watch.to_upper(), desc]
 	for i in chip_buttons.size():
 		var btn: Button = chip_buttons[i]
 		var card: Dictionary = game.CARDS[i]
 		var route = game.routes[i]
+		var car = game.cars[i]
 		var sub: String
-		if route == null:
+		if car != null and car.car_state == Car3.CarState.RECALLING:
+			sub = "recalling..."
+		elif car != null and car.car_state == Car3.CarState.REDEPLOYING:
+			sub = "deploys in %d" % ceili(maxf(car.redeploy_left, 0.001))
+		elif route == null:
 			sub = "no route"
 		else:
 			var stops: int = route.stop_cells().size()
@@ -136,6 +171,8 @@ func refresh_cards() -> void:
 		btn.add_theme_stylebox_override("normal", sb)
 		btn.add_theme_stylebox_override("hover", sb)
 		btn.add_theme_stylebox_override("pressed", sb)
+		btn.add_theme_stylebox_override("disabled", sb)
+		btn.disabled = watching # watch mode: chips are display-only
 
 
 ## Cheap per-frame refresh of labels + contextual widgets.
@@ -151,8 +188,22 @@ func refresh_stats() -> void:
 	for i in speed_buttons.size():
 		var active: bool = is_equal_approx(game.time_scale, SPEEDS[i][0])
 		speed_buttons[i].modulate = Color(1, 1, 1, 1.0) if active else Color(1, 1, 1, 0.45)
-	clear_btn.visible = game.selected_card >= 0 and game.routes[game.selected_card] != null
-	_refresh_hint()
+	var watching: bool = game.watch != ""
+	menu_btn.text = "EXIT" if watching else "LEVELS"
+	watch_banner.visible = watching
+	watch_label.visible = watching
+	hint_label.visible = not watching
+	clear_btn.visible = not watching and game.selected_card >= 0 \
+			and game.routes[game.selected_card] != null
+	# Recall/redeploy chips carry a live countdown - rebuild them while any
+	# car is in a pending state (cheap: 3 buttons).
+	for c in game.cars:
+		if c != null and (c.car_state == Car3.CarState.RECALLING
+				or c.car_state == Car3.CarState.REDEPLOYING):
+			refresh_cards()
+			break
+	if not watching:
+		_refresh_hint()
 
 
 func _refresh_hint() -> void:
@@ -189,6 +240,10 @@ func show_intro() -> void:
 
 
 func show_win(served: int, lost: int) -> void:
+	if game.watch != "":
+		_show_overlay("%s WINS" % game.watch.to_upper(),
+				"Quota met: served %d, lost %d." % [served, lost], _watch_buttons())
+		return
 	var buttons: Array = []
 	if Levels3.current < Levels3.LEVELS.size() - 1:
 		buttons.append({"text": "NEXT LEVEL", "cb": func(): game.next_level()})
@@ -199,12 +254,23 @@ func show_win(served: int, lost: int) -> void:
 
 
 func show_lose(served: int, lost: int) -> void:
+	if game.watch != "":
+		_show_overlay("%s LOSES" % game.watch.to_upper(),
+				"Lost %d passengers (served %d)." % [lost, served], _watch_buttons())
+		return
 	_show_overlay("SHIFT FAILED",
 			"Lost %d passengers (served %d).\nYour routes stay drawn - counters reset." % [lost, served],
 			[
 				{"text": "RETRY", "cb": func(): game.restart_session()},
 				{"text": "LEVEL SELECT", "cb": func(): game.to_level_select()},
 			])
+
+
+func _watch_buttons() -> Array:
+	return [
+		{"text": "WATCH AGAIN", "cb": func(): game.watch_again()},
+		{"text": "LEVEL SELECT", "cb": func(): game.to_level_select()},
+	]
 
 
 func hide_overlay() -> void:

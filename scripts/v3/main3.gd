@@ -7,6 +7,10 @@ extends Node2D
 ## the game time scale (pause/1x/3x - a plain variable multiplied into game
 ## ticks, so UI and route editing keep working while paused).
 ##
+## Mid-game route commits/CLEAR do NOT teleport cars: Car3.apply_route runs
+## the recall -> redeploy state machine (see car3.gd); only a never-deployed
+## card's first commit appears instantly.
+##
 ## All randomness flows through `rng` (one RandomNumberGenerator): normal
 ## play randomizes it, the balance harness sets a fixed seed for
 ## deterministic runs.
@@ -34,9 +38,11 @@ var pulse_timer := 0.0
 var burst_left := 0
 var burst_timer := 0.0
 
+var watch := "" # "" (normal play) | "naive" | "thesis" (from Levels3.watch_strategy)
+
 var routes: Array = [null, null, null] # Route3 or null per card
 var cars: Array = [null, null, null] # Car3 per card (always exist, may be idle)
-var gates := {} # gate cell -> {"holder": Car3 or null, "queue": Array[Car3]}
+var gates := {} # gate GROUP index -> {"holder": Car3 or null, "queue": Array[Car3]}
 var waiting := {} # room cell -> Array[Passenger3] in arrival order
 
 # Session log for stats/harness: one entry per finished passenger,
@@ -55,16 +61,16 @@ var stroke: Array = [] # Vector2i cells of the active drag
 
 
 func _ready() -> void:
-	rng.randomize() # normal play is unseeded; the harness overrides rng.seed
 	level = Levels3.get_level(Levels3.current)
+	watch = Levels3.watch_strategy
 	Grid3.load_level(level.rows)
 	CARDS = level.cards
 	QUOTA = level.quota
 	MAX_LOST = level.max_lost
 	routes = []
 	cars = []
-	for g in Grid3.gate_cells():
-		gates[g] = {"holder": null, "queue": []}
+	for gi in Grid3.gate_groups().size():
+		gates[gi] = {"holder": null, "queue": []}
 	for r in Grid3.rooms():
 		waiting[r] = []
 	grid.game = self
@@ -75,8 +81,18 @@ func _ready() -> void:
 		c.setup(self, i, CARDS[i])
 		cars_node.add_child(c)
 		cars.append(c)
+	if watch != "":
+		# Watch mode: canonical harness seed (identical demand for both
+		# strategies), scenario routes pre-drawn, editing disabled, no intro.
+		rng.seed = Scenarios3.SEEDS[level.id]
+		start_session()
+		var rs: Array = Scenarios3.route_set(level.id, watch)
+		for i in mini(rs.size(), CARDS.size()):
+			commit_route(i, rs[i])
+	else:
+		rng.randomize() # normal play is unseeded; the harness overrides rng.seed
+		hud.show_intro()
 	hud.refresh_cards()
-	hud.show_intro()
 
 
 func _process(delta: float) -> void:
@@ -159,11 +175,19 @@ func restart_session() -> void:
 
 func next_level() -> void:
 	Levels3.current = mini(Levels3.current + 1, Levels3.LEVELS.size() - 1)
+	Levels3.watch_strategy = ""
 	get_tree().change_scene_to_file("res://scenes/v3_main.tscn")
 
 
 func to_level_select() -> void:
+	Levels3.watch_strategy = ""
 	get_tree().change_scene_to_file("res://scenes/v3_select.tscn")
+
+
+## Watch overlays' "Watch Again": reload the scene with the same strategy
+## (Levels3.watch_strategy is still set), so the seeded run replays exactly.
+func watch_again() -> void:
+	get_tree().change_scene_to_file("res://scenes/v3_main.tscn")
 
 
 func _reset_spawner() -> void:
@@ -200,8 +224,8 @@ func set_speed(s: float) -> void:
 # ---------------------------------------------------------------- input
 
 func _unhandled_input(event: InputEvent) -> void:
-	if state != State.PLAYING:
-		return
+	if watch != "" or state != State.PLAYING:
+		return # watch mode: routes are the scenario's, taps do nothing
 	if event is InputEventScreenTouch:
 		if event.pressed:
 			_begin_stroke(event.position)
@@ -212,6 +236,8 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func select_card(i: int) -> void:
+	if watch != "":
+		return # card chips are display-only while watching
 	selected_card = -1 if selected_card == i else i
 	drawing = false
 	stroke = []
@@ -238,8 +264,10 @@ func _extend_stroke(pos: Vector2) -> void:
 
 
 ## Grow the active stroke toward `cell`. Legal only into an orthogonally
-## adjacent, non-blocked, not-yet-used cell. Dragging back onto a cell already
-## in the stroke RETRACTS the stroke to that cell (ONI pipe-style undo).
+## adjacent, non-blocked, not-yet-used cell. Dragging back onto the
+## SECOND-TO-LAST cell retracts one step (ONI pipe-style undo — only backing
+## up the way you came undoes); touching the stroke anywhere else is a
+## collision and is ignored, like any other illegal cell.
 ## A fast drag that skipped cells is filled in ONLY when there is an
 ## unambiguous straight-line legal path from the last cell; anything else is
 ## ignored (never teleport). Returns true if the stroke changed.
@@ -249,11 +277,10 @@ func stroke_try_extend(cell: Vector2i) -> bool:
 	var last: Vector2i = stroke.back()
 	if cell == last:
 		return false
-	var idx := stroke.find(cell)
-	if idx != -1:
-		stroke.resize(idx + 1)
+	if stroke.size() >= 2 and cell == stroke[stroke.size() - 2]:
+		stroke.resize(stroke.size() - 1)
 		return true
-	if not Grid3.passable(cell):
+	if not Grid3.passable(cell) or stroke.has(cell):
 		return false
 	var d := cell - last
 	if absi(d.x) + absi(d.y) == 1:
@@ -286,48 +313,42 @@ func _end_stroke() -> void:
 
 # ---------------------------------------------------------------- route edits
 
-## Commit `cells` as card i's route (REPLACES any previous route). Riders of
-## the old route step out at its nearest room stop and rejoin the waiting
-## pool; every waiting passenger replans.
+## Commit `cells` as card i's route (REPLACES any previous route). The car
+## decides how to get there (Car3.apply_route): a never-deployed car appears
+## instantly; a deployed one recalls its riders to the nearest old-route room
+## stop first, then redeploys at the new start after a ghost countdown.
+## Every waiting passenger replans against the NEW route immediately.
 func commit_route(i: int, cells: Array) -> void:
-	_drop_riders(i)
 	var r: Route3 = null
 	if cells.size() > 0:
 		r = Route3.new()
 		r.cells = cells.duplicate()
 	routes[i] = r
-	cars[i].set_route(r)
+	cars[i].apply_route(r)
 	replan_all()
 	hud.refresh_cards()
 
 
 func clear_route(i: int) -> void:
-	_drop_riders(i)
 	routes[i] = null
-	cars[i].set_route(null)
+	cars[i].apply_route(null)
 	replan_all()
 	hud.refresh_cards()
 
 
-## Route i is about to change: its riders step out at the old route's room
-## stop nearest to the car and rejoin the waiting pool (replan_all follows).
-func _drop_riders(i: int) -> void:
-	var car = cars[i]
-	if car == null or car.riders.is_empty() or car.route == null:
+## A recalled car dumped a rider at `cell` (a room stop of its OLD route):
+## either that's their destination (served) or they rejoin the waiting pool
+## there with a fresh plan against the current network.
+func on_recall_drop(p, cell: Vector2i) -> void:
+	p.riding = null
+	p.cur_cell = cell
+	if not p.legs.is_empty():
+		p.legs = []
+	if cell == p.dest_cell:
+		on_served(p)
 		return
-	var stop_idx: Array = car.route.stop_indices()
-	if stop_idx.is_empty():
-		return
-	var best: int = stop_idx[0]
-	for s in stop_idx:
-		if absi(s - car.idx) < absi(best - car.idx):
-			best = s
-	var room: Vector2i = car.route.cells[best]
-	for p in car.riders.duplicate():
-		p.riding = null
-		p.cur_cell = room
-		waiting[room].append(p)
-	car.riders.clear()
+	_compute_path_for(p)
+	waiting[cell].append(p)
 
 
 func route_warning(i: int) -> bool:
@@ -336,10 +357,11 @@ func route_warning(i: int) -> bool:
 
 # ---------------------------------------------------------------- gates
 
-## FIFO mutex. Grants the lock iff the gate is free and `car` is at the front
-## of the queue; otherwise the car stays queued and must retry.
-func gate_request(car, cell: Vector2i) -> bool:
-	var g: Dictionary = gates[cell]
+## FIFO mutex per gate GROUP (a whole corridor of contiguous G cells).
+## Grants the lock iff the group is free and `car` is at the front of the
+## queue; otherwise the car stays queued and must retry.
+func gate_request(car, group: int) -> bool:
+	var g: Dictionary = gates[group]
 	if g.holder == car:
 		return true
 	if not g.queue.has(car):
@@ -351,17 +373,17 @@ func gate_request(car, cell: Vector2i) -> bool:
 	return false
 
 
-func gate_release(car, cell: Vector2i) -> void:
-	if gates[cell].holder == car:
-		gates[cell].holder = null
+func gate_release(car, group: int) -> void:
+	if gates[group].holder == car:
+		gates[group].holder = null
 
 
 ## Remove a car from every gate queue/lock (route replaced or cleared).
 func gate_cancel(car) -> void:
-	for cell in gates:
-		gates[cell].queue.erase(car)
-		if gates[cell].holder == car:
-			gates[cell].holder = null
+	for gi in gates:
+		gates[gi].queue.erase(car)
+		if gates[gi].holder == car:
+			gates[gi].holder = null
 
 
 # ---------------------------------------------------------------- pathfinding
@@ -489,6 +511,15 @@ func gate_wait_total() -> float:
 		if c != null:
 			t += c.gate_wait_total
 	return t
+
+
+## Total gate-corridor lock acquisitions this session (stat / harness).
+func gate_transit_total() -> int:
+	var n := 0
+	for c in cars:
+		if c != null:
+			n += c.gate_transits
+	return n
 
 
 ## Stack waiting passengers inside their room cell (queue beside the room).

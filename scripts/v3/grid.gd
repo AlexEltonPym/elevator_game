@@ -5,7 +5,7 @@ extends Node2D
 ##   "." open shaft, "#" blocked, "R" room (stop when a route passes it),
 ##   "G" gate (open, but a one-car mutex).
 ## All layout geometry lives here as statics so every v3 script shares one
-## source of truth (mirrors v2's building.gd role). Drawing reads state from
+## source of truth. Drawing reads state from
 ## `game` (main3.gd): committed routes, the live drag preview, selection.
 
 const CELL := 90.0
@@ -39,6 +39,9 @@ static var ROWS := 10
 static var ORIGIN := Vector2(45.0, 100.0) # top-left corner of the top-left cell
 
 static var _rooms_cache: Array = []
+static var _gate_groups: Array = [] # Array of Arrays of Vector2i (corridors)
+static var _gate_group_of := {} # Vector2i -> index into _gate_groups
+static var _gates_dirty := true
 
 var game = null # main3.gd
 
@@ -53,6 +56,7 @@ static func load_level(rows: Array) -> void:
 	ORIGIN = Vector2((GRID_X - COLS * CELL) / 2.0,
 			GRID_Y_TOP + (GRID_Y_H - ROWS * CELL) / 2.0)
 	_rooms_cache = []
+	_gates_dirty = true
 
 
 # ---------------------------------------------------------------- maze queries
@@ -100,6 +104,44 @@ static func gate_cells() -> Array:
 	return out
 
 
+## Orthogonally contiguous G cells form ONE gate group = one corridor-wide
+## mutex. Returns an Array of Arrays of cells (flood-filled at level load;
+## a single isolated G is a group of 1, exactly the old per-cell behavior).
+static func gate_groups() -> Array:
+	_ensure_gate_groups()
+	return _gate_groups
+
+
+## Group index of a gate cell, or -1 for any non-gate cell.
+static func gate_group_of(c: Vector2i) -> int:
+	_ensure_gate_groups()
+	return _gate_group_of.get(c, -1)
+
+
+static func _ensure_gate_groups() -> void:
+	if not _gates_dirty:
+		return
+	_gates_dirty = false
+	_gate_groups = []
+	_gate_group_of = {}
+	for c in gate_cells():
+		if _gate_group_of.has(c):
+			continue
+		var gi := _gate_groups.size()
+		var group: Array = []
+		var stack: Array = [c]
+		_gate_group_of[c] = gi
+		while not stack.is_empty():
+			var u: Vector2i = stack.pop_back()
+			group.append(u)
+			for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+				var v: Vector2i = u + d
+				if is_gate(v) and not _gate_group_of.has(v):
+					_gate_group_of[v] = gi
+					stack.append(v)
+		_gate_groups.append(group)
+
+
 static func room_letter(c: Vector2i) -> String:
 	var i := rooms().find(c)
 	if i < 0:
@@ -140,6 +182,16 @@ func _draw() -> void:
 			_draw_cell(Vector2i(x, y))
 	if game == null:
 		return
+	# Faint retiring polylines under cars still driving home a recall.
+	for car in game.cars:
+		if car == null or car.car_state != Car3.CarState.RECALLING:
+			continue
+		if car.recall_route == null or car.recall_route.cells.size() < 2:
+			continue
+		var rp := PackedVector2Array()
+		for c in car.recall_route.cells:
+			rp.append(cell_center(c))
+		draw_polyline(rp, Color(car.color, 0.16), 4.0)
 	# Committed routes (each nudged so overlaps stay readable).
 	for i in game.routes.size():
 		var route = game.routes[i]
@@ -175,12 +227,38 @@ func _draw_cell(c: Vector2i) -> void:
 					HORIZONTAL_ALIGNMENT_LEFT, -1.0, 20, Color(0.75, 0.88, 1.0, 0.8))
 		"G":
 			draw_rect(rect, Color(0.22, 0.21, 0.20))
-			_draw_hazard_border(rect)
+			# Whole-corridor occupied tint: while any car holds this cell's
+			# group, every cell of the group glows faintly in its color.
+			var gi := Grid3.gate_group_of(c)
+			if game != null and gi != -1:
+				var g: Dictionary = game.gates.get(gi, {})
+				var holder = g.get("holder")
+				if holder != null:
+					draw_rect(rect, Color(holder.color, 0.20))
+			_draw_hazard_border(rect, c)
 
 
-## Alternating yellow/black dashes around the border = gate mutex.
-func _draw_hazard_border(rect: Rect2) -> void:
-	draw_rect(rect.grow(-2.0), Color(0.10, 0.10, 0.10), false, 7.0)
+## Alternating yellow/black dashes = gate mutex. Edges shared with another
+## cell of the SAME gate group are left open, so a contiguous corridor reads
+## as one striped tunnel instead of a stack of boxes.
+func _draw_hazard_border(rect: Rect2, c: Vector2i) -> void:
+	var gi := Grid3.gate_group_of(c)
+	# Screen-space top of the rect faces the grid cell ABOVE (y + 1).
+	var edge_top := Grid3.gate_group_of(c + Vector2i(0, 1)) != gi
+	var edge_bottom := Grid3.gate_group_of(c + Vector2i(0, -1)) != gi
+	var edge_left := Grid3.gate_group_of(c + Vector2i(-1, 0)) != gi
+	var edge_right := Grid3.gate_group_of(c + Vector2i(1, 0)) != gi
+	var dark := Color(0.10, 0.10, 0.10)
+	if edge_top:
+		draw_rect(Rect2(rect.position, Vector2(rect.size.x, 6.0)), dark)
+	if edge_bottom:
+		draw_rect(Rect2(Vector2(rect.position.x, rect.end.y - 6.0),
+				Vector2(rect.size.x, 6.0)), dark)
+	if edge_left:
+		draw_rect(Rect2(rect.position, Vector2(6.0, rect.size.y)), dark)
+	if edge_right:
+		draw_rect(Rect2(Vector2(rect.end.x - 6.0, rect.position.y),
+				Vector2(6.0, rect.size.y)), dark)
 	var yellow := Color(0.95, 0.78, 0.20)
 	var n := 0
 	var step := 16.0
@@ -188,8 +266,10 @@ func _draw_hazard_border(rect: Rect2) -> void:
 	while t < rect.size.x:
 		if n % 2 == 0:
 			var w := minf(step * 0.6, rect.size.x - t)
-			draw_rect(Rect2(rect.position.x + t, rect.position.y, w, 6.0), yellow)
-			draw_rect(Rect2(rect.position.x + t, rect.end.y - 6.0, w, 6.0), yellow)
+			if edge_top:
+				draw_rect(Rect2(rect.position.x + t, rect.position.y, w, 6.0), yellow)
+			if edge_bottom:
+				draw_rect(Rect2(rect.position.x + t, rect.end.y - 6.0, w, 6.0), yellow)
 		t += step
 		n += 1
 	n = 0
@@ -197,8 +277,10 @@ func _draw_hazard_border(rect: Rect2) -> void:
 	while t < rect.size.y:
 		if n % 2 == 0:
 			var h := minf(step * 0.6, rect.size.y - t)
-			draw_rect(Rect2(rect.position.x, rect.position.y + t, 6.0, h), yellow)
-			draw_rect(Rect2(rect.end.x - 6.0, rect.position.y + t, 6.0, h), yellow)
+			if edge_left:
+				draw_rect(Rect2(rect.position.x, rect.position.y + t, 6.0, h), yellow)
+			if edge_right:
+				draw_rect(Rect2(rect.end.x - 6.0, rect.position.y + t, 6.0, h), yellow)
 		t += step
 		n += 1
 

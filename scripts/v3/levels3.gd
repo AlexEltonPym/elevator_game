@@ -17,6 +17,11 @@ extends RefCounted
 
 static var current := 0
 
+## Set by the level select BEFORE changing to the game scene:
+## "" = normal PLAY (unseeded, editable); "naive" / "thesis" = watch mode
+## (scenario routes pre-drawn from Scenarios3, canonical seed, no editing).
+static var watch_strategy := ""
+
 const STANDARD_SPEED := 260.0
 const EXPRESS_SPEED := 520.0
 
@@ -56,77 +61,83 @@ const LEVELS := [
 		"exec_dests": [Vector2i(2, 9)],
 		"groups": {
 			"lobby": [Vector2i(2, 0)],
+			"pent": [Vector2i(2, 9)],
 			"side": [
 				Vector2i(1, 1), Vector2i(1, 2), Vector2i(1, 3), Vector2i(1, 4),
 				Vector2i(1, 5), Vector2i(1, 6), Vector2i(1, 7), Vector2i(1, 8),
 			],
 		},
 		"trips": [
-			{"w": 0.40, "from": "lobby", "to": "side"},
-			{"w": 0.40, "from": "side", "to": "lobby"},
-			{"w": 0.20, "from": "side", "to": "side"},
+			{"w": 0.38, "from": "lobby", "to": "side"},
+			{"w": 0.38, "from": "side", "to": "lobby"},
+			{"w": 0.18, "from": "side", "to": "side"},
+			{"w": 0.06, "from": "pent", "to": "lobby"}, # sparse trickle back down
 		],
 	},
 	{
 		"id": "L2",
 		"name": "Detour",
-		"thesis": "the long way around beats a third car in the gate queue",
-		"intro": "One gate on the short shaft between the lower and upper\nrooms - and a long, gate-free perimeter corridor.\n\nDemand is heavy. Two cars through the gate is company;\nthree is a queue. Try routing one car the long way around\nfor the end-to-end riders.",
+		"thesis": "spend the gate on a cross shuttle; execs ride the perimeter express",
+		"intro": "Two clusters of rooms - and between them a 3-cell GATE\nCORRIDOR: one car in the whole tunnel at a time.\nThe gate-free perimeter is the long way around.\n\nThe mid-cluster crowds (B,C <-> D,E) MUST cross - the\ntunnel is their only sane path. Execs (amber, hasty) pop\nup at the BOTTOM and want the TOP. Draw everything full\nheight and everyone just waits for the fast car - one\nstop-everywhere line through the tunnel. Instead: spend\nthe gate on a dedicated cross shuttle, keep a local low,\nand send the express the long way for the execs.",
 		"rows": [
-			"R.......", # row 7  upper room (0,7)
+			"R.......", # row 9  top room (0,9) - on the perimeter
+			"R.#####.", # row 8  upper room (0,8)
+			"R.#####.", # row 7  upper room (0,7)
 			"..#####.", # row 6
-			"R.#####.", # row 5  upper room (0,5)
-			"..#####.", # row 4
-			"G######.", # row 3  gate (0,3); perimeter opening (7,3)
+			"G######.", # row 5  gate corridor (0,3)..(0,5): ONE mutex
+			"G######.", # row 4
+			"G######.", # row 3
 			"R.#####.", # row 2  lower room (0,2)
-			"..#####.", # row 1
-			"R.......", # row 0  lower room (0,0)
+			"R.#####.", # row 1  lower room (0,1)
+			"R.......", # row 0  bottom room (0,0) - on the perimeter
 		],
 		"cards": [
 			{"name": "CAR A", "type": "standard", "cap": 4, "speed": STANDARD_SPEED,
 					"color": Color(0.45, 0.68, 0.95)},
 			{"name": "CAR B", "type": "standard", "cap": 4, "speed": STANDARD_SPEED,
 					"color": Color(0.5, 0.88, 0.55)},
-			{"name": "CAR C", "type": "standard", "cap": 4, "speed": STANDARD_SPEED,
-					"color": Color(0.8, 0.55, 0.95)},
+			{"name": "EXPRESS", "type": "express", "cap": 4, "speed": EXPRESS_SPEED,
+					"color": Color(0.98, 0.68, 0.2)},
 		],
-		"quota": 45,
-		"max_lost": 8,
-		"spawn": {"interval_start": 2.2, "interval_end": 1.7, "ramp": 150.0,
-				"burst_min": 3, "burst_max": 5, "gap": 0.7},
-		"mix": {"visitor": 0.55, "patient": 0.45},
-		"exec_origins": [],
-		"exec_dests": [],
+		"quota": 50,
+		"max_lost": 6,
+		"spawn": {"interval_start": 1.8, "interval_end": 1.4, "ramp": 120.0,
+				"burst_min": 5, "burst_max": 8, "gap": 0.5},
+		"mix": {"visitor": 0.42, "patient": 0.28, "exec": 0.30},
+		"patience": {"exec": 20.0}, # dies queueing behind a stop-everywhere tunnel jam
+		"exec_origins": [Vector2i(0, 0)],
+		"exec_dests": [Vector2i(0, 9)],
 		"groups": {
 			"bottom": [Vector2i(0, 0)],
-			"top": [Vector2i(0, 7)],
-			"lower": [Vector2i(0, 0), Vector2i(0, 2)],
-			"upper": [Vector2i(0, 5), Vector2i(0, 7)],
-			"mid_low": [Vector2i(0, 2)],
-			"mid_high": [Vector2i(0, 5)],
+			"top": [Vector2i(0, 9)],
+			"lower": [Vector2i(0, 1), Vector2i(0, 2)],
+			"upper": [Vector2i(0, 7), Vector2i(0, 8)],
 		},
 		"trips": [
-			{"w": 0.18, "from": "bottom", "to": "top"},
-			{"w": 0.17, "from": "top", "to": "bottom"},
-			{"w": 0.13, "from": "mid_low", "to": "mid_high"},
-			{"w": 0.12, "from": "mid_high", "to": "mid_low"},
-			{"w": 0.20, "from": "lower", "to": "lower"},
-			{"w": 0.20, "from": "upper", "to": "upper"},
+			# The heart of the level: mid-cluster <-> mid-cluster demand whose
+			# honest best path is the gate corridor (the perimeter is ~5x the
+			# ride from the middle rooms).
+			{"w": 0.26, "from": "lower", "to": "upper"},
+			{"w": 0.26, "from": "upper", "to": "lower"},
+			{"w": 0.12, "from": "bottom", "to": "lower"},
+			{"w": 0.12, "from": "lower", "to": "bottom"},
+			{"w": 0.12, "from": "upper", "to": "top"},
+			{"w": 0.12, "from": "top", "to": "upper"},
 		],
 	},
 	{
 		"id": "L3",
 		"name": "Junction",
-		"thesis": "feeders + express sharing the HUB: transfers beat winding",
-		"intro": "An express spine (lobby - HUB - penthouse) and two arm\nrooms beside the HUB junction. Execs (amber) appear at the\narms and want the penthouse, fast.\n\nEach arm has a winding outside climb to the top - past\nslow storage floors. Or: short feeder hops to the HUB and\nlet the express do the lifting. Watch riders transfer.",
+		"thesis": "feeders shuttle the hallway into the HUB; only the express climbs the loft",
+		"intro": "An express spine (lobby - HUB - penthouse) and a hallway\nof rooms through the HUB junction: arms at the ends,\nstorage rooms beside the HUB. Execs (amber) appear at the\narms and want the penthouse, fast.\n\nEach arm also winds up the outside - but every climb ends\nin the SERVICE LOFT under the penthouse: one car in the\nwhole loft at a time. Direct routes all queue up there.\nOr: short feeder shuttles into the HUB, and only the\nexpress ever enters the loft. Watch riders transfer.",
 		"rows": [
 			"###R###", # row 9  penthouse (3,9)
-			"#.R.R.#", # row 8  storage decoys (2,8) (4,8) on the ring
-			"#.#.#.#", # row 7
-			"#R#.#R#", # row 6  storage decoys (1,6) (5,6)
-			"#R#.#R#", # row 5  storage decoys (1,5) (5,5)
-			"#R#.#R#", # row 4  storage decoys (1,4) (5,4)
-			"#R.R.R#", # row 3  arm A (1,3), HUB (3,3), arm B (5,3)
+			"#GGGGG#", # row 8  the service loft: ONE single-file gate corridor
+			"#G#.#G#", # row 7  the climb tops belong to the loft...
+			"#G#.#G#", # row 6  ...three floors deep on each side;
+			"#G#.#G#", # row 5  the spine does not
+			"#.#.#.#", # row 4
+			"#RRRRR#", # row 3  arm (1,3), store (2,3), HUB (3,3), store (4,3), arm (5,3)
 			"###.###", # row 2
 			"###.###", # row 1
 			"###R###", # row 0  lobby (3,0)
@@ -136,28 +147,41 @@ const LEVELS := [
 					"color": Color(0.45, 0.68, 0.95)},
 			{"name": "FEEDER B", "type": "standard", "cap": 4, "speed": STANDARD_SPEED,
 					"color": Color(0.5, 0.88, 0.55)},
-			{"name": "EXPRESS", "type": "express", "cap": 4, "speed": EXPRESS_SPEED,
+			# The big fast car: 6 slots. The whole point of the level is who
+			# gets to spend it - the spine (thesis) or one winding climb.
+			{"name": "EXPRESS", "type": "express", "cap": 6, "speed": EXPRESS_SPEED,
 					"color": Color(0.98, 0.68, 0.2)},
 		],
-		"quota": 50,
-		"max_lost": 8,
-		"spawn": {"interval_start": 2.6, "interval_end": 2.0, "ramp": 150.0,
-				"burst_min": 4, "burst_max": 6, "gap": 0.6},
-		"mix": {"visitor": 0.35, "patient": 0.30, "exec": 0.35},
-		"patience": {"exec": 18.0}, # dies to the winding climb, lives on the hub hop
+		"quota": 90,
+		"max_lost": 6,
+		"spawn": {"interval_start": 1.2, "interval_end": 0.65, "ramp": 90.0,
+				"burst_min": 5, "burst_max": 7, "gap": 0.5},
+		"mix": {"visitor": 0.30, "patient": 0.28, "exec": 0.42},
+		"patience": {"exec": 14.0}, # dies queueing under the loft, lives on the hub hop
 		"exec_origins": [Vector2i(1, 3), Vector2i(5, 3)],
 		"exec_dests": [Vector2i(3, 9)],
 		"groups": {
 			"arms": [Vector2i(1, 3), Vector2i(5, 3)],
 			"pent": [Vector2i(3, 9)],
 			"lobby": [Vector2i(3, 0)],
+			"hub": [Vector2i(3, 3)],
+			"storage": [Vector2i(2, 3), Vector2i(4, 3)],
 		},
 		"trips": [
-			{"w": 0.30, "from": "lobby", "to": "arms"},
-			{"w": 0.25, "from": "arms", "to": "lobby"},
-			{"w": 0.20, "from": "lobby", "to": "pent"},
-			{"w": 0.10, "from": "pent", "to": "lobby"},
-			{"w": 0.15, "from": "arms", "to": "arms"},
+			# lobby<->arms and arm<->arm are two quick hub hops in the thesis;
+			# direct winding networks haul them over the top instead. Penthouse
+			# traffic keeps every direct route crossing the single-file loft.
+			{"w": 0.22, "from": "lobby", "to": "arms"},
+			{"w": 0.16, "from": "arms", "to": "lobby"},
+			{"w": 0.10, "from": "arms", "to": "arms"},
+			{"w": 0.16, "from": "lobby", "to": "pent"},
+			{"w": 0.08, "from": "pent", "to": "lobby"},
+			{"w": 0.08, "from": "pent", "to": "arms"},
+			{"w": 0.06, "from": "arms", "to": "pent"},
+			{"w": 0.06, "from": "storage", "to": "lobby"},
+			{"w": 0.05, "from": "lobby", "to": "storage"},
+			{"w": 0.02, "from": "lobby", "to": "hub"},
+			{"w": 0.01, "from": "hub", "to": "lobby"},
 		],
 	},
 	{
