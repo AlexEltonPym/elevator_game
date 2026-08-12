@@ -111,16 +111,25 @@ func _run_one(id: String) -> void:
 	var cfg := Metrics.default_cfg(quick)
 	print("\n=== %s (%s mode) ===" % [id, "quick" if quick else "full"])
 	var sim = SimApi.new(self)
+	DirAccess.make_dir_recursive_absolute(OUT_DIR)
+	# Resume support: see the run-cache note in tools/sim_api.gd. A shard that
+	# is killed mid-search can simply be relaunched; it replays the identical
+	# deterministic trajectory, serving everything it already did from disk.
+	var cache := "%s/runcache_%s%s.json" % [OUT_DIR, id, "_quick" if quick else ""]
+	sim.open_cache(cache)
 	var res: Dictionary = Metrics.run_level(sim, li, cfg)
+	sim.flush_cache(true)
 	res["sim_cpu_s"] = sim.sim_usec / 1.0e6
 	res["sim_game_seconds"] = sim.sim_seconds
 	DirAccess.make_dir_recursive_absolute(OUT_DIR)
 	var f := FileAccess.open("%s/depth_%s.json" % [OUT_DIR, id], FileAccess.WRITE)
 	f.store_string(JSON.stringify(_to_json(res), "  "))
 	f.close()
-	print("    %s: %d runs, %.1f s wall (%.0f game-s simulated, %.0f x real time)" % [
-			id, sim.runs, res.wall_s, sim.sim_seconds,
-			sim.sim_seconds / maxf(res.wall_s, 0.001)])
+	print("    %s: %d runs (%d replayed from cache), %.1f s wall (%.0f game-s simulated)" % [
+			id, sim.runs, sim.cache_hits, res.wall_s, sim.sim_seconds])
+	# The level is finished and its JSON is written; the cache has no further
+	# use and is the biggest file we produce.
+	DirAccess.remove_absolute(cache)
 	done.append(id)
 
 

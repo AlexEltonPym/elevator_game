@@ -166,6 +166,18 @@ Per level, all medians over TEST seeds:
     result", and a stale JSON from a previous run must never be counted as a success;
   - the runner exits non-zero when any shard is missing, so the report is never quietly
     generated from a partial set.
+- **Resumable shards.** On this machine long-lived headless processes are terminated from
+  outside at unpredictable times (30 s to 10 min; no crash record, no stderr, exit -1), which
+  is fatal to a ~20-minute search. So every completed run is memoised to
+  `tools/out/runcache_<ID>.json`, keyed by (level, routes, seed, step) and stamped with a
+  scoring-rule version so a cache from different rules is rejected rather than trusted. The
+  whole search is deterministic — seeded RNG, deterministic BFS decode, deterministic tick
+  loop — so a relaunched shard REPLAYS the identical trajectory and serves everything it
+  already did from disk in microseconds. `runs` still increments on a replayed run, because
+  the budget means "simulations this optimizer was allowed" and a replayed run was already
+  paid for, so every rung's budget accounting is identical to an uninterrupted run. The
+  runner relaunches any shard that dies without a result (bounded by `-MaxAttempts`), and
+  reports the attempt count. The cache is deleted once the level's JSON is written.
 
   This exists because of a concrete failure (2026-08-12): a headless session builds and frees
   a whole scene per simulation run, and every CanvasItem/Control entering the tree pushes a
