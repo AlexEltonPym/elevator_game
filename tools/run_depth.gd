@@ -27,6 +27,20 @@ extends SceneTree
 ##   --smoke          headless check that the GAME still works: the level
 ##                    select builds, every level instantiates and plays, and
 ##                    every discovered route-set runs under WATCH BEST
+##   --lengthsweep    LEVEL-LENGTH experiment: per level, sweep the quota
+##                    DOWNWARD (holding geometry + demand shape fixed) and, at
+##                    each quota, report thesis WINS / naive LOSES over the seed
+##                    set and the uniform-random win rate. Answers "can this
+##                    level prove its point with fewer passengers?". Flags:
+##                      --quotas 20,25,30,40,50   quota values to try (the
+##                                                current quota is always added)
+##                      --maxlost N     force this max_lost at every quota
+##                                      (default: keep the level's current one)
+##                      --seeds tune|assert   which 16-seed set (default tune;
+##                                      choose lengths on tune, confirm on assert)
+##                      --n 256         uniform-random samples per quota
+##                    A quota "holds" if thesis WINS >= 15/16 AND naive LOSES
+##                    >= 15/16 AND random win-rate <= 5%. Never edits the table.
 ##
 ## Per-level results land in tools/out/depth_<ID>.json so shards can run in
 ## separate processes (Grid3's maze is static, so one process = one level at a
@@ -63,6 +77,8 @@ func _init() -> void:
 		mode = "scorecheck"
 	elif args.has("--tune"):
 		mode = "tune"
+	elif args.has("--lengthsweep"):
+		mode = "lengthsweep"
 	# Ablation knobs (docs/depth-report.md): swap the acceleration model or
 	# restrict a mechanic, so accel-by-width / accel-by-speed and
 	# capacity-on / capacity-off can be measured without editing the tables.
@@ -102,6 +118,9 @@ func _process(_delta: float) -> bool:
 			return true
 		"tune":
 			quit(0 if _tune() else 1)
+			return true
+		"lengthsweep":
+			quit(0 if _lengthsweep() else 1)
 			return true
 	if queue.is_empty():
 		print("\nALL LEVELS DONE in %.1f s" % ((Time.get_ticks_msec() - t_start) / 1000.0))
@@ -578,6 +597,124 @@ func _tune() -> bool:
 					("   ODD: " + ", ".join(odd)) if not odd.is_empty() else ""])
 	print("
 TUNE: %s" % ("ALL TARGETS MET" if ok else "TARGETS MISSED"))
+	return ok
+
+
+# ---------------------------------------------------------------- length sweep
+
+## THE LEVEL-LENGTH EXPERIMENT (docs/depth-tools-spec.md, this pass). The
+## question the designer asked: our quotas are large (75-116), a thesis run is
+## ~3 minutes — can each level prove the SAME strategic point (thesis wins,
+## naive loses, uniform-random almost never wins) with FEWER passengers?
+##
+## For every level it sweeps the QUOTA downward while holding geometry, cards,
+## demand shape, spawn pace and patience FIXED — only quota (and max_lost)
+## change — and reports at each quota the three numbers the axiom bar is made
+## of, so the FULL curve of discrimination-vs-length is visible:
+##   thesis WINS / 16, naive LOSES / 16   (over the chosen seed set), and
+##   uniform-random win rate over --n samples (the difficulty floor).
+##
+## A quota HOLDS when thesis WINS >= 15/16 AND naive LOSES >= 15/16 AND the
+## random win rate <= 5 %. Discrimination is expected to DEGRADE as the level
+## gets shorter: a short level gives a bad plan less time to accumulate the
+## losses that would disqualify it, so random plans win more often and the
+## random-rate floor is usually what breaks first.
+##
+## Choose lengths on --seeds tune, then CONFIRM on --seeds assert (the held-out
+## gate). Never tune against assert — that is the overfitting this pass avoids.
+func _lengthsweep() -> bool:
+	var n := 256
+	var i := args.find("--n")
+	if i >= 0 and i + 1 < args.size():
+		n = int(args[i + 1])
+	var seeds: Array = Scenarios3.SEEDS_TUNE
+	var seedset := "tune"
+	var si := args.find("--seeds")
+	if si >= 0 and si + 1 < args.size() and String(args[si + 1]).strip_edges() == "assert":
+		seeds = Scenarios3.SEEDS_ASSERT
+		seedset = "assert"
+	var forced_ml := -1
+	var mi := args.find("--maxlost")
+	if mi >= 0 and mi + 1 < args.size():
+		forced_ml = int(args[mi + 1])
+	var quotas: Array = []
+	var qi := args.find("--quotas")
+	if qi >= 0 and qi + 1 < args.size():
+		for s in String(args[qi + 1]).split(","):
+			quotas.append(int(s.strip_edges()))
+	if quotas.is_empty():
+		quotas = [20, 25, 30, 40, 50]
+	print("=== level-length sweep: thesis/naive over %d %s seeds + %d random samples per quota ===" % [
+			seeds.size(), seedset.to_upper(), n])
+	print("bar: a quota HOLDS iff thesis WINS >= %d/%d AND naive LOSES >= %d/%d AND random win-rate <= 5%%" % [
+			seeds.size() - 1, seeds.size(), seeds.size() - 1, seeds.size()])
+	print("max_lost: %s" % ("forced to %d" % forced_ml if forced_ml > 0 else "kept at each level's current value"))
+	var sim = SimApi.new(self)
+	var rng := RandomNumberGenerator.new()
+	var ok := true
+	for id in level_ids:
+		var li := Levels3.index_of(id)
+		if li < 0:
+			continue
+		var lv: Dictionary = Levels3.LEVELS[li]
+		SimApi.load_maze(lv)
+		var rooms: Array = Grid3.rooms()
+		var cur_q := int(lv.quota)
+		var cur_ml := int(lv.max_lost)
+		var qs: Array = quotas.duplicate()
+		if not qs.has(cur_q):
+			qs.append(cur_q)
+		qs.sort()
+		var thesis := _strategy_routes(id, "thesis")
+		var naive := _strategy_routes(id, "naive")
+		print("\n--- %s %s: %d rooms, CURRENT quota %d / max_lost %d, interval %.2f->%.2f, burst %d-%d" % [
+				lv.id, lv.name, rooms.size(), cur_q, cur_ml,
+				lv.spawn.interval_start, lv.spawn.interval_end,
+				int(lv.spawn.burst_min), int(lv.spawn.burst_max)])
+		print("    quota  max_lost  thesis_WINS  naive_LOSES  random_win%   holds?")
+		for q in qs:
+			var ml: int = forced_ml if forced_ml > 0 else cur_ml
+			var inj: Dictionary = lv.duplicate(true)
+			inj.quota = q
+			inj.max_lost = ml
+			var tw := 0
+			for sd in seeds:
+				var r: Dictionary = sim.run(li, thesis, sd, SimApi.STEP_FINE, inj)
+				if r.result == "win":
+					tw += 1
+			var nl := 0
+			var have_naive := not naive.is_empty()
+			if have_naive:
+				for sd in seeds:
+					var r: Dictionary = sim.run(li, naive, sd, SimApi.STEP_FINE, inj)
+					if r.result == "lose":
+						nl += 1
+			rng.seed = 4242 + li
+			var wins := 0
+			var valid := 0
+			for k in n:
+				var g := RG.random_genome(rng, rooms, lv.cards.size())
+				if g.is_empty():
+					continue
+				var dec := RG.decode_genome(g)
+				if dec.err != "":
+					continue
+				valid += 1
+				var r: Dictionary = sim.run(li, dec.routes, seeds[k % seeds.size()],
+						SimApi.STEP_COARSE, inj)
+				if r.result == "win":
+					wins += 1
+			var rate := 100.0 * float(wins) / maxf(1.0, float(valid))
+			var need: int = seeds.size() - 1
+			var holds: bool = tw >= need and (not have_naive or nl >= need) and rate <= 5.0
+			var clean: bool = tw == seeds.size() and (not have_naive or nl == seeds.size()) \
+					and rate <= 5.0
+			var mark := "CLEAN" if clean else ("holds" if holds else "-")
+			print("    %5d  %8d  %8d/%-2d  %8s/%-2d  %8.1f %%   %s%s" % [
+					q, ml, tw, seeds.size(),
+					("%d" % nl) if have_naive else "n/a", seeds.size(),
+					rate, mark, "   <- current" if q == cur_q else ""])
+	print("\nLENGTHSWEEP done.")
 	return ok
 
 

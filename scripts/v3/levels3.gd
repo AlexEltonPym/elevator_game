@@ -147,6 +147,21 @@ static func card_decel(card: Dictionary) -> float:
 ## Scenarios3.SEEDS_TUNE until each level's axioms held again on the held-out
 ## SEEDS_ASSERT. L1 is the one level that needed NO retune: its thesis is
 ## already "few stops, long runs", which is exactly what acceleration rewards.
+##
+## LENGTH PASS (2026-08-13, tools/run_depth.gd -- --lengthsweep). The quotas
+## were much larger than they needed to be: a thesis run was ~3 minutes. Each
+## level's quota was swept DOWNWARD holding geometry, cards, spawn pace and
+## patience FIXED - only quota and max_lost move - to the SHORTEST length that
+## still holds all three axioms with room (thesis WINS 16/16, naive LOSES 16/16,
+## uniform-random win-rate <= 5%) on TUNE and confirmed on the held-out ASSERT.
+## max_lost had to tighten in step: a shorter level gives the naive trap less
+## time to bleed, so a looser tolerance would let it (and random plans) sneak a
+## win. Roughly a constant max_lost/quota fraction (~3-7%) is preserved.
+## Two levels could NOT shorten and were LEFT at their length: L3 (its winding-
+## climb naive bleeds too slowly relative to throughput, so short quotas stop
+## discriminating - random wins climb past 5%) and W-2 (its naive-LOSES margin
+## is already knife-edge at full length; any cut flips it). See the final
+## length-sweep table in the pass notes.
 static var LEVELS := [
 	{
 		"id": "L1",
@@ -173,8 +188,8 @@ static var LEVELS := [
 			{"name": "EXPRESS", "type": "express", "cap": 4, "speed": EXPRESS_SPEED,
 					"color": Color(0.98, 0.68, 0.2)},
 		],
-		"quota": 90,
-		"max_lost": 5,
+		"quota": 65, # LENGTH PASS: 90 -> 65 (naive still LOSES to ~q65 at max_lost 2)
+		"max_lost": 2, # tightened 5 -> 2 so the express-sweep trap still trips short
 		"spawn": {"interval_start": 1.4, "interval_end": 1.0, "ramp": 100.0,
 				"burst_min": 3, "burst_max": 5, "gap": 0.6},
 		"mix": {"visitor": 0.45, "patient": 0.30, "exec": 0.25},
@@ -231,8 +246,8 @@ static var LEVELS := [
 			{"name": "EXPRESS", "type": "express", "cap": 8, "speed": EXPRESS_SPEED,
 					"color": Color(0.98, 0.68, 0.2)},
 		],
-		"quota": 95,
-		"max_lost": 6,
+		"quota": 76, # LENGTH PASS: 95 -> 76. The 3 axioms hold from ~q55, but L2's FLOOR is the gate
+		"max_lost": 2, # invariant: the thesis must transit the gate >= 10x, solid only from ~q76. ml 6 -> 2.
 		"spawn": {"interval_start": 1.45, "interval_end": 1.0, "ramp": 95.0,
 				"burst_min": 3, "burst_max": 5, "gap": 0.5},
 		"mix": {"visitor": 0.42, "patient": 0.28, "exec": 0.30},
@@ -297,8 +312,8 @@ static var LEVELS := [
 			{"name": "EXPRESS", "type": "express", "cap": 4, "speed": EXPRESS_SPEED,
 					"color": Color(0.98, 0.68, 0.2)},
 		],
-		"quota": 116,
-		"max_lost": 5,
+		"quota": 116, # LENGTH PASS: LEFT LONG. Shortening it stops discriminating - the winding-climb
+		"max_lost": 5, # naive bleeds too slowly vs throughput, so random win-rate climbs past 5% below ~q100.
 		"spawn": {"interval_start": 0.88, "interval_end": 0.59, "ramp": 85.0,
 				"burst_min": 4, "burst_max": 6, "gap": 0.45},
 		"mix": {"visitor": 0.43, "patient": 0.42, "exec": 0.15},
@@ -365,8 +380,8 @@ static var LEVELS := [
 			{"name": "EXPRESS", "type": "express", "cap": 4, "speed": EXPRESS_SPEED,
 					"color": Color(0.98, 0.68, 0.2)},
 		],
-		"quota": 110,
-		"max_lost": 4,
+		"quota": 90, # LENGTH PASS: 110 -> 90 (the outer-lane naive bleeds slowly, so this is as short as L4 goes clean)
+		"max_lost": 3, # tightened 4 -> 3; ml 2 would flip the fragile thesis on held-out seeds
 		"spawn": {"interval_start": 0.98, "interval_end": 0.64, "ramp": 80.0,
 				"burst_min": 4, "burst_max": 6, "gap": 0.5},
 		"mix": {"visitor": 0.6, "patient": 0.4},
@@ -423,8 +438,8 @@ static var LEVELS := [
 			{"name": "FREIGHT", "type": "cargo",
 					"color": Color(0.98, 0.68, 0.2)},
 		],
-		"quota": 80,
-		"max_lost": 5,
+		"quota": 70, # LENGTH PASS: 80 -> 70 (naive-LOSES is seed-sensitive here; 70 is the shortest robust on both seed sets)
+		"max_lost": 5, # kept: the stranded-freight naive still trips it, and ml 5 stays clean
 		"spawn": {"interval_start": 1.5, "interval_end": 1.1, "ramp": 90.0,
 				"burst_min": 3, "burst_max": 5, "gap": 0.6},
 		"mix": {"visitor": 0.34, "patient": 0.28, "big delivery": 0.38},
@@ -475,8 +490,8 @@ static var LEVELS := [
 			{"name": "CAR C", "type": "standard",
 					"color": Color(0.98, 0.68, 0.2)},
 		],
-		"quota": 78,
-		"max_lost": 5,
+		"quota": 78, # LENGTH PASS: LEFT LONG. naive-LOSES is already knife-edge here (it barely trips at
+		"max_lost": 5, # full length); any shorter quota flips it to a win, so W-2 keeps its length.
 		"spawn": {"interval_start": 1.4, "interval_end": 1.0, "ramp": 90.0,
 				"burst_min": 3, "burst_max": 5, "gap": 0.55},
 		"mix": {"exec": 0.34, "couple": 0.66},
@@ -526,8 +541,8 @@ static var LEVELS := [
 			{"name": "POD B", "type": "pod",
 					"color": Color(0.5, 0.88, 0.55)},
 		],
-		"quota": 78,
-		"max_lost": 5,
+		"quota": 55, # LENGTH PASS: 78 -> 55 (the stop-everywhere hauler starves the end-to-end crowd fast)
+		"max_lost": 3, # tightened 5 -> 3 to hold the random floor <= 5% at the shorter length
 		"spawn": {"interval_start": 1.35, "interval_end": 1.0, "ramp": 90.0,
 				"burst_min": 3, "burst_max": 5, "gap": 0.55},
 		"mix": {"visitor": 0.58, "patient": 0.42},
@@ -567,8 +582,8 @@ static var LEVELS := [
 			{"name": "EXPRESS", "type": "express", "cap": 4, "speed": EXPRESS_SPEED,
 					"color": Color(0.98, 0.68, 0.2)},
 		],
-		"quota": 75,
-		"max_lost": 6,
+		"quota": 60, # LENGTH PASS: 75 -> 60 (no naive here; the random floor stays <= 5% at 60)
+		"max_lost": 4, # tightened 6 -> 4 to keep the random win-rate floor with room
 		"spawn": {"interval_start": 2.15, "interval_end": 1.5, "ramp": 110.0,
 				"burst_min": 3, "burst_max": 5, "gap": 0.6},
 		"mix": {"visitor": 0.55, "patient": 0.45},
