@@ -94,6 +94,13 @@ const NEG_INF := -1.0e18
 
 var tree: SceneTree
 var scene: PackedScene = load("res://scenes/v3_main.tscn")
+
+## Training-data exporter (tools/export.gd), or null. OFF by default: a caller
+## only assigns one behind its own opt-in flag, and while it is null run() does
+## exactly what it always did — so the fingerprint and balance gates are
+## unaffected by the exporter's mere presence in the codebase.
+var exporter = null
+
 var runs := 0 # simulation counter — THE optimizer budget currency
 var sim_usec := 0
 var sim_seconds := 0.0 # game-seconds actually simulated (runs now end early)
@@ -261,6 +268,12 @@ func run(level_index: int, routes: Array, seed_v: int, step: float,
 	else:
 		out.result = "timeout"
 	_harvest(game, out)
+	# Opt-in labeled-row export (tools/export.gd). Placed before teardown so the
+	# game's per-passenger logs are still alive, and only on this freshly computed
+	# branch — cache-replayed runs (handled above) are not re-exported, so a row
+	# count still equals the number of true evaluations this process performed.
+	if exporter != null:
+		exporter.write_row(level_index, routes, seed_v, step, injected, out, game)
 	_teardown(game)
 	if ck != "":
 		run_cache[ck] = out.duplicate()
@@ -274,14 +287,23 @@ func _harvest(game, out: Dictionary) -> void:
 	out.lost = game.lost
 	out.gate_wait = game.gate_wait_total()
 	out.gate_transits = game.gate_transit_total()
+	# Per-passenger-type served / lost (docs/surrogate-design.md §6.4): the
+	# surrogate's auxiliary heads want them and they cost a single walk of the
+	# logs. Pure derived counts — nothing here touches the simulation.
+	var sbt := {}
+	var lbt := {}
 	# Every passenger the run produced, not just the ones that finished.
 	var waits: Array = []
 	var transfers := 0.0
 	for e in game.log_served:
 		waits.append(e.wait)
 		transfers += maxi(0, e.rides - 1)
+		sbt[e.type] = int(sbt.get(e.type, 0)) + 1
 	for e in game.log_lost:
 		waits.append(e.wait)
+		lbt[e.type] = int(lbt.get(e.type, 0)) + 1
+	out["served_by_type"] = sbt
+	out["lost_by_type"] = lbt
 	for r in game.waiting:
 		for p in game.waiting[r]:
 			waits.append(p.wait_time)

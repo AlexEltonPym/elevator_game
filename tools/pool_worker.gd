@@ -39,6 +39,7 @@ extends SceneTree
 ##   --chunk 4         candidates per claimable chunk
 
 const SimApi = preload("res://tools/sim_api.gd")
+const Export = preload("res://tools/export.gd")
 
 
 func _process(_d: float) -> bool:
@@ -67,9 +68,15 @@ func _run() -> void:
 	var n := int(_arg(a, "--n", "640"))
 	var chunk := int(_arg(a, "--chunk", "4"))
 
+	var export_dir := _arg(a, "--export", "")
+
 	var li := Levels3.index_of(level_id)
 	var routes := _strategy_routes(level_id, strategy)
 	var sim = SimApi.new(self) # cache stays off — caching would fake the throughput
+	# Opt-in labeled export (docs/export-schema.md). Each worker owns its own
+	# process-id-stamped shard file, so N workers append with zero interleaving.
+	if export_dir != "":
+		sim.exporter = Export.new(export_dir, "pool_%s" % level_id, wid)
 
 	var results := {} # seed -> "served|lost|score|avg_wait|result"
 	var busy_us := 0
@@ -110,11 +117,17 @@ func _run() -> void:
 		if not got:
 			break
 
+	var exported := 0
+	if sim.exporter != null:
+		exported = sim.exporter.rows_written
+		sim.exporter.close()
+
 	var wall_us := Time.get_ticks_usec() - t_worker0
 	var payload := {
 		"worker": wid, "level": level_id, "n_done": results.size(),
 		"claims": claims, "wall_us": wall_us, "busy_us": busy_us,
-		"tick_us": sim.sim_usec, "runs": sim.runs, "results": results,
+		"tick_us": sim.sim_usec, "runs": sim.runs, "exported": exported,
+		"results": results,
 	}
 	var f := FileAccess.open(out_path, FileAccess.WRITE)
 	if f == null:

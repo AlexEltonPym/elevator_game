@@ -23,6 +23,10 @@ param(
 	[int]$Chunk = 4,
 	[double]$Step = 0.25,
 	[string]$WorkDir = "",
+	# Opt-in training-data export (docs/export-schema.md). OFF by default; when
+	# set, each worker writes its own process-id-stamped JSONL shard under
+	# <WorkDir>/export, so N workers append with zero cross-process interleaving.
+	[switch]$Export,
 	[string]$Godot = "C:\Program Files\Godot_v4.2.2-stable_mono_win64\Godot_v4.2.2-stable_mono_win64_console.exe"
 )
 
@@ -51,6 +55,13 @@ for ($s = 0; $s -lt $N; $s += $Chunk) {
 $fq = $queue.Replace("\", "/")
 $ft = $taken.Replace("\", "/")
 
+# Export shard dir (only used when -Export is set).
+$expd = (Join-Path $WorkDir "export").Replace("\", "/")
+if ($Export) {
+	if (Test-Path $expd) { Remove-Item $expd -Recurse -Force }
+	New-Item -ItemType Directory -Force -Path $expd | Out-Null
+}
+
 $procs = @()
 $t0 = Get-Date
 for ($i = 0; $i -lt $Workers; $i++) {
@@ -59,6 +70,7 @@ for ($i = 0; $i -lt $Workers; $i++) {
 		"--worker", "$i", "--queue", $fq, "--taken", $ft, "--out", $fout,
 		"--level", $Level, "--strategy", $Strategy, "--step", "$Step",
 		"--base", "500000", "--n", "$N", "--chunk", "$Chunk")
+	if ($Export) { $a += @("--export", $expd) }
 	$log = Join-Path $logd ("w{0}.log" -f $i)
 	$err = Join-Path $logd ("w{0}.err" -f $i)
 	$p = Start-Process -FilePath $Godot -ArgumentList $a -NoNewWindow -PassThru `

@@ -49,6 +49,7 @@ extends SceneTree
 const SimApi = preload("res://tools/sim_api.gd")
 const Metrics = preload("res://tools/metrics.gd")
 const RG = preload("res://tools/routegen.gd")
+const Export = preload("res://tools/export.gd")
 
 const OUT_DIR := "res://tools/out"
 const REPORT_PATH := "res://docs/depth-report.md"
@@ -62,6 +63,10 @@ var done: Array = []
 var t_start := 0
 var mode := "search"
 var explicit_levels := false # a shard: leave the merge to the --report pass
+## Opt-in training-data export (docs/export-schema.md). "" = off (the default),
+## so a normal run never constructs an Export and the simulation is unchanged.
+## `--export` alone writes under OUT_DIR/export; `--export <dir>` picks a dir.
+var export_dir := ""
 
 
 func _init() -> void:
@@ -88,6 +93,11 @@ func _init() -> void:
 	var ri := args.find("--restrict")
 	if ri >= 0 and ri + 1 < args.size():
 		Levels3.restrict = String(args[ri + 1]).strip_edges()
+	var xi := args.find("--export")
+	if xi >= 0:
+		export_dir = "%s/export" % OUT_DIR
+		if xi + 1 < args.size() and not String(args[xi + 1]).begins_with("--"):
+			export_dir = String(args[xi + 1]).strip_edges()
 	var i := args.find("--levels")
 	if i >= 0 and i + 1 < args.size():
 		for s in String(args[i + 1]).split(","):
@@ -139,6 +149,16 @@ func _process(_delta: float) -> bool:
 
 # ---------------------------------------------------------------- search
 
+## A SimApi with the labeled-row exporter attached iff --export was passed, else
+## a plain one (exporter stays null -> zero behavioural change). `tag` names the
+## shard file so a per-level run keeps one file per level.
+func _make_sim(tag: String) -> SimApi:
+	var sim = SimApi.new(self)
+	if export_dir != "":
+		sim.exporter = Export.new(export_dir, tag, tag)
+	return sim
+
+
 func _run_one(id: String) -> void:
 	var li := Levels3.index_of(id)
 	if li < 0:
@@ -146,7 +166,7 @@ func _run_one(id: String) -> void:
 		return
 	var cfg := Metrics.default_cfg(quick)
 	print("\n=== %s (%s mode) ===" % [id, "quick" if quick else "full"])
-	var sim = SimApi.new(self)
+	var sim = _make_sim("depth_%s" % id)
 	DirAccess.make_dir_recursive_absolute(OUT_DIR)
 	# Resume support: see the run-cache note in tools/sim_api.gd. A shard that
 	# is killed mid-search can simply be relaunched; it replays the identical
@@ -155,6 +175,9 @@ func _run_one(id: String) -> void:
 	sim.open_cache(cache)
 	var res: Dictionary = Metrics.run_level(sim, li, cfg)
 	sim.flush_cache(true)
+	if sim.exporter != null:
+		print("    exported %d rows to %s" % [sim.exporter.rows_written, sim.exporter.path])
+		sim.exporter.close()
 	res["sim_cpu_s"] = sim.sim_usec / 1.0e6
 	res["sim_game_seconds"] = sim.sim_seconds
 	DirAccess.make_dir_recursive_absolute(OUT_DIR)
@@ -409,7 +432,7 @@ func _scorecheck() -> bool:
 	print("=== score validity audit: %d uniform random route-sets per level ===" % n)
 	print("score: WIN -> %.0f + (%.0f - t_win);  LOSE/TIMEOUT -> served - %.1f*lost - %.2f*avg_wait"
 			% [SimApi.WIN_BONUS, SimApi.TIMEOUT, SimApi.LOST_WEIGHT, SimApi.WAIT_WEIGHT])
-	var sim = SimApi.new(self)
+	var sim = _make_sim("scorecheck")
 	var rng := RandomNumberGenerator.new()
 	for id in level_ids:
 		var li := Levels3.index_of(id)
@@ -472,6 +495,9 @@ func _scorecheck() -> bool:
 			ok = _p("%s: losing branch discriminates (>=10 distinct scores)" % lv.id,
 					distinct >= 10 or losses.size() < 10,
 					"%d distinct over %d losers" % [distinct, losses.size()]) and ok
+	if sim.exporter != null:
+		print("exported %d rows to %s" % [sim.exporter.rows_written, sim.exporter.path])
+		sim.exporter.close()
 	print("\nSCORECHECK: %s" % ("ALL PASS" if ok else "FAILURES PRESENT"))
 	return ok
 
