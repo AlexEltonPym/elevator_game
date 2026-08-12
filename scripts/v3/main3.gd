@@ -106,6 +106,18 @@ var drawing := false
 var stroke: Array = [] # Vector2i cells of the active drag
 var stroke_closed := false # live stroke closed back onto stroke[0] (a loop)
 
+## Corridor-rejection UX (v4). When a commit is refused because the car is too
+## wide for a corridor on the route (or any other geometry error a programmatic
+## caller slipped through), the reason is parked here and hud3 surfaces it on
+## the hint line, in the card's colour, until reject_until_ms. The magnetic
+## drawing head treats a too-narrow corridor cell as a wall for the selected
+## car (felt as resistance), so this hint is the fallback for the fast-drag /
+## straight-fill path that reaches the cell anyway, and for programmatic
+## callers (watch mode, harness, depth tools) that commit a bad route directly.
+var reject_msg := ""
+var reject_card := -1
+var reject_until_ms := 0
+
 @onready var grid: Grid3 = $Grid
 @onready var cars_node: Node2D = $Cars
 @onready var passengers_node: Node2D = $Passengers
@@ -364,6 +376,7 @@ func select_card(i: int) -> void:
 	drawing = false
 	stroke = []
 	stroke_closed = false
+	reject_until_ms = 0 # a fresh selection clears any stale rejection hint
 	hud.refresh_cards()
 
 
@@ -371,7 +384,7 @@ func _begin_stroke(pos: Vector2) -> void:
 	if selected_card < 0 or not can_edit():
 		return
 	var cell := Grid3.cell_at(pos)
-	if cell.x < 0 or not Grid3.passable(cell):
+	if cell.x < 0 or not _drawable(cell):
 		return
 	drawing = true
 	stroke = [cell]
@@ -458,7 +471,7 @@ func stroke_try_extend(cell: Vector2i) -> bool:
 		var moved := false
 		for s in steps:
 			var n: Vector2i = h + s
-			if Grid3.passable(n) and not stroke.has(n):
+			if _drawable(n) and not stroke.has(n):
 				stroke.append(n)
 				changed = true
 				moved = true
@@ -537,6 +550,7 @@ func _commit(i: int, cells: Array, closed: bool, mid_run: bool, home = null) -> 
 				cars[i].width)
 		if err != "":
 			push_error("commit_route(%d) rejected: %s" % [i, err])
+			_set_reject_hint(i, cells, err)
 			return false
 		r = Route3.new()
 		r.cells = cells.duplicate()
@@ -555,6 +569,40 @@ func _commit(i: int, cells: Array, closed: bool, mid_run: bool, home = null) -> 
 		cars[i].set_home_cell(null)
 	replan_all()
 	hud.refresh_cards()
+	return true
+
+
+## Park the reason a commit was refused so hud3 can surface it on the hint
+## line in the card's colour. A too-narrow corridor gets a width-specific
+## message (the common case now that pod/cargo widths differ); anything else a
+## programmatic caller slipped through falls back to the raw validator reason.
+func _set_reject_hint(i: int, cells: Array, err: String) -> void:
+	reject_card = i
+	reject_until_ms = Time.get_ticks_msec() + 4000
+	var cw: int = cars[i].width
+	var mw := Grid3.route_min_gate_width(cells)
+	if mw < cw:
+		reject_msg = "%s is width %d - that corridor only fits width %d. Go around." % [
+				CARDS[i].name, cw, mw]
+	else:
+		reject_msg = "%s can't run there: %s" % [CARDS[i].name, err]
+
+
+## True when the selected card may draw through `cell`: passable, and not a
+## gate corridor narrower than the selected car. This is the magnetic head's
+## half of the corridor rule - a too-narrow corridor cell is felt as a wall
+## while drawing, so the rejection reads as resistance rather than a silent
+## commit failure. With no card selected (or every current width-2 car into a
+## width-2 corridor) it is exactly Grid3.passable, so existing levels are
+## unchanged.
+func _drawable(cell: Vector2i) -> bool:
+	if not Grid3.passable(cell):
+		return false
+	if selected_card < 0 or selected_card >= cars.size():
+		return true
+	var gi := Grid3.gate_group_of(cell)
+	if gi != -1 and Grid3.gate_group_width(gi) < cars[selected_card].width:
+		return false
 	return true
 
 
@@ -700,7 +748,16 @@ func _spawn_random() -> void:
 	var t := _pick_type()
 	var o: Vector2i
 	var d: Vector2i
-	if t == "exec" and not level.exec_origins.is_empty() \
+	# type_rooms (v4 axiom levels): a type may be pinned to its own origin/dest
+	# room lists, the same way execs are, so "big deliveries run the dock->top
+	# freight lane" is expressible without a width-3 party appearing on an
+	# ordinary commute. Existing levels omit the key, so their spawn sequence -
+	# and the determinism fingerprint - is untouched. Exec stays its own branch.
+	var tr: Dictionary = level.get("type_rooms", {})
+	if tr.has(t):
+		o = _pick_room(tr[t].from)
+		d = _pick_room(tr[t].to, o)
+	elif t == "exec" and not level.exec_origins.is_empty() \
 			and not level.exec_dests.is_empty():
 		# Execs use only the level-designated origin/destination rooms.
 		o = _pick_room(level.exec_origins)

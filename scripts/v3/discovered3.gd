@@ -45,6 +45,33 @@ const SETS := {
 			{"closed": true, "cells": [Vector2i(5, 7), Vector2i(6, 7), Vector2i(6, 6), Vector2i(6, 5), Vector2i(6, 4), Vector2i(6, 3), Vector2i(6, 2), Vector2i(6, 1), Vector2i(6, 0), Vector2i(5, 0), Vector2i(4, 0), Vector2i(3, 0), Vector2i(2, 0), Vector2i(2, 1), Vector2i(1, 1), Vector2i(1, 2), Vector2i(1, 3), Vector2i(1, 4), Vector2i(1, 5), Vector2i(1, 6), Vector2i(1, 7), Vector2i(2, 7), Vector2i(3, 7), Vector2i(4, 7)]},
 		],
 	},
+	"W-1": {
+		"desc": "search elite: 2 loop(s), 12 stops, 37 cells (beat thesis -2.6)",
+		"score": 1267.00,
+		"routes": [
+			{"closed": true, "cells": [Vector2i(0, 0), Vector2i(0, 1), Vector2i(0, 2), Vector2i(0, 3), Vector2i(0, 4), Vector2i(0, 5), Vector2i(0, 6), Vector2i(1, 6), Vector2i(1, 5), Vector2i(1, 4), Vector2i(1, 3), Vector2i(1, 2), Vector2i(1, 1), Vector2i(1, 0)]},
+			{"closed": true, "cells": [Vector2i(2, 0), Vector2i(3, 0), Vector2i(4, 0), Vector2i(4, 1), Vector2i(4, 2), Vector2i(4, 3), Vector2i(4, 4), Vector2i(4, 5), Vector2i(4, 6), Vector2i(3, 6), Vector2i(2, 6), Vector2i(2, 5), Vector2i(2, 4), Vector2i(2, 3), Vector2i(2, 2), Vector2i(2, 1)]},
+			[Vector2i(2, 6), Vector2i(2, 5), Vector2i(2, 4), Vector2i(2, 3), Vector2i(2, 2), Vector2i(2, 1), Vector2i(2, 0)],
+		],
+	},
+	"W-2": {
+		"desc": "search elite: 2 loop(s), 14 stops, 55 cells (beat thesis +2.1)",
+		"score": 1257.30,
+		"routes": [
+			[Vector2i(3, 0), Vector2i(3, 1), Vector2i(3, 2), Vector2i(3, 3), Vector2i(3, 4), Vector2i(3, 5), Vector2i(3, 6)],
+			{"closed": true, "cells": [Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0), Vector2i(3, 0), Vector2i(4, 0), Vector2i(5, 0), Vector2i(6, 0), Vector2i(6, 1), Vector2i(6, 2), Vector2i(6, 3), Vector2i(6, 4), Vector2i(6, 5), Vector2i(6, 6), Vector2i(5, 6), Vector2i(4, 6), Vector2i(3, 6), Vector2i(2, 6), Vector2i(1, 6), Vector2i(0, 6), Vector2i(0, 5), Vector2i(0, 4), Vector2i(0, 3), Vector2i(0, 2), Vector2i(0, 1)]},
+			{"closed": true, "cells": [Vector2i(0, 6), Vector2i(1, 6), Vector2i(2, 6), Vector2i(3, 6), Vector2i(4, 6), Vector2i(5, 6), Vector2i(6, 6), Vector2i(6, 5), Vector2i(6, 4), Vector2i(6, 3), Vector2i(6, 2), Vector2i(6, 1), Vector2i(6, 0), Vector2i(5, 0), Vector2i(4, 0), Vector2i(3, 0), Vector2i(2, 0), Vector2i(1, 0), Vector2i(0, 0), Vector2i(0, 1), Vector2i(0, 2), Vector2i(0, 3), Vector2i(0, 4), Vector2i(0, 5)]},
+		],
+	},
+	"W-3": {
+		"desc": "search elite: 0 loop(s), 9 stops, 25 cells (beat thesis -4.9)",
+		"score": 1282.00,
+		"routes": [
+			[Vector2i(0, 8), Vector2i(0, 9), Vector2i(0, 10), Vector2i(1, 10), Vector2i(1, 9), Vector2i(1, 8), Vector2i(1, 7), Vector2i(1, 6), Vector2i(1, 5), Vector2i(1, 4), Vector2i(1, 3), Vector2i(1, 2), Vector2i(1, 1), Vector2i(1, 0), Vector2i(0, 0)],
+			[Vector2i(0, 6), Vector2i(0, 7), Vector2i(0, 8), Vector2i(0, 9), Vector2i(0, 10)],
+			[Vector2i(0, 4), Vector2i(0, 3), Vector2i(0, 2), Vector2i(0, 1), Vector2i(0, 0)],
+		],
+	},
 	"X-1": {
 		"desc": "search elite: 2 loop(s), 28 stops, 94 cells (beat thesis +33.5)",
 		"score": 1220.60,

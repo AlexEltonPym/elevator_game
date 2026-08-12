@@ -63,6 +63,15 @@ func _init() -> void:
 		mode = "scorecheck"
 	elif args.has("--tune"):
 		mode = "tune"
+	# Ablation knobs (docs/depth-report.md): swap the acceleration model or
+	# restrict a mechanic, so accel-by-width / accel-by-speed and
+	# capacity-on / capacity-off can be measured without editing the tables.
+	var ai := args.find("--accel")
+	if ai >= 0 and ai + 1 < args.size():
+		Levels3.accel_model = String(args[ai + 1]).strip_edges()
+	var ri := args.find("--restrict")
+	if ri >= 0 and ri + 1 < args.size():
+		Levels3.restrict = String(args[ri + 1]).strip_edges()
 	var i := args.find("--levels")
 	if i >= 0 and i + 1 < args.size():
 		for s in String(args[i + 1]).split(","):

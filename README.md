@@ -6,7 +6,7 @@ through a maze of a building (up/down AND left/right), detour around
 blockages, squeeze cars through gate corridors that are only so WIDE, close a
 route into a one-way LOOP, give a car a HOME floor to wait on, and let
 local-to-express transfers emerge from time-based pathfinding. Cars ACCELERATE,
-so every stop costs momentum and not just door time. Five levels behind a level
+so every stop costs momentum and not just door time. Eight levels behind a level
 select, each a strategy thesis proven by a headless balance harness (`tests/`)
 — and watchable in-game (specs: `docs/v3-spec.md`, `docs/v3-balance-spec.md`,
 `docs/v3-watch-spec.md`, `docs/v3.3-spec.md`, `docs/v3.4-spec.md`,
@@ -56,7 +56,17 @@ it (a future "place-only mid-run" mode might).
 | L2    | Detour  | 95 / 6           | spend the gate wisely: ONE shuttle crosses the 4-cell tunnel for the cross-cluster crowds, a local weaves the bottom cluster, and the express takes the long gate-free perimeter for the execs. Three cars that all want a single-file corridor spend the level queueing |
 | L3    | Junction| 116 / 5          | most of this building only wants the LOBBY: run each feeder arm → HUB → lobby so it serves its own half on its own, and let the express be the only car that ever enters the single-file service loft. Direct winding climbs carry a rider who wanted downstairs over the roof, then queue under the penthouse |
 | L4    | Ring    | 110 / 4          | a two-lane ring: the outer lane passes every room, the inner lane passes none. Every commute crosses the building (half a lap), so CLOSE your routes into one-way loops — and WEAVE them, swinging out only for your own crowd. A loop that hugs the outer lane pays eight door cycles a lap for the two rooms it needed |
+| W-1   | Freight | 80 / 5           | big deliveries (three crates wide) ride the dock↔delivery freight lane and only the cargo car fits them — dedicate the cargo car to that shuttle, run a local per wing. Three general sweeps cover every room and strand the freight, because the one cargo car crawls a ten-stop milk run while the crates pile up |
+| W-2   | Narrows | 78 / 5           | the centre is a one-cell NARROWS only the pod fits — put the pod on it for the lobby↔roof rush and weave the wide cars round the perimeter for the couples. Sending everything the safe way round the outside leaves the middle rush dying a full lap away |
+| W-3   | Momentum| 78 / 5           | the hauler is heavy — give it ONE nonstop express-shaft run lobby↔penthouse where its momentum pays, and let the sharp pods do the local hops. Stopping every car at every floor never lets the hauler get moving and the end-to-end crowd crawls |
 | X-1   | Sandbox | 75 / 6           | the original maze, no thesis, just the toys — with the demand turned up until coverage alone stops being enough |
+
+The four axiomatic mechanic levels planned for v4 phase 2 were W-1..W-4, one per
+mechanic. **W-4 "Home" was cut**: the home floor (#29) measured as *chrome* — an
+identical route-set with a home cell beat the same route-set without one by only
+~2 of 16 seeds at the level's most sensitive tuning, never near the axiom bar.
+See `docs/ablation-report.md` for the full restricted-play study (which mechanics
+are load-bearing vs chrome, and the express accel-model decision).
 
 Every room in every level generates and receives demand — there are no
 decoy rooms — and each level's thesis route set serves every room (the
@@ -210,7 +220,11 @@ the harness proves.
     default width-2 tunnel is exactly the old one-car mutex (2 + 2 > 2). A
     width-1 corridor is a pod-only passage. Admission is strict FIFO, so a
     stream of pods cannot starve a standard waiting behind them. Drawing a car
-    down a corridor narrower than it is is refused at commit time.
+    down a corridor narrower than it is is felt as RESISTANCE — the magnetic
+    drawing head treats a too-narrow corridor cell as a wall for the selected
+    car — and if a fast drag reaches it anyway the commit is refused with the
+    reason on the hint line, in the card's colour ("CARGO is width 3 — that
+    corridor only fits width 2. Go around."), leaving the card unrouted.
   Orthogonally contiguous gate cells form ONE corridor: a car takes its share
   of the whole thing before entering the first cell and gives it back on
   reaching a cell fully outside. A car that cannot get in waits with a pulsing

@@ -71,6 +71,33 @@ const CAR_TYPES := {
 }
 const DECEL_RATIO := 1.25 # brakes bite a little harder than the motor pushes
 
+## ACCELERATION MODEL (v4 ablation, docs/depth-report.md "Express ablation").
+## How a car's ramp is derived, so accel-by-width can be compared against
+## accel-by-speed-class WITHOUT editing the car table:
+##   "width"       ramp is CAR_TYPES.accel (the shipped model). A width-2
+##                 express and a width-2 standard share a ramp, so they differ
+##                 only at cruise on a long leg.
+##   "speed_slow"  faster car ramps SLOWER: accel = std_accel * STANDARD_SPEED
+##                 / speed. The express (fast) crawls up to speed; the cargo
+##                 (slow top speed) snaps to it. Decouples ramp from width.
+##   "speed_fast"  faster car ramps FASTER: accel = std_accel * speed /
+##                 STANDARD_SPEED. The express both tops out higher AND gets
+##                 there quicker; the cargo is doubly sluggish.
+## A card's explicit "accel" always wins; the shipped game leaves this "width".
+static var accel_model := "width"
+
+## RESTRICTED PLAY (v4 mechanic ablation, docs/depth-report.md). Forbid a
+## mechanic so its best-achievable score can be measured with it vs without:
+##   ""          nothing restricted (the shipped game).
+##   "capacity"  every car is cut to the MINIMUM capacity that still lets its
+##               widest legal party board (capacity = width, i.e. one "row"),
+##               half the shipped 2*width. If the thesis still wins, the extra
+##               capacity was chrome.
+##   "accel"     acceleration is removed: cars snap to top speed (the pre-v4
+##               instant model), so momentum costs nothing.
+## Applied by card_capacity / card_accel below; the shipped game leaves it "".
+static var restrict := ""
+
 
 static func _card_type(card: Dictionary) -> Dictionary:
 	return CAR_TYPES.get(str(card.get("type", "standard")), CAR_TYPES.standard)
@@ -80,8 +107,12 @@ static func card_width(card: Dictionary) -> int:
 	return int(card.get("width", _card_type(card).width))
 
 
-## Capacity in width-units: the card's own number, else 2 x width.
+## Capacity in width-units: the card's own number, else 2 x width. Under the
+## "capacity" restriction every car is cut to the minimum that still boards its
+## widest legal party (= width), to measure whether the surplus mattered.
 static func card_capacity(card: Dictionary) -> int:
+	if restrict == "capacity":
+		return card_width(card)
 	return int(card.get("cap", 2 * card_width(card)))
 
 
@@ -90,7 +121,18 @@ static func card_speed(card: Dictionary) -> float:
 
 
 static func card_accel(card: Dictionary) -> float:
-	return float(card.get("accel", _card_type(card).accel))
+	if restrict == "accel":
+		return 1.0e5 # momentum removed: the car snaps to top speed (pre-v4)
+	if card.has("accel"):
+		return float(card.accel)
+	var std_accel := float(CAR_TYPES.standard.accel)
+	match accel_model:
+		"speed_slow":
+			return std_accel * STANDARD_SPEED / card_speed(card)
+		"speed_fast":
+			return std_accel * card_speed(card) / STANDARD_SPEED
+		_:
+			return float(_card_type(card).accel)
 
 
 static func card_decel(card: Dictionary) -> float:
@@ -360,6 +402,158 @@ static var LEVELS := [
 		],
 	},
 	{
+		"id": "W-1",
+		"name": "Freight",
+		"thesis": "dedicate the cargo car to a freight shuttle; locals take the wings",
+		"intro": "Two WINGS of rooms and a central FREIGHT SHAFT. Big\ndeliveries (three crates wide) ride the DOCK at the\nbottom up to the DELIVERY floor at the top and back -\nand ONLY the cargo car is wide enough to take them.\n\nThe honest first plan is three general lines that each\nsweep the whole building. It covers every room and it\nstrands the freight: the one cargo car spends its day\ncrawling a ten-stop milk run, so the crates pile up at\nthe dock and time out.\n\nGive the cargo car ONE job - the dock-to-delivery\nshuttle - and let the two locals run the wings.",
+		"rows": [
+			"R.R.R", # row6  W(0,6)  DELIVERY(2,6)  E(4,6)
+			".....", # row5
+			"R...R", # row4  (0,4) | (4,4)
+			".....", # row3
+			"R...R", # row2  (0,2) | (4,2)
+			".....", # row1
+			"R.R.R", # row0  W(0,0)  DOCK(2,0)  E(4,0)
+		],
+		"cards": [
+			{"name": "LOCAL A", "type": "standard",
+					"color": Color(0.45, 0.68, 0.95)},
+			{"name": "LOCAL B", "type": "standard",
+					"color": Color(0.5, 0.88, 0.55)},
+			{"name": "FREIGHT", "type": "cargo",
+					"color": Color(0.98, 0.68, 0.2)},
+		],
+		"quota": 80,
+		"max_lost": 5,
+		"spawn": {"interval_start": 1.5, "interval_end": 1.1, "ramp": 90.0,
+				"burst_min": 3, "burst_max": 5, "gap": 0.6},
+		"mix": {"visitor": 0.34, "patient": 0.28, "big delivery": 0.38},
+		# Big deliveries are patient on their own; what dooms the naive plan is
+		# that its shared cargo car serves them slower than they arrive, so the
+		# dock queue grows without bound until it times them out no matter the
+		# patience. The dedicated shuttle serves them faster than they arrive.
+		"patience": {"big delivery": 95.0},
+		"exec_origins": [],
+		"exec_dests": [],
+		# Big deliveries run the dock<->delivery freight lane and nothing else.
+		"type_rooms": {"big delivery": {
+				"from": [Vector2i(2, 0), Vector2i(2, 6)],
+				"to": [Vector2i(2, 6), Vector2i(2, 0)]}},
+		"groups": {
+			"west": [Vector2i(0, 0), Vector2i(0, 2), Vector2i(0, 4), Vector2i(0, 6)],
+			"east": [Vector2i(4, 0), Vector2i(4, 2), Vector2i(4, 4), Vector2i(4, 6)],
+			"dock": [Vector2i(2, 0)],
+			"delivery": [Vector2i(2, 6)],
+		},
+		"trips": [
+			# Each wing is its own commute; the freight lane is the type_rooms
+			# above. No wing-to-wing demand - the wings share no car in the
+			# thesis, so a cross trip would be unservable there.
+			{"w": 0.5, "from": "west", "to": "west"},
+			{"w": 0.5, "from": "east", "to": "east"},
+		],
+	},
+	{
+		"id": "W-2",
+		"name": "Narrows",
+		"thesis": "run the pod through the narrows; send the wide cars the long way",
+		"intro": "The centre of the building is a NARROWS - a single-file\nshaft one cell wide, so only the slim POD fits it. It is\nthe short, fast line between the lobby and the roof.\n\nAmber commuters (hasty) rush LOBBY<->ROOF up the middle;\nCOUPLES (two-wide, they board only a full-size car)\ncommute the corners and can never use the narrows.\n\nThe safe-looking plan sends all three cars the long way\nround the perimeter - nobody times out on the couples,\nbut the middle rush dies waiting for a full lap. Instead:\nput the POD on the narrows for the rush, and weave the\ntwo wide cars round the outside for the couples.",
+		"rows": [
+			"R..R..R", # row6  UL(0,6)  UC(3,6)  UR(6,6)
+			"...1...", # row5  narrows (3,5)
+			"...1...", # row4  narrows (3,4)
+			"...1...", # row3  narrows (3,3)
+			"...1...", # row2  narrows (3,2)
+			"...1...", # row1  narrows (3,1)
+			"R..R..R", # row0  LL(0,0)  LC(3,0)  LR(6,0)
+		],
+		"cards": [
+			{"name": "POD", "type": "pod",
+					"color": Color(0.45, 0.68, 0.95)},
+			{"name": "CAR B", "type": "standard",
+					"color": Color(0.5, 0.88, 0.55)},
+			{"name": "CAR C", "type": "standard",
+					"color": Color(0.98, 0.68, 0.2)},
+		],
+		"quota": 78,
+		"max_lost": 5,
+		"spawn": {"interval_start": 1.4, "interval_end": 1.0, "ramp": 90.0,
+				"burst_min": 3, "burst_max": 5, "gap": 0.55},
+		"mix": {"exec": 0.34, "couple": 0.66},
+		# The rush is hasty (the narrows shortcut is ~a third of a perimeter
+		# lap): 30 s survives one pod turnaround but not a full outer lap.
+		# Couples are patient - the two wide cars keep up with them either way,
+		# so the couples are NOT the differentiator; the middle rush is.
+		"patience": {"exec": 30.0, "couple": 95.0},
+		# The lobby<->roof rush uses ONLY the central narrows lane.
+		"exec_origins": [Vector2i(3, 0), Vector2i(3, 6)],
+		"exec_dests": [Vector2i(3, 6), Vector2i(3, 0)],
+		"groups": {
+			"low": [Vector2i(0, 0), Vector2i(6, 0)],
+			"high": [Vector2i(0, 6), Vector2i(6, 6)],
+			"mid_low": [Vector2i(3, 0)],
+			"mid_high": [Vector2i(3, 6)],
+		},
+		"trips": [
+			# The couples cross the building corner-to-corner (perimeter only).
+			{"w": 0.5, "from": "low", "to": "high"},
+			{"w": 0.5, "from": "high", "to": "low"},
+		],
+	},
+	{
+		"id": "W-3",
+		"name": "Momentum",
+		"thesis": "give the hauler one long nonstop run; let the pods do the local hops",
+		"intro": "A tall tower with a clear EXPRESS SHAFT beside the rooms.\nMost of the crowd rides LOBBY<->PENTHOUSE end to end; the\nrest are short local hops between neighbouring floors.\n\nThe HAULER is heavy: it takes an age to get moving and an\nage to stop, so every extra stop costs it dearly. Run all\nthree cars stopping at every floor and the hauler never\ngets up to speed, and the end-to-end crowd crawls.\n\nInstead: send the hauler up the express shaft in ONE\nunbroken run, lobby to penthouse, where its momentum\nfinally pays - and let the sharp little pods dart between\nthe local floors.",
+		"rows": [
+			"R..", # row10  PENTHOUSE (0,10)
+			"...", # row9
+			"R..", # row8  (0,8)
+			"...", # row7
+			"R..", # row6  (0,6)
+			"...", # row5
+			"R..", # row4  (0,4)
+			"...", # row3
+			"R..", # row2  (0,2)
+			"...", # row1
+			"R..", # row0  LOBBY (0,0)
+		],
+		"cards": [
+			{"name": "HAULER", "type": "cargo",
+					"color": Color(0.98, 0.68, 0.2)},
+			{"name": "POD A", "type": "pod",
+					"color": Color(0.45, 0.68, 0.95)},
+			{"name": "POD B", "type": "pod",
+					"color": Color(0.5, 0.88, 0.55)},
+		],
+		"quota": 78,
+		"max_lost": 5,
+		"spawn": {"interval_start": 1.35, "interval_end": 1.0, "ramp": 90.0,
+				"burst_min": 3, "burst_max": 5, "gap": 0.55},
+		"mix": {"visitor": 0.58, "patient": 0.42},
+		# The end-to-end crowd is what a stop-everywhere plan starves: on the
+		# nonstop express leg they arrive inside 25 s, on a six-stop crawl they
+		# do not. Locals are patient - the pods clear them either way.
+		"patience": {"visitor": 46.0, "patient": 40.0},
+		"exec_origins": [],
+		"exec_dests": [],
+		"groups": {
+			"lobby": [Vector2i(0, 0)],
+			"pent": [Vector2i(0, 10)],
+			"lower": [Vector2i(0, 0), Vector2i(0, 2), Vector2i(0, 4)],
+			"upper": [Vector2i(0, 6), Vector2i(0, 8), Vector2i(0, 10)],
+		},
+		"trips": [
+			# The heavy end-to-end tide the express leg is FOR...
+			{"w": 0.26, "from": "lobby", "to": "pent"},
+			{"w": 0.26, "from": "pent", "to": "lobby"},
+			# ...and the local hops the pods pick up, split into two halves that
+			# never cross (so the pods never need to meet in the middle).
+			{"w": 0.24, "from": "lower", "to": "lower"},
+			{"w": 0.24, "from": "upper", "to": "upper"},
+		],
+	},
+	{
 		"id": "X-1",
 		"name": "Sandbox",
 		"thesis": "the original maze - no thesis, just the toys, at a pace that bites",
@@ -473,7 +667,12 @@ static func people_lines(lv: Dictionary) -> Array:
 		var line := "%s - %.0f%% of the crowd - width %d - patience %.0f s" % [
 				t, 100.0 * float(mix[t]) / total,
 				int(Passenger3.PTYPES.get(t, {}).get("width", 1)), pat]
-		if t == "exec":
+		# A type pinned to its own rooms (execs, or a v4 `type_rooms` freight /
+		# burst lane) tells the player exactly where it runs.
+		var tr: Dictionary = lv.get("type_rooms", {})
+		if tr.has(t):
+			line += " - rides %s to %s" % [_rooms_str(tr[t].from), _rooms_str(tr[t].to)]
+		elif t == "exec":
 			line += " - rides %s to %s" % [
 					_rooms_str(lv.exec_origins), _rooms_str(lv.exec_dests)]
 		out.append(line)

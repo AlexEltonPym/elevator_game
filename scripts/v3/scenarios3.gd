@@ -27,7 +27,12 @@ extends RefCounted
 ## the thesis loses once v4 acceleration slowed every car; 511 shows the
 ## comparison the level is about. The claim "the thesis wins" is made by
 ## tests/balance.gd over the 16 held-out SEEDS_ASSERT, never by this number.)
-const SEEDS := {"L1": 101, "L2": 202, "L3": 303, "L4": 511, "X-1": 404}
+const SEEDS := {"L1": 101, "L2": 202, "L3": 303, "L4": 511, "X-1": 404,
+		"W-1": 601, "W-2": 602, "W-3": 603}
+## W-4 "Home" was cut: mechanic #29 (home floor) measured as chrome - at its
+## most sensitive tuning an identical route-set with a home cell beat the same
+## route-set without one by only ~2 of 16 seeds, never near the axiom bar
+## (thesis WINS 15/16 while naive LOSES 15/16). See docs/depth-report.md.
 
 ## THE SEED SETS (v3.5 level-design pass). A level axiom asserted on ONE seed
 ## measures seed luck, not the level: the 2026-08-12 depth run held L3's
@@ -241,6 +246,82 @@ static func route_sets(level_id: String) -> Dictionary:
 								Vector2i(6, 1), Vector2i(6, 6), Vector2i(7, 6),
 								Vector2i(7, 7), Vector2i(0, 7), Vector2i(0, 6),
 								Vector2i(1, 6), Vector2i(1, 1), Vector2i(0, 1)]),
+					],
+				},
+			}
+		"W-1":
+			return {
+				"naive": {
+					"desc": "three general sweeps that cover everything and strand the freight",
+					"routes": [
+						# The honest first plan: each car sweeps the whole building.
+						# The two locals over-serve the width-1 crowd; the ONE cargo
+						# car is stuck on a ten-stop milk run, so the big deliveries
+						# (only it can carry them) pile up at the dock and time out.
+						path([Vector2i(0, 0), Vector2i(0, 6), Vector2i(2, 6),
+								Vector2i(2, 0), Vector2i(4, 0), Vector2i(4, 6)]),
+						path([Vector2i(0, 0), Vector2i(0, 6), Vector2i(2, 6),
+								Vector2i(2, 0), Vector2i(4, 0), Vector2i(4, 6)]),
+						path([Vector2i(0, 0), Vector2i(0, 6), Vector2i(2, 6),
+								Vector2i(2, 0), Vector2i(4, 0), Vector2i(4, 6)]),
+					],
+				},
+				"thesis": {
+					"desc": "cargo runs the dock<->delivery shuttle; a local per wing",
+					"routes": [
+						path([Vector2i(0, 0), Vector2i(0, 6)]), # LOCAL A: west wing
+						path([Vector2i(4, 0), Vector2i(4, 6)]), # LOCAL B: east wing
+						path([Vector2i(2, 0), Vector2i(2, 6)]), # FREIGHT: the shuttle
+					],
+				},
+			}
+		"W-2":
+			return {
+				"naive": {
+					"desc": "all three cars the long way round; nobody takes the narrows",
+					"routes": [
+						# The pod is drawn round the perimeter with the wide cars
+						# instead of down the shortcut - so the middle rush waits out
+						# a full outer lap and its hasty riders time out.
+						loop([Vector2i(0, 0), Vector2i(6, 0), Vector2i(6, 6),
+								Vector2i(0, 6), Vector2i(0, 1)]),
+						loop([Vector2i(0, 0), Vector2i(6, 0), Vector2i(6, 6),
+								Vector2i(0, 6), Vector2i(0, 1)]),
+						loop([Vector2i(0, 0), Vector2i(0, 6), Vector2i(6, 6),
+								Vector2i(6, 0), Vector2i(1, 0)]),
+					],
+				},
+				"thesis": {
+					"desc": "pod down the narrows for the rush; wide cars weave the perimeter",
+					"routes": [
+						path([Vector2i(3, 0), Vector2i(3, 6)]), # POD: the narrows
+						loop([Vector2i(0, 0), Vector2i(6, 0), Vector2i(6, 6),
+								Vector2i(0, 6), Vector2i(0, 1)]), # CAR B: perimeter
+						loop([Vector2i(0, 0), Vector2i(0, 6), Vector2i(6, 6),
+								Vector2i(6, 0), Vector2i(1, 0)]), # CAR C: perimeter
+					],
+				},
+			}
+		"W-3":
+			return {
+				"naive": {
+					"desc": "every car stops at every floor; the hauler never gets moving",
+					"routes": [
+						# One stop-everywhere line per card. The heavy hauler brakes at
+						# all six floors, so the end-to-end crowd crawls and times out.
+						path([Vector2i(0, 0), Vector2i(0, 10)]),
+						path([Vector2i(0, 0), Vector2i(0, 10)]),
+						path([Vector2i(0, 0), Vector2i(0, 10)]),
+					],
+				},
+				"thesis": {
+					"desc": "hauler runs one nonstop express leg; pods take the local halves",
+					"routes": [
+						# HAULER: up the express shaft, lobby to penthouse, TWO stops.
+						path([Vector2i(0, 0), Vector2i(1, 0), Vector2i(1, 10),
+								Vector2i(0, 10)]),
+						path([Vector2i(0, 0), Vector2i(0, 4)]), # POD A: lower hops
+						path([Vector2i(0, 6), Vector2i(0, 10)]), # POD B: upper hops
 					],
 				},
 			}

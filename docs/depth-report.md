@@ -2,7 +2,7 @@
 
 Do not hand-edit: re-run `powershell -File tools/run_depth.ps1` instead.
 
-Generated 2026-08-12T22:12:49.
+Generated 2026-08-12T23:31:16.
 
 ## How to read this
 
@@ -21,6 +21,9 @@ Generated 2026-08-12T22:12:49.
 | **L2** Detour | 1244.2 | 5.8 | 1230.2 | 71.8 | 1250.8 | +20.6 | +6.6 | 3 | 0.69 | +0.5 | 9.8 | 0.97 | 1.00 |
 | **L3** Junction | 1268.4 | 53.8 | 1236.7 | 55.8 | 1268.4 | +31.7 | +0.0 | 3 | 0.00 | +0.8 | 16.5 | 0.98 | 1.00 |
 | **L4** Ring | 1261.8 | 41.8 | 1246.8 | 47.8 | 1266.4 | +19.6 | +4.6 | 3 | 0.38 | +2.0 | 1.9 | 0.84 | 1.00 |
+| **W-1** Freight | 1269.6 | 23.7 | 1231.5 | 1245.1 | 1267.0 | +35.5 | -2.6 | 2 | 0.11 | +4.0 | 1249.3 | 0.82 | 1.00 |
+| **W-2** Narrows | 1255.2 | 48.8 | 1253.9 | -1000000000000000000.0 | 1257.3 | +3.4 | +2.1 | 2 | 0.00 | +2.6 | 1227.6 | 0.00 | 1.00 |
+| **W-3** Momentum | 1286.9 | 1.8 | 1269.5 | 30.8 | 1282.0 | +12.5 | -4.9 | 3 | 0.78 | -1.7 | 19.4 | 0.15 | 1.00 |
 | **X-1** Sandbox | 1187.1 | — | 1199.5 | 1198.1 | 1220.6 | +21.1 | +33.5 | 2 | 0.70 | +2.2 | 4.9 | 0.42 | 1.00 |
 
 Scores marked **W** in the per-level tables are wins. Win/loss split per strategy (over 8 test seeds):
@@ -31,15 +34,18 @@ Scores marked **W** in the per-level tables are wins. Win/loss split per strateg
 | **L2** | 8/8 | 0/8 | 6/8 | 4/8 | 8/8 |
 | **L3** | 8/8 | 0/8 | 6/8 | 0/8 | 8/8 |
 | **L4** | 6/8 | 0/8 | 5/8 | 0/8 | 8/8 |
+| **W-1** | 8/8 | 0/8 | 6/8 | 8/8 | 8/8 |
+| **W-2** | 8/8 | 1/8 | 8/8 | 0/0 | 8/8 |
+| **W-3** | 8/8 | 0/8 | 8/8 | 0/8 | 8/8 |
 | **X-1** | 7/8 | — | 6/8 | 8/8 | 8/8 |
 
-Seed noise band per level (median MAD/sqrt(n) of the ladder elites' test scores): L1 1.07, L2 0.78, L3 1.05, L4 0.32, X-1 1.45. A ladder step counts only when a budget doubling beats the previous point by more than that.
+Seed noise band per level (median MAD/sqrt(n) of the ladder elites' test scores): L1 1.07, L2 0.78, L3 1.05, L4 0.32, W-1 3.85, W-2 0.99, W-3 0.64, X-1 1.45. A ladder step counts only when a budget doubling beats the previous point by more than that.
 
 ## L1 — Tower
 
 Thesis: *one local per wing, and the express spine belongs to the execs*
 
-10 rooms, 3 cards. Search cost: 13480 simulation runs in 887 s wall (random 6400 + greedy 24 + ea 6400, plus the test-seed re-scoring).
+10 rooms, 3 cards. Search cost: 13480 simulation runs in 884 s wall (random 6400 + greedy 24 + ea 6400, plus the test-seed re-scoring).
 
 | strategy | score | wins | served | lost | avg wait | med. finish |
 |---|---|---|---|---|---|---|
@@ -109,7 +115,7 @@ gen   runs   best      pop_best  pop_mean  distinct  spread
 
 Thesis: *spend the gate on a cross shuttle; execs ride the perimeter express*
 
-10 rooms, 3 cards. Search cost: 13856 simulation runs in 1290 s wall (random 6400 + greedy 400 + ea 6400, plus the test-seed re-scoring).
+10 rooms, 3 cards. Search cost: 13856 simulation runs in 1192 s wall (random 6400 + greedy 400 + ea 6400, plus the test-seed re-scoring).
 
 | strategy | score | wins | served | lost | avg wait | med. finish |
 |---|---|---|---|---|---|---|
@@ -179,7 +185,7 @@ gen   runs   best      pop_best  pop_mean  distinct  spread
 
 Thesis: *both feeders run arm->HUB->lobby; only the express climbs the loft*
 
-7 rooms, 3 cards. Search cost: 13474 simulation runs in 745 s wall (random 6400 + greedy 18 + ea 6400, plus the test-seed re-scoring).
+7 rooms, 3 cards. Search cost: 13474 simulation runs in 777 s wall (random 6400 + greedy 18 + ea 6400, plus the test-seed re-scoring).
 
 | strategy | score | wins | served | lost | avg wait | med. finish |
 |---|---|---|---|---|---|---|
@@ -249,7 +255,7 @@ gen   runs   best      pop_best  pop_mean  distinct  spread
 
 Thesis: *weave the lane: a loop only swings outside for the rooms it serves*
 
-8 rooms, 3 cards. Search cost: 13712 simulation runs in 1135 s wall (random 6400 + greedy 256 + ea 6400, plus the test-seed re-scoring).
+8 rooms, 3 cards. Search cost: 13712 simulation runs in 1079 s wall (random 6400 + greedy 256 + ea 6400, plus the test-seed re-scoring).
 
 | strategy | score | wins | served | lost | avg wait | med. finish |
 |---|---|---|---|---|---|---|
@@ -315,11 +321,221 @@ gen   runs   best      pop_best  pop_mean  distinct  spread
 
 </details>
 
+## W-1 — Freight
+
+Thesis: *dedicate the cargo car to a freight shuttle; locals take the wings*
+
+10 rooms, 3 cards. Search cost: 14242 simulation runs in 1086 s wall (random 6400 + greedy 786 + ea 6400, plus the test-seed re-scoring).
+
+| strategy | score | wins | served | lost | avg wait | med. finish |
+|---|---|---|---|---|---|---|
+| thesis | 1269.60 **W** | 8/8 | 80.0 | 0.0 | 5.8 s | 149 s |
+| naive | 23.67 | 0/8 | 42.5 | 5.0 | 34.4 s | — |
+| random | 1231.50 **W** | 6/8 | 74.3 | 2.5 | 22.8 s | 172 s |
+| greedy | 1245.10 **W** | 8/8 | 80.6 | 0.1 | 19.5 s | 173 s |
+| random@100 | 10.66 | 0/8 | 33.0 | 5.0 | 31.7 s | — |
+| **ea@100** | 46.73 | 1/8 | 64.3 | 4.8 | 29.7 s | — |
+| random@400 | 29.69 | 0/8 | 47.8 | 5.0 | 34.0 s | — |
+| **ea@400** | 46.73 | 1/8 | 64.3 | 4.8 | 29.7 s | — |
+| random@1600 | 1231.50 **W** | 6/8 | 74.3 | 2.5 | 22.8 s | 172 s |
+| **ea@1600**  <- step | 1228.80 **W** | 5/8 | 76.3 | 2.6 | 25.2 s | 183 s |
+| random@6400 | 1231.50 **W** | 6/8 | 74.3 | 2.5 | 22.8 s | 172 s |
+| **ea@6400**  <- step | 1267.00 **W** | 8/8 | 80.3 | 0.0 | 7.0 s | 153 s |
+
+Ladder (median test score vs budget): 100→46.7 (1/8 won)  400→46.7 (1/8 won)  1600→1228.8 (5/8 won)  6400→1267.0 (8/8 won)  →  **2 step(s)** above a noise band of 3.85.
+
+Best route-set found (2 loops, 12 stops over 37 cells, 0 gate group(s) crossed) vs thesis (0 loops, 10 stops, 21 cells): Jaccard distance **0.11**.
+
+```
+card 0 LOOP 14 cells, stops: (0,0) (0,2) (0,4) (0,6)
+card 1 LOOP 16 cells, stops: (2,0) (4,0) (4,2) (4,4) (4,6) (2,6)
+card 2 line  7 cells, stops: (2,6) (2,0)
+```
+
+**Verdict.** Both the EA and best-of-6400 random win this level; the EA closes it 35 game-seconds faster. The ladder has 2 distinguishable steps, i.e. more search kept buying real score. The optimizer matched the thesis (-2.6, within noise). seed_fragility +4.0: the elite transfers to unseen seeds.
+
+<details><summary>EA instrumentation (is the optimizer actually working?)</summary>
+
+- **58 generations** of mu=12+lambda=24 completed; 1369 children proposed; stopped because: budget.
+- Seeded from 12 hand-built primitive genomes + 0 random genomes.
+- **32.6% of proposed genes failed to decode** (scored -INF, cost no budget); 10.7% were cache hits (already evaluated, also free).
+- Uniform random needed 1145 proposals to fill its budget, 345 of which never produced a decodable route-set.
+
+Operator effect is measured against the PARENT's score; immigration has no parent, so its comparison columns are blank by construction, not because it is broken.
+
+| operator | children | comparable | changed the score | improved on parent | mean abs. delta |
+|---|---|---|---|---|---|
+| crossover | 345 | 278 | 75% | 10% | 161.23 |
+| immigrate | 81 | 0 | — | — | — |
+| mutate | 943 | 564 | 80% | 14% | 276.17 |
+
+Best-so-far and population diversity by generation (TRAIN seeds, search step) — `spread` is the mean pairwise Jaccard distance inside the population, so 0 means it has collapsed onto one plan:
+
+```
+gen   runs   best      pop_best  pop_mean  distinct  spread
+1     264    49.68     49.68     29.44     12        0.392
+5     696    53.71     53.71     48.52     12        0.213
+10    1160   59.70     59.70     53.53     12        0.246
+14    1648   1229.50   1229.50   254.67    12        0.094
+19    2144   1234.75   1234.75   1225.88   12        0.056
+23    2528   1234.75   1234.75   1232.58   12        0.056
+27    2992   1245.25   1245.25   1241.52   12        0.142
+32    3480   1256.50   1256.50   1246.46   12        0.182
+36    3928   1261.00   1261.00   1254.38   12        0.231
+40    4344   1266.00   1266.00   1261.04   12        0.125
+45    4936   1270.00   1270.00   1266.46   12        0.022
+49    5472   1270.00   1270.00   1269.81   12        0.021
+54    6016   1271.00   1271.00   1270.27   12        0.044
+58    6400   1271.00   1271.00   1270.44   12        0.069
+```
+
+</details>
+
+## W-2 — Narrows
+
+Thesis: *run the pod through the narrows; send the wide cars the long way*
+
+6 rooms, 3 cards. Search cost: 13448 simulation runs in 706 s wall (random 6400 + greedy 0 + ea 6400, plus the test-seed re-scoring).
+
+| strategy | score | wins | served | lost | avg wait | med. finish |
+|---|---|---|---|---|---|---|
+| thesis | 1255.20 **W** | 8/8 | 78.4 | 1.0 | 18.8 s | 163 s |
+| naive | 48.79 | 1/8 | 63.3 | 4.9 | 22.4 s | — |
+| random | 1253.90 **W** | 8/8 | 78.4 | 1.3 | 21.3 s | 163 s |
+| greedy | -1000000000000000000.00 | 0/0 | 0.0 | 0.0 | 0.0 s | — |
+| random@100 | 53.70 | 3/8 | 70.6 | 3.8 | 26.5 s | — |
+| **ea@100** | 41.75 | 0/8 | 56.3 | 5.0 | 24.0 s | — |
+| random@400 | 1249.70 **W** | 8/8 | 78.1 | 1.1 | 20.8 s | 162 s |
+| **ea@400**  <- step | 46.65 | 2/8 | 65.4 | 4.5 | 28.4 s | — |
+| random@1600 | 1250.90 **W** | 8/8 | 78.3 | 1.1 | 22.3 s | 169 s |
+| **ea@1600**  <- step | 1257.30 **W** | 8/8 | 78.3 | 1.0 | 18.9 s | 161 s |
+| random@6400 | 1253.90 **W** | 8/8 | 78.4 | 1.3 | 21.3 s | 163 s |
+| **ea@6400** | 1257.30 **W** | 8/8 | 78.3 | 1.0 | 18.9 s | 161 s |
+
+Ladder (median test score vs budget): 100→41.8 (0/8 won)  400→46.7 (2/8 won)  1600→1257.3 (8/8 won)  6400→1257.3 (8/8 won)  →  **2 step(s)** above a noise band of 0.99.
+
+Best route-set found (2 loops, 14 stops over 55 cells, 1 gate group(s) crossed) vs thesis (2 loops, 14 stops, 55 cells): Jaccard distance **0.00**.
+
+```
+card 0 line  7 cells, stops: (3,0) (3,6)
+card 1 LOOP 24 cells, stops: (0,0) (3,0) (6,0) (6,6) (3,6) (0,6)
+card 2 LOOP 24 cells, stops: (0,6) (3,6) (6,6) (6,0) (3,0) (0,0)
+```
+
+**Verdict.** Both the EA and best-of-6400 random win this level; the EA closes it 3 game-seconds faster. The ladder has 2 distinguishable steps, i.e. more search kept buying real score. The optimizer beat our thesis by +2.1 but with much the same shape (Jaccard 0.00) — it found our idea and tuned it. seed_fragility +2.6: the elite transfers to unseen seeds. Coarse-step search is faithful overall (rho_spread 1.00) but the TOP 30 candidates re-rank freely at STEP 0.1 (rho 0.00) — they are a near-tie plateau, so which one is 'best' is arbitrary.
+
+<details><summary>EA instrumentation (is the optimizer actually working?)</summary>
+
+- **91 generations** of mu=12+lambda=24 completed; 2162 children proposed; stopped because: budget.
+- Seeded from 12 hand-built primitive genomes + 0 random genomes.
+- **41.8% of proposed genes failed to decode** (scored -INF, cost no budget); 24.7% were cache hits (already evaluated, also free).
+- Uniform random needed 2481 proposals to fill its budget, 4 of which never produced a decodable route-set.
+
+Operator effect is measured against the PARENT's score; immigration has no parent, so its comparison columns are blank by construction, not because it is broken.
+
+| operator | children | comparable | changed the score | improved on parent | mean abs. delta |
+|---|---|---|---|---|---|
+| crossover | 594 | 464 | 33% | 3% | 87.12 |
+| immigrate | 219 | 0 | — | — | — |
+| mutate | 1349 | 729 | 64% | 3% | 172.89 |
+
+Best-so-far and population diversity by generation (TRAIN seeds, search step) — `spread` is the mean pairwise Jaccard distance inside the population, so 0 means it has collapsed onto one plan:
+
+```
+gen   runs   best      pop_best  pop_mean  distinct  spread
+1     152    29.79     29.79     13.25     12        0.376
+8     848    1251.75   1251.75   1045.97   12        0.079
+15    1568   1260.00   1260.00   1257.27   12        0.000
+22    2104   1260.00   1260.00   1260.00   12        0.000
+29    2656   1260.00   1260.00   1260.00   12        0.000
+36    3248   1260.00   1260.00   1260.00   12        0.000
+43    3736   1260.00   1260.00   1260.00   12        0.000
+49    4112   1260.00   1260.00   1260.00   12        0.000
+56    4520   1260.00   1260.00   1260.00   12        0.000
+63    4928   1260.00   1260.00   1260.00   12        0.000
+70    5280   1260.00   1260.00   1260.00   12        0.000
+77    5680   1260.00   1260.00   1260.00   12        0.000
+84    6048   1260.00   1260.00   1260.00   12        0.000
+91    6400   1260.00   1260.00   1260.00   12        0.000
+```
+
+</details>
+
+## W-3 — Momentum
+
+Thesis: *give the hauler one long nonstop run; let the pods do the local hops*
+
+6 rooms, 3 cards. Search cost: 13518 simulation runs in 723 s wall (random 6400 + greedy 62 + ea 6400, plus the test-seed re-scoring).
+
+| strategy | score | wins | served | lost | avg wait | med. finish |
+|---|---|---|---|---|---|---|
+| thesis | 1286.90 **W** | 8/8 | 79.4 | 0.0 | 5.2 s | 133 s |
+| naive | 1.81 | 0/8 | 18.4 | 5.0 | 19.7 s | — |
+| random | 1269.50 **W** | 8/8 | 78.0 | 1.3 | 11.6 s | 149 s |
+| greedy | 30.81 | 0/8 | 49.4 | 5.0 | 18.5 s | — |
+| random@100 | 57.84 | 4/8 | 69.4 | 3.5 | 15.0 s | — |
+| **ea@100** | 22.81 | 0/8 | 42.4 | 5.0 | 15.5 s | — |
+| random@400 | 57.84 | 4/8 | 69.4 | 3.5 | 15.0 s | — |
+| **ea@400**  <- step | 35.83 | 2/8 | 59.0 | 4.4 | 14.5 s | — |
+| random@1600 | 42.86 | 0/8 | 57.1 | 5.0 | 14.7 s | — |
+| **ea@1600**  <- step | 1267.70 **W** | 8/8 | 79.1 | 1.1 | 13.4 s | 151 s |
+| random@6400 | 1269.50 **W** | 8/8 | 78.0 | 1.3 | 11.6 s | 149 s |
+| **ea@6400**  <- step | 1282.00 **W** | 8/8 | 79.0 | 0.0 | 6.7 s | 138 s |
+
+Ladder (median test score vs budget): 100→22.8 (0/8 won)  400→35.8 (2/8 won)  1600→1267.7 (8/8 won)  6400→1282.0 (8/8 won)  →  **3 step(s)** above a noise band of 0.64.
+
+Best route-set found (0 loops, 9 stops over 25 cells, 0 gate group(s) crossed) vs thesis (0 loops, 8 stops, 23 cells): Jaccard distance **0.78**.
+
+```
+card 0 line 15 cells, stops: (0,8) (0,10) (0,0)
+card 1 line  5 cells, stops: (0,6) (0,8) (0,10)
+card 2 line  5 cells, stops: (0,4) (0,2) (0,0)
+```
+
+**Verdict.** Both the EA and best-of-6400 random win this level; the EA closes it 13 game-seconds faster. The ladder has 3 distinguishable steps, i.e. more search kept buying real score. Our hand-designed thesis is still ahead of the search by 4.9 — either the level's answer is hard to find, or the budget was too small. seed_fragility -1.7: the elite transfers to unseen seeds. Coarse-step search is faithful overall (rho_spread 1.00) but the TOP 30 candidates re-rank freely at STEP 0.1 (rho 0.15) — they are a near-tie plateau, so which one is 'best' is arbitrary.
+
+<details><summary>EA instrumentation (is the optimizer actually working?)</summary>
+
+- **50 generations** of mu=12+lambda=24 completed; 1179 children proposed; stopped because: budget.
+- Seeded from 12 hand-built primitive genomes + 0 random genomes.
+- **11.8% of proposed genes failed to decode** (scored -INF, cost no budget); 22.8% were cache hits (already evaluated, also free).
+- Uniform random needed 807 proposals to fill its budget, 7 of which never produced a decodable route-set.
+
+Operator effect is measured against the PARENT's score; immigration has no parent, so its comparison columns are blank by construction, not because it is broken.
+
+| operator | children | comparable | changed the score | improved on parent | mean abs. delta |
+|---|---|---|---|---|---|
+| crossover | 297 | 275 | 62% | 5% | 276.01 |
+| immigrate | 137 | 0 | — | — | — |
+| mutate | 745 | 628 | 80% | 7% | 475.40 |
+
+Best-so-far and population diversity by generation (TRAIN seeds, search step) — `spread` is the mean pairwise Jaccard distance inside the population, so 0 means it has collapsed onto one plan:
+
+```
+gen   runs   best      pop_best  pop_mean  distinct  spread
+1     248    37.87     37.87     14.81     12        0.439
+5     816    1269.50   1269.50   246.79    12        0.360
+9     1408   1270.75   1270.75   1268.88   12        0.039
+12    1824   1274.25   1274.25   1271.17   12        0.092
+16    2336   1276.00   1276.00   1273.81   12        0.096
+20    2872   1276.00   1276.00   1274.94   12        0.064
+24    3432   1279.00   1279.00   1276.42   12        0.054
+27    3792   1282.00   1282.00   1278.33   12        0.159
+31    4336   1282.00   1282.00   1280.54   12        0.121
+35    4816   1282.00   1282.00   1281.44   12        0.109
+39    5312   1282.00   1282.00   1281.88   12        0.071
+42    5672   1282.00   1282.00   1282.00   12        0.066
+46    6040   1282.00   1282.00   1282.00   12        0.058
+50    6400   1282.00   1282.00   1282.00   12        0.059
+```
+
+</details>
+
 ## X-1 — Sandbox
 
 Thesis: *the original maze - no thesis, just the toys, at a pace that bites*
 
-13 rooms, 3 cards. Search cost: 14284 simulation runs in 1745 s wall (random 6400 + greedy 836 + ea 6400, plus the test-seed re-scoring).
+13 rooms, 3 cards. Search cost: 14284 simulation runs in 1574 s wall (random 6400 + greedy 836 + ea 6400, plus the test-seed re-scoring).
 
 | strategy | score | wins | served | lost | avg wait | med. finish |
 |---|---|---|---|---|---|---|

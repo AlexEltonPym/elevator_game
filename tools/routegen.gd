@@ -156,11 +156,22 @@ static func demand(level: Dictionary) -> Dictionary:
 	var mix_total := 0.0
 	for t in mix:
 		mix_total += mix[t]
+	# Types pinned to their own origin/dest rooms (execs, and the v4 axiom
+	# levels' freight/burst lanes via `type_rooms`) are spread directly; only
+	# what is left over flows through the group trip table.
+	var special := 0.0
+	var tr: Dictionary = level.get("type_rooms", {})
+	for t in tr:
+		var share: float = mix.get(t, 0.0) / maxf(mix_total, 0.0001)
+		if share > 0.0 and not tr[t].from.is_empty() and not tr[t].to.is_empty():
+			_spread(d, tr[t].from, tr[t].to, share)
+			special += share
 	var exec_share: float = mix.get("exec", 0.0) / maxf(mix_total, 0.0001)
-	if exec_share > 0.0 and not level.exec_origins.is_empty() \
+	if exec_share > 0.0 and not tr.has("exec") and not level.exec_origins.is_empty() \
 			and not level.exec_dests.is_empty():
 		_spread(d, level.exec_origins, level.exec_dests, exec_share)
-	var rest := 1.0 - exec_share
+		special += exec_share
+	var rest := 1.0 - special
 	var trip_total := 0.0
 	for row in level.trips:
 		trip_total += row.w

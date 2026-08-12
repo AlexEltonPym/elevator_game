@@ -303,6 +303,14 @@ func _refresh_hint() -> void:
 	if game.state != game.State.PLAN:
 		hint_label.text = ""
 		return
+	# Corridor-rejection UX (v4): a refused commit surfaces its reason here in
+	# the offending card's colour for a few seconds, over everything else.
+	if game.reject_msg != "" and Time.get_ticks_msec() < game.reject_until_ms \
+			and game.reject_card >= 0 and game.reject_card < game.CARDS.size():
+		hint_label.text = game.reject_msg
+		hint_label.add_theme_color_override("font_color",
+				game.CARDS[game.reject_card].color.lightened(0.2))
+		return
 	var sel: int = game.selected_card
 	if sel >= 0 and game.route_warning(sel):
 		hint_label.text = "Route needs at least 2 room stops - drag again to redraw."

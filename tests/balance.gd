@@ -328,7 +328,7 @@ func _checks() -> Array:
 	# THE AXIOMS. Every playable level, over the whole seed set: the intended
 	# strategy WINS and the honest-beginner strategy LOSES (hits max_lost
 	# before quota). Asserted as a count, reported as a count.
-	for id in ["L1", "L2", "L3", "L4"]:
+	for id in ["L1", "L2", "L3", "L4", "W-1", "W-2", "W-3"]:
 		var ki: String = "%s_intended" % id
 		var kn: String = "%s_naive" % id
 		out.append(_axiom("%s intended WINS" % id, ki, "WIN"))
@@ -375,6 +375,15 @@ func _lint_levels() -> Array:
 			for c in lv.exec_origins:
 				origins[c] = true
 			for c in lv.exec_dests:
+				dests[c] = true
+		# type_rooms (v4 axiom levels): typed lanes pin their own origin/dest.
+		var tr: Dictionary = lv.get("type_rooms", {})
+		for t in tr:
+			if lv.mix.get(t, 0.0) <= 0.0:
+				continue
+			for c in tr[t].from:
+				origins[c] = true
+			for c in tr[t].to:
 				dests[c] = true
 		for row in lv.trips:
 			if row.w <= 0.0:
@@ -1116,6 +1125,23 @@ func _width_checks(tree: SceneTree) -> Array:
 	out.append(_c("corridor: committing the cargo car through it is refused",
 			not g.commit_route(2, through) and g.routes[2] == null,
 			"accepted"))
+	# The refusal is not silent: it parks a reason (naming the width shortfall)
+	# that hud3 surfaces on the hint line, and it leaves the card unrouted.
+	out.append(_c("corridor: a refused commit surfaces the reason and leaves the card unrouted",
+			g.reject_card == 2 and g.reject_msg.findn("width") != -1
+			and g.reject_until_ms > Time.get_ticks_msec() - 1 and g.routes[2] == null,
+			"card %d msg '%s' route %s" % [g.reject_card, g.reject_msg, str(g.routes[2])]))
+	# The magnetic drawing head feels the same corridor as a wall for the cargo
+	# car (a too-narrow gate cell is not drawable), but is drawable for the pod.
+	g.select_card(2)
+	var cargo_blocked: bool = not g._drawable(Vector2i(2, 1))
+	g.select_card(2) # deselect
+	g.select_card(0)
+	var pod_ok: bool = g._drawable(Vector2i(2, 1))
+	g.select_card(0) # deselect
+	out.append(_c("corridor: the magnetic head walls the cargo out but lets the pod in",
+			cargo_blocked and pod_ok,
+			"cargo blocked %s pod ok %s" % [str(cargo_blocked), str(pod_ok)]))
 	out.append(_c("corridor: the pod may take the same line",
 			g.commit_route(0, through) and g.routes[0] != null, "refused"))
 	# --- Boarding + capacity, in width-units, through the real planner.

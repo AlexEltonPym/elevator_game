@@ -128,7 +128,26 @@ After the levels exist, run restricted play to answer, with numbers:
   record: acceleration carries most of the depth, exclusivity/width adds a real second
   constraint, capacity-alone measures as chrome.)
 - Does **#29 home floor** beat "no home" on any level other than W-4?
+- **Express acceleration model: accel-by-width vs accel-by-speed-class.** Today ramp is a
+  function of width alone, so a 520 px/s express and a 260 px/s standard share a ramp and are
+  identical over one cell — which pushed L2 off its corridor thesis onto cabin size. Implement an
+  alternative where a car's acceleration derives from its top speed (faster car = it also takes
+  longer to reach that speed, OR the opposite — try both framings) as a config flag, and measure
+  both models across all levels: which gives express a more legible, on-thesis identity, and which
+  produces higher skill_gap / more distinct winning strategies. Pick the winner by the numbers and
+  say why; if it's close, keep accel-by-width (simpler) and record that.
 Report each as best-achievable-score with the mechanic available vs forbidden.
+
+## Corridor-rejection UX (ship before W-2)
+
+Committing a route that sends a car down a corridor narrower than the car is currently refused
+silently (the card just stays unrouted). Before W-2 "Narrows" ships:
+- On a rejected commit, show the reason on the existing hint line (e.g. "cargo can't fit that
+  corridor — it needs width 3"), in the card's colour, for a few seconds.
+- Ideally telegraph it DURING drawing: while dragging a too-wide car's stroke into a narrower
+  corridor cell, treat that cell like a wall (the magnetic head won't enter it), so the rejection
+  is felt as resistance rather than as a silent commit failure. If that's cheap, prefer it; the
+  hint line is the fallback for the fast-drag / straight-fill path that reaches the cell anyway.
 
 ## Retuning warning
 
