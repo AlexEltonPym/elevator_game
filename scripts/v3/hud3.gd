@@ -11,6 +11,12 @@ extends CanvasLayer
 
 var game = null # main3.gd, set by main before first refresh
 
+## Simulated run (Levels3.headless): build NOTHING and answer every call with a
+## no-op. A Control entering the tree queues deferred callables that only an
+## engine frame drains, and a search never reaches one — see levels3.gd
+## `headless` and tools/sim_api.gd. Also just faster: no StyleBoxFlat churn.
+var headless := false
+
 var level_label: Label
 var served_label: Label
 var lost_label: Label
@@ -27,10 +33,15 @@ const SPEEDS := [[0.0, "II"], [1.0, "1x"], [3.0, "3x"]]
 const WATCH_TONES := {
 	"naive": Color(0.62, 0.24, 0.20), # the obvious plan, in warning red
 	"thesis": Color(0.16, 0.45, 0.26), # the level's answer, in confident green
+	"best": Color(0.30, 0.32, 0.60), # what the search found, in machine blue
 }
 
 
 func _ready() -> void:
+	headless = Levels3.headless
+	if headless:
+		set_process(false)
+		return
 	layer = 10
 	_build_top()
 	_build_panel()
@@ -130,14 +141,18 @@ func _on_clear() -> void:
 
 ## Rebuild the chip visuals; call on any route or selection change.
 func refresh_cards() -> void:
-	if game == null:
+	if headless or game == null:
 		return
 	var watching: bool = game.watch != ""
 	if watching:
 		# One-time-ish banner setup (values never change mid-session).
 		watch_banner.color = WATCH_TONES.get(game.watch, Color(0.3, 0.3, 0.3))
-		var sets: Dictionary = Scenarios3.route_sets(game.level.id)
-		var desc: String = sets.get(game.watch, {}).get("desc", "")
+		var desc: String
+		if game.watch == "best":
+			desc = Discovered3.desc(game.level.id)
+		else:
+			var sets: Dictionary = Scenarios3.route_sets(game.level.id)
+			desc = sets.get(game.watch, {}).get("desc", "")
 		watch_label.text = "WATCHING: %s - %s" % [game.watch.to_upper(), desc]
 	for i in chip_buttons.size():
 		var btn: Button = chip_buttons[i]
@@ -180,7 +195,7 @@ func refresh_cards() -> void:
 
 ## Cheap per-frame refresh of labels + contextual widgets.
 func refresh_stats() -> void:
-	if game == null:
+	if headless or game == null:
 		return
 	level_label.text = str(game.level.get("id", "X-1"))
 	served_label.text = "Served %d/%d" % [game.served, game.QUOTA]
@@ -235,6 +250,8 @@ func _refresh_hint() -> void:
 # ---------------------------------------------------------------- overlays
 
 func show_intro() -> void:
+	if headless:
+		return
 	var lv: Dictionary = game.level
 	_show_overlay("%s  %s" % [lv.id, str(lv.name).to_upper()],
 			str(lv.intro) +
@@ -243,6 +260,8 @@ func show_intro() -> void:
 
 
 func show_win(served: int, lost: int) -> void:
+	if headless:
+		return
 	if game.watch != "":
 		_show_overlay("%s WINS" % game.watch.to_upper(),
 				"Quota met: served %d, lost %d." % [served, lost], _watch_buttons())
@@ -257,6 +276,8 @@ func show_win(served: int, lost: int) -> void:
 
 
 func show_lose(served: int, lost: int) -> void:
+	if headless:
+		return
 	if game.watch != "":
 		_show_overlay("%s LOSES" % game.watch.to_upper(),
 				"Lost %d passengers (served %d)." % [lost, served], _watch_buttons())
@@ -277,6 +298,8 @@ func _watch_buttons() -> Array:
 
 
 func hide_overlay() -> void:
+	if headless:
+		return
 	if overlay != null:
 		overlay.queue_free()
 		overlay = null

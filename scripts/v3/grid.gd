@@ -43,6 +43,15 @@ static var _gate_groups: Array = [] # Array of Arrays of Vector2i (corridors)
 static var _gate_group_of := {} # Vector2i -> index into _gate_groups
 static var _gates_dirty := true
 
+## PERF (v3.5): cell-type lookup sets built once per load_level. cell_char()
+## allocates a String per call via substr (measured 0.7 us), and is_room() is
+## on the hottest path there is (Route3.stop_cells -> Car3.running, every car
+## every game tick). Pure derived data from maze_rows - same answers.
+static var _room_set := {} # Vector2i -> true
+static var _gate_set := {}
+static var _blocked_set := {}
+static var _cells_dirty := true
+
 var game = null # main3.gd
 
 
@@ -57,9 +66,33 @@ static func load_level(rows: Array) -> void:
 			GRID_Y_TOP + (GRID_Y_H - ROWS * CELL) / 2.0)
 	_rooms_cache = []
 	_gates_dirty = true
+	_cells_dirty = true
 
 
 # ---------------------------------------------------------------- maze queries
+
+## Build the R / G / # cell sets for the current maze (lazy, so a maze
+## installed by assigning maze_rows directly still works).
+static func _ensure_cell_sets() -> void:
+	if not _cells_dirty:
+		return
+	_cells_dirty = false
+	_room_set = {}
+	_gate_set = {}
+	_blocked_set = {}
+	for y in ROWS:
+		var row: String = maze_rows[ROWS - 1 - y]
+		for x in COLS:
+			var ch := row.substr(x, 1)
+			var c := Vector2i(x, y)
+			match ch:
+				"R":
+					_room_set[c] = true
+				"G":
+					_gate_set[c] = true
+				"#":
+					_blocked_set[c] = true
+
 
 static func in_bounds(c: Vector2i) -> bool:
 	return c.x >= 0 and c.x < COLS and c.y >= 0 and c.y < ROWS
@@ -72,15 +105,20 @@ static func cell_char(c: Vector2i) -> String:
 
 
 static func passable(c: Vector2i) -> bool:
-	return in_bounds(c) and cell_char(c) != "#"
+	if not in_bounds(c):
+		return false
+	_ensure_cell_sets()
+	return not _blocked_set.has(c)
 
 
 static func is_room(c: Vector2i) -> bool:
-	return cell_char(c) == "R"
+	_ensure_cell_sets()
+	return _room_set.has(c)
 
 
 static func is_gate(c: Vector2i) -> bool:
-	return cell_char(c) == "G"
+	_ensure_cell_sets()
+	return _gate_set.has(c)
 
 
 ## All room cells, scanned bottom-up / left-right (stable letter order).

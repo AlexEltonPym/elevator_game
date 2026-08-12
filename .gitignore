@@ -17,6 +17,10 @@ export_presets.cfg
 *.dmg
 *.zip
 
+# Depth-tool run artifacts. The COMMITTED outputs are docs/depth-report.md
+# and scripts/v3/discovered3.gd; the per-shard JSON and logs are scratch.
+tools/out/
+
 # OS cruft
 .DS_Store
 Thumbs.db

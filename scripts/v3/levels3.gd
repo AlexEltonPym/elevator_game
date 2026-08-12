@@ -19,13 +19,37 @@ static var current := 0
 
 ## Set by the level select BEFORE changing to the game scene:
 ## "" = normal PLAY (unseeded, editable); "naive" / "thesis" = watch mode
-## (scenario routes pre-drawn from Scenarios3, canonical seed, no editing).
+## (scenario routes pre-drawn from Scenarios3, canonical seed, no editing);
+## "best" = the same, with the route-set the depth search found (Discovered3).
 static var watch_strategy := ""
+
+## TRUE while a headless harness (tools/sim_api.gd) is driving the game, so the
+## HUD builds no UI at all. It has to be a STATIC, not a field on main3: child
+## _ready runs BEFORE the parent's, so hud3._ready has already built its ~23
+## Controls by the time main3._ready could tell it not to.
+##
+## Why it matters (the full-run failure of 2026-08-12): every Control and
+## CanvasItem that enters the tree pushes a deferred callable
+## (Control::_update_minimum_size, _clear_size_warning, CanvasItem::
+## _redraw_callback) onto the GLOBAL MessageQueue, which is only drained at the
+## end of an engine frame. A search runs thousands of sessions inside ONE
+## frame, so the queue only grows — and every message's target is freed by the
+## next teardown. See tools/sim_api.gd for the full note.
+static var headless := false
+
+## A full level Dictionary to run INSTEAD of the table entry, or null. The
+## search tools (tools/sim_api.gd) use this to simulate generated or
+## parameterised levels without touching LEVELS (appending would make them
+## show up in the level select and shift every `current` index). Always reset
+## it to null after a run.
+static var injected = null
 
 const STANDARD_SPEED := 260.0
 const EXPRESS_SPEED := 520.0
 
-const LEVELS := [
+## static var (not const) so tools can swap the table wholesale for an
+## experiment; the shipped game never writes it.
+static var LEVELS := [
 	{
 		"id": "L1",
 		"name": "Tower",
@@ -274,6 +298,8 @@ const LEVELS := [
 
 
 static func get_level(i: int) -> Dictionary:
+	if injected != null:
+		return injected
 	return LEVELS[clampi(i, 0, LEVELS.size() - 1)]
 
 

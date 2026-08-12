@@ -35,6 +35,8 @@ var redeploy_done := false
 var redeploy_checks: Array = [] # filled by the redeploy smoke run
 var loop_done := false
 var loop_checks: Array = [] # filled by the v3.4 loop-mechanics run
+var unit_done := false
+var unit_checks: Array = [] # Route3.validate / gene decode / injected level
 
 
 ## Run one scenario per call (per engine frame). Returns true when finished
@@ -52,6 +54,10 @@ func step(tree: SceneTree) -> bool:
 	if not loop_done:
 		loop_done = true
 		loop_checks = _loop_mechanics(tree)
+		return false
+	if not unit_done:
+		unit_done = true
+		unit_checks = _unit_smoke(tree)
 		return false
 	var ok := _report()
 	tree.quit(0 if ok else 1)
@@ -119,33 +125,12 @@ func _run_scenario(tree: SceneTree, sc: Dictionary) -> Dictionary:
 
 
 ## "" when the route entry (cell Array, or {"cells", "closed"} Dictionary for
-## a loop) is legal on the CURRENT level's maze. Closed loops additionally
-## need >= 4 cells and the last cell adjacent to the first (the closing link).
+## a loop) is legal on the CURRENT level's maze. The check itself now lives in
+## Route3.validate (main3.commit_route and the search tools call the same
+## one); this only unwraps the scenario entry shape.
 func _route_error(entry) -> String:
-	var cells: Array = ScenData.Scen.cells_of(entry)
-	var closed: bool = ScenData.Scen.closed_of(entry)
-	if cells.size() < 2:
-		return "fewer than 2 cells"
-	if closed and cells.size() < 4:
-		return "closed loop with fewer than 4 cells"
-	var seen := {}
-	for k in cells.size():
-		var c: Vector2i = cells[k]
-		if not Grid3.passable(c):
-			return "cell %s not passable" % str(c)
-		if seen.has(c):
-			return "cell %s visited twice" % str(c)
-		seen[c] = true
-		if k > 0:
-			var d: Vector2i = c - cells[k - 1]
-			if absi(d.x) + absi(d.y) != 1:
-				return "cells %s -> %s not adjacent" % [str(cells[k - 1]), str(c)]
-	if closed:
-		var dc: Vector2i = cells[0] - cells[cells.size() - 1]
-		if absi(dc.x) + absi(dc.y) != 1:
-			return "closing link %s -> %s not adjacent" % [
-					str(cells[cells.size() - 1]), str(cells[0])]
-	return ""
+	return Route3.validate(ScenData.Scen.cells_of(entry),
+			ScenData.Scen.closed_of(entry))
 
 
 ## Share of served origin-group -> dest-group passengers that used >= 2 legs.
@@ -222,6 +207,7 @@ func _checks() -> Array:
 	out.append_array(_lint_levels())
 	out.append_array(redeploy_checks)
 	out.append_array(loop_checks)
+	out.append_array(unit_checks)
 	return out
 
 
@@ -614,6 +600,115 @@ func _loop_mechanics(tree: SceneTree) -> Array:
 	tree.root.remove_child(g)
 	g.free()
 	return out
+
+
+# ------------------------------------------------- v3.5 depth-tool plumbing
+
+## CHEAP unit checks for the machinery the depth tools (tools/) stand on. The
+## heavy search itself lives in tools/ and is run by hand — this file stays
+## the fast gate, so only three things are covered here:
+##   1. Route3.validate accepts legal geometry and rejects each illegal kind
+##      (and main3.commit_route actually refuses the illegal one),
+##   2. a route GENE decodes to cells that keep its stops, in order,
+##   3. an INJECTED level (Levels3.injected) builds and plays.
+func _unit_smoke(tree: SceneTree) -> Array:
+	var out: Array = []
+	var RG = load("res://tools/routegen.gd")
+	# --- 1. validator, on L4's ring (the only level with a legal loop).
+	Grid3.load_level(Levels3.get_level(Levels3.index_of("L4")).rows)
+	var ring: Array = ScenData.Scen.path([Vector2i(0, 0), Vector2i(6, 0),
+			Vector2i(6, 6), Vector2i(0, 6), Vector2i(0, 1)])
+	out.append(_c("validate: legal open route accepted",
+			Route3.validate(ring, false) == "", Route3.validate(ring, false)))
+	out.append(_c("validate: legal closed loop accepted",
+			Route3.validate(ring, true) == "", Route3.validate(ring, true)))
+	var cases := [
+		["1 cell", [Vector2i(0, 0)], false],
+		["non-adjacent step", [Vector2i(0, 0), Vector2i(3, 0)], false],
+		["duplicate cell", [Vector2i(0, 0), Vector2i(1, 0), Vector2i(0, 0)], false],
+		["blocked cell", [Vector2i(0, 0), Vector2i(1, 0), Vector2i(1, 1)], false],
+		["3-cell loop", [Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0)], true],
+		["loop head/tail apart", ring.slice(0, 8), true],
+	]
+	for c in cases:
+		out.append(_c("validate: rejects %s" % c[0],
+				Route3.validate(c[1], c[2]) != "", "accepted"))
+	# commit_route must refuse the same geometry instead of driving nonsense.
+	Levels3.current = Levels3.index_of("L4")
+	Levels3.watch_strategy = ""
+	var g = load("res://scenes/v3_main.tscn").instantiate()
+	tree.root.add_child(g)
+	g.auto_spawn = false
+	g.start_session()
+	var refused: bool = not g.commit_route(0, [Vector2i(0, 0), Vector2i(3, 0)])
+	out.append(_c("commit_route rejects illegal geometry",
+			refused and g.routes[0] == null, "route %s" % str(g.routes[0])))
+	out.append(_c("commit_route still accepts legal geometry",
+			g.commit_route(0, ring, true) and g.routes[0] != null and g.routes[0].closed,
+			"rejected"))
+	# --- 2. gene decode round-trip: every stop survives, in order.
+	var stops: Array = [Vector2i(0, 0), Vector2i(6, 0), Vector2i(6, 4), Vector2i(0, 6)]
+	var dec: Dictionary = RG.decode({"stops": stops, "closed": false})
+	var got: Array = RG.stops_of_cells(dec.cells)
+	var order_ok := true
+	var at := -1
+	for s in stops:
+		var i: int = got.find(s)
+		if i <= at:
+			order_ok = false
+		at = i
+	out.append(_c("gene decode: legal cells + stops kept in order",
+			dec.err == "" and order_ok, "err '%s' got %s" % [dec.err, str(got)]))
+	var dec_bad: Dictionary = RG.decode({"stops": [Vector2i(0, 0)], "closed": false})
+	out.append(_c("gene decode: 1-stop gene is invalid, not a crash",
+			dec_bad.err != "", "accepted"))
+	tree.root.remove_child(g)
+	g.free()
+	# --- 3. an injected (generated) level builds and plays.
+	Levels3.injected = _injected_level()
+	Levels3.current = 0
+	var gi = load("res://scenes/v3_main.tscn").instantiate()
+	tree.root.add_child(gi)
+	gi.rng.seed = 31337
+	gi.endless = true
+	gi.start_session()
+	gi.commit_route(0, ScenData.Scen.path([Vector2i(0, 0), Vector2i(0, 3)]))
+	gi.commit_route(1, ScenData.Scen.path([Vector2i(2, 0), Vector2i(2, 3)]))
+	for _t in 900:
+		gi.advance(0.1)
+	out.append(_c("injected level builds and serves",
+			gi.level.id == "GEN" and gi.served > 0,
+			"id %s served %d" % [str(gi.level.get("id", "?")), gi.served]))
+	tree.root.remove_child(gi)
+	gi.free()
+	Levels3.injected = null
+	return out
+
+
+## A tiny generated level: two shafts joined at top and bottom. Three cards
+## because hud3 always builds three chips.
+func _injected_level() -> Dictionary:
+	return {
+		"id": "GEN", "name": "Generated", "thesis": "", "intro": "",
+		"rows": ["R.R", ".#.", ".#.", "R.R"],
+		"cards": [
+			{"name": "A", "type": "standard", "cap": 4, "speed": 260.0,
+					"color": Color(0.45, 0.68, 0.95)},
+			{"name": "B", "type": "standard", "cap": 4, "speed": 260.0,
+					"color": Color(0.5, 0.88, 0.55)},
+			{"name": "C", "type": "express", "cap": 4, "speed": 520.0,
+					"color": Color(0.98, 0.68, 0.2)},
+		],
+		"quota": 20, "max_lost": 5,
+		"spawn": {"interval_start": 3.0, "interval_end": 2.0, "ramp": 60.0,
+				"burst_min": 2, "burst_max": 3, "gap": 0.8},
+		"mix": {"visitor": 1.0},
+		"exec_origins": [], "exec_dests": [],
+		"groups": {"low": [Vector2i(0, 0), Vector2i(2, 0)],
+				"high": [Vector2i(0, 3), Vector2i(2, 3)]},
+		"trips": [{"w": 0.5, "from": "low", "to": "high"},
+				{"w": 0.5, "from": "high", "to": "low"}],
+	}
 
 
 func _c(name: String, ok: bool, detail: String) -> Dictionary:

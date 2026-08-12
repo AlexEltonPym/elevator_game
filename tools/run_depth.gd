@@ -1,0 +1,755 @@
+extends SceneTree
+## Depth-measurement entry point (docs/depth-tools-spec.md §6).
+##
+## ONE COMMAND (all 5 levels, 5 parallel processes, then the report):
+##
+##   powershell -File tools/run_depth.ps1
+##   powershell -File tools/run_depth.ps1 -Quick
+##
+## Or by hand, one process at a time:
+##
+##   & "<godot_console.exe>" --headless --path . --script tools/run_depth.gd -- --levels L3
+##   & "<godot_console.exe>" --headless --path . --script tools/run_depth.gd -- --report
+##
+## Flags (after the bare `--`):
+##   --levels L1,L3   only these level ids (default: all of Levels3.LEVELS)
+##   --quick          small budgets + 2 seeds; finishes in a couple of minutes
+##   --report         skip searching: merge tools/out/*.json into
+##                    docs/depth-report.md + scripts/v3/discovered3.gd
+##   --selftest       batching / determinism / throughput check, no search
+##   --scorecheck     score-validity audit: samples random route-sets per level
+##                    and reports the win/lose split, the losing-branch spread
+##                    and the empirical win-vs-loss separation (docs/depth-
+##                    tools-spec.md §1)
+##   --smoke          headless check that the GAME still works: the level
+##                    select builds, every level instantiates and plays, and
+##                    every discovered route-set runs under WATCH BEST
+##
+## Per-level results land in tools/out/depth_<ID>.json so shards can run in
+## separate processes (Grid3's maze is static, so one process = one level at a
+## time — docs/sim-search-feasibility.md §3).
+
+const SimApi = preload("res://tools/sim_api.gd")
+const Metrics = preload("res://tools/metrics.gd")
+const RG = preload("res://tools/routegen.gd")
+
+const OUT_DIR := "res://tools/out"
+const REPORT_PATH := "res://docs/depth-report.md"
+const DISCOVERED_PATH := "res://scripts/v3/discovered3.gd"
+
+var args: Array = []
+var quick := false
+var level_ids: Array = []
+var queue: Array = []
+var done: Array = []
+var t_start := 0
+var mode := "search"
+var explicit_levels := false # a shard: leave the merge to the --report pass
+
+
+func _init() -> void:
+	args = Array(OS.get_cmdline_user_args())
+	quick = args.has("--quick")
+	if args.has("--report"):
+		mode = "report"
+	elif args.has("--selftest"):
+		mode = "selftest"
+	elif args.has("--smoke"):
+		mode = "smoke"
+	elif args.has("--scorecheck"):
+		mode = "scorecheck"
+	var i := args.find("--levels")
+	if i >= 0 and i + 1 < args.size():
+		for s in String(args[i + 1]).split(","):
+			level_ids.append(s.strip_edges())
+	explicit_levels = not level_ids.is_empty()
+	if level_ids.is_empty():
+		for lv in Levels3.LEVELS:
+			level_ids.append(lv.id)
+	queue = level_ids.duplicate()
+	t_start = Time.get_ticks_msec()
+
+
+func _process(_delta: float) -> bool:
+	match mode:
+		"report":
+			_write_outputs()
+			quit(0)
+			return true
+		"selftest":
+			_selftest()
+			quit(0)
+			return true
+		"smoke":
+			quit(0 if _smoke() else 1)
+			return true
+		"scorecheck":
+			quit(0 if _scorecheck() else 1)
+			return true
+	if queue.is_empty():
+		print("\nALL LEVELS DONE in %.1f s" % ((Time.get_ticks_msec() - t_start) / 1000.0))
+		if explicit_levels:
+			# A shard. Merging here would race the other shards and produce a
+			# one-level report; the --report pass does it once, at the end.
+			print("(shard: run with --report to merge every tools/out/depth_*.json)")
+		else:
+			_write_outputs()
+		quit(0)
+		return true
+	var id: String = queue.pop_front()
+	_run_one(id)
+	return false
+
+
+# ---------------------------------------------------------------- search
+
+func _run_one(id: String) -> void:
+	var li := Levels3.index_of(id)
+	if li < 0:
+		push_error("unknown level id " + id)
+		return
+	var cfg := Metrics.default_cfg(quick)
+	print("\n=== %s (%s mode) ===" % [id, "quick" if quick else "full"])
+	var sim = SimApi.new(self)
+	var res: Dictionary = Metrics.run_level(sim, li, cfg)
+	res["sim_cpu_s"] = sim.sim_usec / 1.0e6
+	res["sim_game_seconds"] = sim.sim_seconds
+	DirAccess.make_dir_recursive_absolute(OUT_DIR)
+	var f := FileAccess.open("%s/depth_%s.json" % [OUT_DIR, id], FileAccess.WRITE)
+	f.store_string(JSON.stringify(_to_json(res), "  "))
+	f.close()
+	print("    %s: %d runs, %.1f s wall (%.0f game-s simulated, %.0f x real time)" % [
+			id, sim.runs, res.wall_s, sim.sim_seconds,
+			sim.sim_seconds / maxf(res.wall_s, 0.001)])
+	done.append(id)
+
+
+# ---------------------------------------------------------------- selftest
+
+## The no-leak batching pattern of docs/sim-search-feasibility.md §3,
+## re-verified here: run A, B, A and confirm the two A runs are identical.
+## Also times the two step sizes so budgets can be sized honestly.
+func _selftest() -> void:
+	print("=== sim_api selftest ===")
+	var sim = SimApi.new(self)
+	var a := Levels3.index_of("L3")
+	var b := Levels3.index_of("L1")
+	var routes_a := _thesis_routes("L3")
+	var routes_b := _thesis_routes("L1")
+	var r1: Dictionary = sim.run(a, routes_a, 1101, SimApi.STEP_COARSE)
+	var r2: Dictionary = sim.run(b, routes_b, 1101, SimApi.STEP_COARSE)
+	var r3: Dictionary = sim.run(a, routes_a, 1101, SimApi.STEP_COARSE)
+	var same: bool = r1.served == r3.served and r1.lost == r3.lost \
+			and is_equal_approx(r1.avg_wait, r3.avg_wait) \
+			and is_equal_approx(r1.score, r3.score)
+	print("A: served %d lost %d score %.4f" % [r1.served, r1.lost, r1.score])
+	print("B: served %d lost %d score %.4f" % [r2.served, r2.lost, r2.score])
+	print("A: served %d lost %d score %.4f" % [r3.served, r3.lost, r3.score])
+	print("A/B/A identical: %s" % ("YES" if same else "NO -- STATE LEAK"))
+	# Invalid geometry must score, not crash.
+	var bad := [{"cells": [Vector2i(3, 0), Vector2i(3, 9)], "closed": false}]
+	var rb: Dictionary = sim.run(a, bad, 1101, SimApi.STEP_COARSE)
+	print("invalid route rejected: %s (%s)" % [str(not rb.valid), rb.err])
+	# Throughput at both steps.
+	for st in [SimApi.STEP_COARSE, SimApi.STEP_FINE]:
+		for id in ["L1", "L3", "L4"]:
+			var li := Levels3.index_of(id)
+			var t0 := Time.get_ticks_usec()
+			var n := 5
+			for _i in n:
+				sim.run(li, _thesis_routes(id), 1101, st)
+			var ms := (Time.get_ticks_usec() - t0) / 1000.0 / n
+			print("  step %.2f  %-4s  %6.1f ms/run  %5.1f runs/s" % [
+					st, id, ms, 1000.0 / ms])
+	# Decode round-trip on every level.
+	print("--- gene decode round-trip ---")
+	for lv in Levels3.LEVELS:
+		SimApi.load_maze(lv)
+		var rooms: Array = Grid3.rooms()
+		var gene := {"stops": [rooms[0], rooms[rooms.size() - 1]], "closed": false}
+		var d := RG.decode(gene)
+		var got := RG.stops_of_cells(d.cells)
+		print("  %-4s %d rooms, %d primitives, decode err '%s', stops kept %s" % [
+				lv.id, rooms.size(), RG.primitive_genes(lv).size(), d.err,
+				str(got.has(gene.stops[0]) and got.has(gene.stops[1]))])
+
+
+# ---------------------------------------------------------------- game smoke
+
+## The game must still be a game. Builds the real level-select scene and every
+## level scene headlessly, and plays each discovered route-set under WATCH
+## BEST. Prints PASS/FAIL per check; exits nonzero on any failure.
+func _smoke() -> bool:
+	var ok := true
+	print("=== game smoke ===")
+	Levels3.headless = false # the smoke test must exercise the REAL game, HUD and all
+	# 1. Level select builds, with WATCH BEST exactly where a set exists.
+	Levels3.watch_strategy = ""
+	Levels3.injected = null
+	var sel = load("res://scenes/v3_select.tscn").instantiate()
+	root.add_child(sel)
+	var labels: Array = []
+	_collect_buttons(sel, labels)
+	var got: int = labels.count("WATCH\nBEST")
+	ok = _p("select: WATCH BEST count matches discovered sets",
+			got == _n_discovered(), "%d buttons vs %d sets" % [got, _n_discovered()]) and ok
+	ok = _p("select: PLAY row per level",
+			labels.size() >= Levels3.LEVELS.size(), "%d buttons" % labels.size()) and ok
+	root.remove_child(sel)
+	sel.free()
+	# 2. Every level instantiates and plays in NORMAL play mode.
+	for i in Levels3.LEVELS.size():
+		var lv: Dictionary = Levels3.LEVELS[i]
+		Levels3.current = i
+		Levels3.watch_strategy = ""
+		var g = load("res://scenes/v3_main.tscn").instantiate()
+		g.headless = true
+		root.add_child(g)
+		g.rng.seed = 5150
+		g.endless = true # one card only: this checks it BUILDS and TICKS, not that it wins
+		g.start_session()
+		g.commit_route(0, Scenarios3.cells_of(Scenarios3.route_set(lv.id, "thesis")[0]),
+				Scenarios3.closed_of(Scenarios3.route_set(lv.id, "thesis")[0]))
+		for _t in 300:
+			g.advance(0.1)
+		ok = _p("%s: plays normally" % lv.id,
+				g.cars.size() == lv.cards.size() and g.state == g.State.PLAYING
+				and g.routes[0] != null, "state %d" % g.state) and ok
+		root.remove_child(g)
+		g.free()
+	# 3. WATCH BEST actually runs the discovered set.
+	for i in Levels3.LEVELS.size():
+		var lv2: Dictionary = Levels3.LEVELS[i]
+		if not Discovered3.has(lv2.id):
+			continue
+		Levels3.current = i
+		Levels3.watch_strategy = "best"
+		var g2 = load("res://scenes/v3_main.tscn").instantiate()
+		g2.headless = true
+		root.add_child(g2)
+		var committed := 0
+		for r in g2.routes:
+			if r != null:
+				committed += 1
+		for _t in 600:
+			g2.advance(0.1)
+		ok = _p("%s: WATCH BEST commits and runs" % lv2.id,
+				committed == Discovered3.route_set(lv2.id).size() and g2.served > 0,
+				"%d routes, served %d lost %d" % [committed, g2.served, g2.lost]) and ok
+		print("      %s watch-best 60 s: served %d, lost %d" % [lv2.id, g2.served, g2.lost])
+		Levels3.watch_strategy = ""
+		root.remove_child(g2)
+		g2.free()
+	print("SMOKE: %s" % ("ALL PASS" if ok else "FAILURES PRESENT"))
+	return ok
+
+
+# ---------------------------------------------------------------- score audit
+
+## Does the REAL-LEVEL score (docs/depth-tools-spec.md §1) actually have a
+## gradient an optimizer can climb? Samples uniform random route-sets per
+## level and reports:
+##   * how many WIN, and the spread of win scores (are wins distinguishable?)
+##   * the spread of LOSING scores (if almost everything loses, the losing
+##     branch is the only gradient there is — it had better discriminate)
+##   * the empirical gap between the worst win and the best loss, which is the
+##     check that WIN_BONUS is big enough on THIS level rather than in theory.
+## Also scores the thesis and naive route-sets for scale.
+func _scorecheck() -> bool:
+	var n := 200
+	var i := args.find("--n")
+	if i >= 0 and i + 1 < args.size():
+		n = int(args[i + 1])
+	var ok := true
+	print("=== score validity audit: %d uniform random route-sets per level ===" % n)
+	print("score: WIN -> %.0f + (%.0f - t_win);  LOSE/TIMEOUT -> served - %.1f*lost - %.2f*avg_wait"
+			% [SimApi.WIN_BONUS, SimApi.TIMEOUT, SimApi.LOST_WEIGHT, SimApi.WAIT_WEIGHT])
+	var sim = SimApi.new(self)
+	var rng := RandomNumberGenerator.new()
+	for id in level_ids:
+		var li := Levels3.index_of(id)
+		if li < 0:
+			continue
+		var lv: Dictionary = Levels3.LEVELS[li]
+		SimApi.load_maze(lv)
+		var rooms: Array = Grid3.rooms()
+		rng.seed = 4242 + li
+		var wins: Array = []
+		var losses: Array = []
+		var lose_served: Array = []
+		var results := {"win": 0, "lose": 0, "timeout": 0}
+		var skipped := 0
+		for _k in n:
+			var g := RG.random_genome(rng, rooms, lv.cards.size())
+			if g.is_empty():
+				skipped += 1
+				continue
+			var dec := RG.decode_genome(g)
+			if dec.err != "":
+				skipped += 1
+				continue
+			# One seed per sample: this measures the score's SHAPE over the
+			# candidate space, not a candidate's seed-robustness.
+			var r: Dictionary = sim.run(li, dec.routes, SimApi.SEEDS_TRAIN[0],
+					SimApi.STEP_COARSE)
+			results[r.result] += 1
+			if r.result == "win":
+				wins.append(r.score)
+			else:
+				losses.append(r.score)
+				lose_served.append(float(r.served))
+		var thesis := _thesis_routes(lv.id)
+		var t_score := "n/a"
+		if not thesis.is_empty():
+			var rt: Dictionary = sim.run(li, thesis, SimApi.SEEDS_TRAIN[0], SimApi.STEP_COARSE)
+			t_score = "%s %.2f (served %d, lost %d)" % [rt.result, rt.score, rt.served, rt.lost]
+		print("\n--- %s %s: %d valid of %d samples (%d undecodable) -> win %d / lose %d / timeout %d   (thesis: %s)" % [
+				lv.id, lv.name, n - skipped, n, skipped,
+				results.win, results.lose, results.timeout, t_score])
+		if not wins.is_empty():
+			print("    win scores    : min %.1f  med %.1f  max %.1f  (spread %.1f over %d)" % [
+					_amin(wins), SimApi.median(wins), _amax(wins),
+					_amax(wins) - _amin(wins), wins.size()])
+		if not losses.is_empty():
+			print("    losing scores : min %.2f  med %.2f  max %.2f  (spread %.2f over %d, %d distinct)" % [
+					_amin(losses), SimApi.median(losses), _amax(losses),
+					_amax(losses) - _amin(losses), losses.size(), _n_distinct(losses)])
+			print("    losing served : min %.0f  med %.0f  max %.0f  (quota %d)" % [
+					_amin(lose_served), SimApi.median(lose_served), _amax(lose_served),
+					int(lv.quota)])
+		if not wins.is_empty() and not losses.is_empty():
+			var gap: float = _amin(wins) - _amax(losses)
+			ok = _p("%s: every win outranks every loss" % lv.id, gap > 0.0,
+					"worst win %.1f vs best loss %.2f" % [_amin(wins), _amax(losses)]) and ok
+			print("    separation    : %.1f" % gap)
+		if not losses.is_empty():
+			var distinct := _n_distinct(losses)
+			ok = _p("%s: losing branch discriminates (>=10 distinct scores)" % lv.id,
+					distinct >= 10 or losses.size() < 10,
+					"%d distinct over %d losers" % [distinct, losses.size()]) and ok
+	print("\nSCORECHECK: %s" % ("ALL PASS" if ok else "FAILURES PRESENT"))
+	return ok
+
+
+func _amin(a: Array) -> float:
+	var m: float = a[0]
+	for x in a:
+		m = minf(m, float(x))
+	return m
+
+
+func _amax(a: Array) -> float:
+	var m: float = a[0]
+	for x in a:
+		m = maxf(m, float(x))
+	return m
+
+
+func _n_distinct(a: Array) -> int:
+	var d := {}
+	for x in a:
+		d["%.4f" % float(x)] = true
+	return d.size()
+
+
+func _n_discovered() -> int:
+	var n := 0
+	for lv in Levels3.LEVELS:
+		if Discovered3.has(lv.id):
+			n += 1
+	return n
+
+
+func _collect_buttons(node: Node, out: Array) -> void:
+	for c in node.get_children():
+		if c is Button:
+			out.append(c.text)
+		_collect_buttons(c, out)
+
+
+func _p(name: String, ok: bool, detail: String) -> bool:
+	print("[%s] %s%s" % ["PASS" if ok else "FAIL", name, "" if ok else "  (" + detail + ")"])
+	return ok
+
+
+func _thesis_routes(id: String) -> Array:
+	var out: Array = []
+	for e in Scenarios3.route_set(id, "thesis"):
+		out.append({"cells": Scenarios3.cells_of(e), "closed": Scenarios3.closed_of(e)})
+	return out
+
+
+# ---------------------------------------------------------------- outputs
+
+func _write_outputs() -> void:
+	var results: Array = []
+	for id in level_ids:
+		var path := "%s/depth_%s.json" % [OUT_DIR, id]
+		if not FileAccess.file_exists(path):
+			print("  (no result yet for %s)" % id)
+			continue
+		var f := FileAccess.open(path, FileAccess.READ)
+		var d = JSON.parse_string(f.get_as_text())
+		f.close()
+		if d != null:
+			results.append(d)
+	if results.is_empty():
+		print("no results to report")
+		return
+	_write_report(results)
+	_write_discovered(results)
+
+
+func _write_report(results: Array) -> void:
+	var L: Array = []
+	var quick_run: bool = bool(results[0].get("quick", false))
+	L.append("# Depth report — GENERATED by tools/run_depth.gd")
+	L.append("")
+	L.append("Do not hand-edit: re-run `powershell -File tools/run_depth.ps1` instead.")
+	L.append("")
+	L.append("Generated %s%s." % [Time.get_datetime_string_from_system(),
+			"  **--quick mode: tiny budgets and 2 seeds, indicative only**" if quick_run else ""])
+	L.append("")
+	L.append("## How to read this")
+	L.append("")
+	L.append("- One **evaluation budget unit = one simulation run of THE REAL LEVEL** — the shipped quota, max_lost and win/lose checks are live and the run stops the moment the level ends, with a %d game-second timeout." % int(SimApi.TIMEOUT))
+	L.append("- `WIN -> score = %.0f + (%.0f - time_to_quota)` (faster wins score higher); `LOSE or TIMEOUT -> score = served - %.1f*lost - %.2f*avg_wait` (partial credit, always far below any win)." % [SimApi.WIN_BONUS, SimApi.TIMEOUT, SimApi.LOST_WEIGHT, SimApi.WAIT_WEIGHT])
+	L.append("- So **a score above %.0f is a win** and its distance above %.0f is the game-seconds it had to spare; anything below is a loss, scored on partial credit. This SUPERSEDES the original spec's fixed 240 s endless horizon — see \"Method caveats\"." % [SimApi.WIN_BONUS, SimApi.WIN_BONUS])
+	L.append("- Optimizers searched the **TRAIN** seeds `%s` at STEP %.2f." % [str(results[0].seeds_train), SimApi.STEP_COARSE])
+	L.append("- Every number below is a **median over the disjoint TEST seeds** `%s` at STEP %.2f." % [str(results[0].seeds_test), SimApi.STEP_FINE])
+	L.append("- `ea@B` is the anytime best-so-far of ONE evolutionary run at budget B, re-scored on the test seeds. `random@B` is best-of-B uniform samples at the SAME budget — that is the fair comparison, and it is a genuinely strong baseline, not a straw man.")
+	L.append("")
+	L.append("## Headline table")
+	L.append("")
+	L.append("| level | thesis | naive | random@B | greedy | ea@%s | skill_gap | beat_thesis | ladder steps | struct. dist | seed_frag | plan_frag | rho top | rho spread |" % _last_budget(results[0]))
+	L.append("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
+	for r in results:
+		var top: String = "ea@%s" % _last_budget(r)
+		L.append("| **%s** %s | %s | %s | %s | %s | %s | %+.1f | %+.1f | %d | %.2f | %+.1f | %.1f | %.2f | %.2f |" % [
+				r.id, r.name, _s(r, "thesis"), _s(r, "naive"), _s(r, "random"),
+				_s(r, "greedy"), _s(r, top), r.skill_gap, r.beat_thesis,
+				int(r.ladder_steps), r.structural_distance, r.seed_fragility,
+				r.plan_fragility, r.rank_correlation.rho,
+				r.rank_correlation.get("rho_spread", 0.0)])
+	L.append("")
+	L.append("Scores marked **W** in the per-level tables are wins. Win/loss split per strategy (over %d test seeds):" % results[0].seeds_test.size())
+	L.append("")
+	L.append("| level | thesis | naive | random@B | greedy | ea@%s |" % _last_budget(results[0]))
+	L.append("|---|---|---|---|---|---|")
+	for r in results:
+		var top2: String = "ea@%s" % _last_budget(r)
+		L.append("| **%s** | %s | %s | %s | %s | %s |" % [r.id, _w(r, "thesis"),
+				_w(r, "naive"), _w(r, "random"), _w(r, "greedy"), _w(r, top2)])
+	L.append("")
+	L.append("Seed noise band per level (median MAD/sqrt(n) of the ladder elites' test scores): " +
+			_noise_list(results) + ". A ladder step counts only when a budget doubling beats the previous point by more than that.")
+	L.append("")
+	for r in results:
+		L.append_array(_level_section(r))
+	L.append("## Method caveats")
+	L.append("")
+	L.append("- \"Winnable\" here always means **by this optimizer, at this budget, on these seeds**. Every solver-verified claim inherits its solver's blind spots (docs/autodesign-research.md §1.1).")
+	L.append("- The EA was seeded with generic primitives (spine, stop-everywhere, angular ring open/closed, per-group shuttles, hub feeders, heaviest-demand direct lines). It was **not** seeded with our thesis route-sets, so `beat_thesis` is not begging the question.")
+	L.append("- The ladder is one anytime run per level, not independent restarts per budget; it therefore reads as an upper bound on what each budget achieves.")
+	L.append("- `plan_fragility` only counts perturbations that still decode; a perturbation that makes a route undecodable is a representation artifact, not a plan-quality signal.")
+	L.append("- **Scoring supersedes the original spec.** The first version of this tool scored a fixed 240 s of ENDLESS play (win/lose disabled). That measured a game nobody plays: every level stops at its quota, so most of each evaluation happened in an overload regime the player never faces, and it punished route-sets that win the shipped level comfortably but degrade under an unbounded demand ramp (L4's one-way-loop thesis was the clearest victim) while rewarding coverage-heavy plans. Scores here come from playing the REAL level to its own win/lose conditions.")
+	L.append("- **The two branches are different currencies.** Above %.0f the units are game-seconds saved; below it they are passengers. Do not read the arithmetic difference between a win and a loss as meaningful beyond \"the win is better\". Differences WITHIN a branch are meaningful." % SimApi.WIN_BONUS)
+	L.append("- A run ends the moment the level does, so a budget unit is no longer a constant amount of simulated time: strong candidates are cheaper to evaluate than weak ones. The budget is still one run, which is what makes the rungs comparable.")
+	L.append("- The decoder lays legs down with BFS, not weighted A*: on a unit-cost grid these agree, and BFS with a fixed neighbour order is deterministic. There is no `gate_pref` bit yet — a route crosses a gate corridor only if the BFS shortest path happens to.")
+	_store(REPORT_PATH, "\n".join(L) + "\n")
+
+
+func _level_section(r: Dictionary) -> Array:
+	var L: Array = []
+	L.append("## %s — %s" % [r.id, r.name])
+	L.append("")
+	L.append("Thesis: *%s*" % r.thesis_text)
+	L.append("")
+	L.append("%d rooms, %d cards. Search cost: %d simulation runs in %.0f s wall (random %d + greedy %d + ea %d, plus the test-seed re-scoring)." % [
+			int(r.rooms), int(r.cards), int(r.sim_runs), r.wall_s,
+			int(r.budgets.random), int(r.budgets.greedy), int(r.budgets.ea)])
+	L.append("")
+	L.append("| strategy | score | wins | served | lost | avg wait | med. finish |")
+	L.append("|---|---|---|---|---|---|---|")
+	for k in ["thesis", "naive", "random", "greedy"]:
+		if r.entries.has(k):
+			L.append(_row(k, r.entries[k]))
+	for pt in r.ladder:
+		var kr: String = "random@%d" % int(pt.budget)
+		if r.entries.has(kr):
+			L.append(_row("random@%d" % int(pt.budget), r.entries[kr]))
+		L.append(_row("**ea@%d**%s" % [int(pt.budget), "  <- step" if pt.step else ""],
+				r.entries["ea@%d" % int(pt.budget)]))
+	L.append("")
+	L.append("Ladder (median test score vs budget): " + _ladder_str(r) +
+			"  →  **%d step(s)** above a noise band of %.2f." % [int(r.ladder_steps), r.noise_band])
+	L.append("")
+	L.append("Best route-set found (%d loops, %d stops over %d cells, %d gate group(s) crossed) vs thesis (%s): Jaccard distance **%.2f**." % [
+			r.shape_best.loops, r.shape_best.stops, r.shape_best.cells,
+			r.shape_best.gate_groups, _shape_str(r.shape_thesis), r.structural_distance])
+	L.append("")
+	L.append("```")
+	for i in r.best_routes.size():
+		var rt: Dictionary = r.best_routes[i]
+		L.append("card %d %s %2d cells, stops: %s" % [
+				i, "LOOP" if rt.closed else "line", rt.cells.size(),
+				_cells_str(r.best_stops[i])])
+	L.append("```")
+	L.append("")
+	L.append("**Verdict.** " + _verdict(r))
+	L.append("")
+	L.append_array(_diag_section(r))
+	return L
+
+
+## Is the EA working, or is it just noise wearing a lab coat? Everything here
+## is measured, not assumed (docs/depth-tools-spec.md §5).
+func _diag_section(r: Dictionary) -> Array:
+	var L: Array = []
+	if not r.has("diag_ea"):
+		return L
+	var d: Dictionary = r.diag_ea
+	var dr: Dictionary = r.get("diag_random", {})
+	var kids: float = maxf(1.0, float(d.children))
+	L.append("<details><summary>EA instrumentation (is the optimizer actually working?)</summary>")
+	L.append("")
+	L.append("- **%d generations** of mu=%d+lambda=%d completed; %d children proposed; stopped because: %s." % [
+			int(d.generations), int(d.mu), int(d.lam), int(d.children), d.stopped])
+	L.append("- Seeded from %d hand-built primitive genomes + %d random genomes." % [
+			int(d.seeded_primitive), int(d.seeded_random)])
+	L.append("- **%.1f%% of proposed genes failed to decode** (scored -INF, cost no budget); %.1f%% were cache hits (already evaluated, also free)." % [
+			100.0 * float(d.undecodable) / kids, 100.0 * float(d.cached) / kids])
+	if not dr.is_empty():
+		L.append("- Uniform random needed %d proposals to fill its budget, %d of which never produced a decodable route-set." % [
+				int(dr.get("proposed", 0)), int(dr.get("undecodable", 0))])
+	L.append("")
+	L.append("Operator effect is measured against the PARENT's score; immigration has no parent, so its comparison columns are blank by construction, not because it is broken.")
+	L.append("")
+	L.append("| operator | children | comparable | changed the score | improved on parent | mean abs. delta |")
+	L.append("|---|---|---|---|---|---|")
+	for opname in d.ops:
+		var o: Dictionary = d.ops[opname]
+		if int(o.get("compared", 0)) == 0:
+			L.append("| %s | %d | 0 | — | — | — |" % [opname, int(o.n)])
+			continue
+		var n: float = float(o.compared)
+		L.append("| %s | %d | %d | %.0f%% | %.0f%% | %.2f |" % [opname, int(o.n),
+				int(o.compared), 100.0 * float(o.changed) / n,
+				100.0 * float(o.improved) / n, float(o.sum_abs) / n])
+	L.append("")
+	L.append("Best-so-far and population diversity by generation (TRAIN seeds, search step) — `spread` is the mean pairwise Jaccard distance inside the population, so 0 means it has collapsed onto one plan:")
+	L.append("")
+	L.append("```")
+	L.append("gen   runs   best      pop_best  pop_mean  distinct  spread")
+	for pt in _thin(d.gen_curve, 14):
+		L.append("%-5d %-6d %-9.2f %-9.2f %-9.2f %-9d %.3f" % [
+				int(pt.gen), int(pt.runs), pt.best, pt.pop_best, pt.pop_mean,
+				int(pt.distinct), pt.spread])
+	L.append("```")
+	L.append("")
+	L.append("</details>")
+	L.append("")
+	return L
+
+
+## At most `n` evenly spaced points, always including the last.
+func _thin(a: Array, n: int) -> Array:
+	if a.size() <= n:
+		return a
+	var out: Array = []
+	for i in n:
+		out.append(a[int(round(float(i) * (a.size() - 1) / float(n - 1)))])
+	return out
+
+
+## Honest, mechanical prose: every clause is a threshold on a number above.
+func _verdict(r: Dictionary) -> String:
+	var out: Array = []
+	var noise: float = maxf(r.noise_band, 0.001)
+	var top: Dictionary = r.entries["ea@%s" % _last_budget(r)]
+	var rnd: Dictionary = r.entries["random"]
+	var ea_won: bool = top.score >= SimApi.WIN_BONUS
+	var rnd_won: bool = rnd.score >= SimApi.WIN_BONUS
+	# The headline question first, in the units that actually apply.
+	if ea_won and not rnd_won:
+		out.append("SEARCH MATTERS: the EA finds a route-set that WINS the level on %d of %d test seeds; best-of-%s uniform random at the same budget does not win at all (best loss %.2f)." % [
+				int(top.get("wins", 0)), int(top.get("n_seeds", 0)), _last_budget(r), rnd.score])
+	elif ea_won and rnd_won:
+		var margin: float = top.score - rnd.score
+		if margin <= 2.0 * noise:
+			out.append("SHALLOW: uniform random sampling at the same budget also wins, and finishes within noise of the EA (%+.1f game-seconds, noise %.2f) — thinking barely pays here." % [margin, noise])
+		else:
+			out.append("Both the EA and best-of-%s random win this level; the EA closes it %.0f game-seconds faster." % [_last_budget(r), margin])
+	elif rnd_won and not ea_won:
+		out.append("WARNING — the EA is BEATEN by uniform random at equal budget: random found a winning route-set and the EA did not. Treat the EA as underpowered on this level, not the level as shallow.")
+	else:
+		out.append("NOBODY WINS: neither the EA nor best-of-%s random ever met the quota on the test seeds, so every number here is partial credit (served - %.0f*lost). The EA's margin over random is %+.1f." % [
+				_last_budget(r), SimApi.LOST_WEIGHT, r.skill_gap])
+	if int(r.ladder_steps) <= 1:
+		out.append("The ladder is FLAT (%d step): almost all of the achievable score is reached by the smallest budget, which is the 'one weird trick' shape, not depth." % int(r.ladder_steps))
+	else:
+		out.append("The ladder has %d distinguishable steps, i.e. more search kept buying real score." % int(r.ladder_steps))
+	if r.entries.has("thesis"):
+		var th: Dictionary = r.entries["thesis"]
+		var th_won: bool = th.score >= SimApi.WIN_BONUS
+		if ea_won != th_won:
+			out.append("Note the branch change: %s wins the level and %s does not, so `beat_thesis` (%+.1f) is not a like-for-like number — read it as \"one wins, one loses\"." % [
+					"the EA's plan" if ea_won else "our thesis",
+					"our thesis" if ea_won else "the EA's plan", r.beat_thesis])
+		elif r.beat_thesis > 2.0 * noise:
+			if r.structural_distance >= 0.5:
+				out.append("The optimizer BEAT our thesis by %+.1f with a structurally DIFFERENT plan (Jaccard %.2f) — this level has an answer we did not design." % [r.beat_thesis, r.structural_distance])
+			else:
+				out.append("The optimizer beat our thesis by %+.1f but with much the same shape (Jaccard %.2f) — it found our idea and tuned it." % [r.beat_thesis, r.structural_distance])
+		elif r.beat_thesis < -2.0 * noise:
+			out.append("Our hand-designed thesis is still ahead of the search by %.1f — either the level's answer is hard to find, or the budget was too small." % absf(r.beat_thesis))
+		else:
+			out.append("The optimizer matched the thesis (%+.1f, within noise)." % r.beat_thesis)
+	if r.seed_fragility > 3.0 * maxf(r.noise_band, 0.001) and r.seed_fragility > 2.0:
+		out.append("WARNING: seed_fragility %+.1f — the elite scores materially better on the seeds it was searched against, so treat its margin as optimistic." % r.seed_fragility)
+	else:
+		out.append("seed_fragility %+.1f: the elite transfers to unseen seeds." % r.seed_fragility)
+	var rc: Dictionary = r.rank_correlation
+	var rho_spread: float = rc.get("rho_spread", 0.0)
+	if rho_spread < 0.7:
+		out.append("Coarse-step search looks UNFAITHFUL: rho %.2f over %d candidates spanning %.1f score, so the STEP 0.25 ranking does not survive re-scoring at 0.1 and this level should be re-searched at 0.1." % [rho_spread, int(rc.get("n_spread", 0)), rc.get("range_spread", 0.0)])
+	elif rc.rho < 0.6:
+		out.append("Coarse-step search is faithful overall (rho_spread %.2f) but the TOP %d candidates re-rank freely at STEP 0.1 (rho %.2f) — they are a near-tie plateau, so which one is 'best' is arbitrary." % [rho_spread, int(rc.n), rc.rho])
+	return " ".join(out)
+
+
+func _write_discovered(results: Array) -> void:
+	var L: Array = []
+	L.append("class_name Discovered3")
+	L.append("extends RefCounted")
+	L.append("## GENERATED by tools/run_depth.gd — do not hand-edit.")
+	L.append("##")
+	L.append("## The best route-set the depth search found per level, in the same shape as")
+	L.append("## Scenarios3: a cell polyline per card, or {\"cells\", \"closed\"} for a loop.")
+	L.append("## The level select shows a WATCH BEST button for every level listed here, so")
+	L.append("## optimizer output gets EYEBALLED rather than trusted numerically")
+	L.append("## (docs/autodesign-research.md §5.3 step 4).")
+	L.append("")
+	L.append("const SETS := {")
+	for r in results:
+		if r.best_routes.is_empty():
+			continue
+		L.append("\t\"%s\": {" % r.id)
+		L.append("\t\t\"desc\": \"%s\"," % _desc_of(r))
+		L.append("\t\t\"score\": %.2f," % r.entries["ea@%s" % _last_budget(r)].score)
+		L.append("\t\t\"routes\": [")
+		for rt in r.best_routes:
+			var cells: Array = []
+			for c in rt.cells:
+				cells.append("Vector2i(%d, %d)" % [int(c[0]), int(c[1])])
+			if rt.closed:
+				L.append("\t\t\t{\"closed\": true, \"cells\": [%s]}," % ", ".join(cells))
+			else:
+				L.append("\t\t\t[%s]," % ", ".join(cells))
+		L.append("\t\t],")
+		L.append("\t},")
+	L.append("}")
+	L.append("")
+	L.append("")
+	L.append("static func has(level_id: String) -> bool:")
+	L.append("\treturn SETS.has(level_id)")
+	L.append("")
+	L.append("")
+	L.append("## Route entries for a level (same shape Scenarios3.route_set returns).")
+	L.append("static func route_set(level_id: String) -> Array:")
+	L.append("\treturn SETS.get(level_id, {}).get(\"routes\", [])")
+	L.append("")
+	L.append("")
+	L.append("static func desc(level_id: String) -> String:")
+	L.append("\treturn SETS.get(level_id, {}).get(\"desc\", \"\")")
+	_store(DISCOVERED_PATH, "\n".join(L) + "\n")
+
+
+func _desc_of(r: Dictionary) -> String:
+	var s: Dictionary = r.shape_best
+	return "search elite: %d loop(s), %d stops, %d cells (beat thesis %+.1f)" % [
+			s.loops, s.stops, s.cells, r.beat_thesis]
+
+
+# ---------------------------------------------------------------- helpers
+
+func _store(path: String, text: String) -> void:
+	var f := FileAccess.open(path, FileAccess.WRITE)
+	if f == null:
+		push_error("cannot write " + path)
+		return
+	f.store_string(text)
+	f.close()
+	print("wrote " + path)
+
+
+## One row of a per-level strategy table.
+func _row(label: String, e: Dictionary) -> String:
+	var win: bool = e.score >= SimApi.WIN_BONUS
+	return "| %s | %.2f%s | %d/%d | %.1f | %.1f | %.1f s | %s |" % [
+			label, e.score, " **W**" if win else "", int(e.get("wins", 0)),
+			int(e.get("n_seeds", 0)), e.served, e.lost, e.avg_wait,
+			("%.0f s" % e.get("t_win", 0.0)) if win else "—"]
+
+
+## "wins/seeds" cell for the headline win-rate table.
+func _w(r: Dictionary, key: String) -> String:
+	if not r.entries.has(key):
+		return "—"
+	var e: Dictionary = r.entries[key]
+	return "%d/%d" % [int(e.get("wins", 0)), int(e.get("n_seeds", 0))]
+
+
+func _s(r: Dictionary, key: String) -> String:
+	if not r.entries.has(key):
+		return "—"
+	return "%.1f" % r.entries[key].score
+
+
+func _last_budget(r: Dictionary) -> String:
+	return str(int(r.ladder[r.ladder.size() - 1].budget))
+
+
+func _ladder_str(r: Dictionary) -> String:
+	var parts: Array = []
+	for pt in r.ladder:
+		parts.append("%d→%.1f (%d/%d won)" % [int(pt.budget), pt.score,
+				int(pt.get("wins", 0)), int(pt.get("n_seeds", 0))])
+	return "  ".join(parts)
+
+
+func _noise_list(results: Array) -> String:
+	var parts: Array = []
+	for r in results:
+		parts.append("%s %.2f" % [r.id, r.noise_band])
+	return ", ".join(parts)
+
+
+func _shape_str(s: Dictionary) -> String:
+	if s.is_empty():
+		return "no thesis"
+	return "%d loops, %d stops, %d cells" % [s.loops, s.stops, s.cells]
+
+
+func _cells_str(cells: Array) -> String:
+	var parts: Array = []
+	for c in cells:
+		parts.append("(%d,%d)" % [int(c[0]), int(c[1])])
+	return " ".join(parts)
+
+
+# JSON cannot hold Vector2i: routes become [[x, y], ...].
+func _to_json(v):
+	if v is Dictionary:
+		var d := {}
+		for k in v:
+			d[str(k)] = _to_json(v[k])
+		return d
+	if v is Array:
+		var a := []
+		for e in v:
+			a.append(_to_json(e))
+		return a
+	if v is Vector2i:
+		return [v.x, v.y]
+	return v
