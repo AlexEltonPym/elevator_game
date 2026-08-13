@@ -21,6 +21,7 @@ const DOOR_OPEN_T := 0.5
 const DOOR_CLOSE_T := 0.5
 const EXCHANGE_MIN := 0.8
 const EXCHANGE_PER_MOVE := 0.35
+const BOARD_GAP := 0.5 # stagger between boarders filing in from the front of the line
 const BODY := 60.0
 const EPS_D := 1.0e-6
 const EPS_V := 1.0e-9
@@ -56,7 +57,7 @@ var stop_moves := 0
 var idle := false
 var riders: Array = []
 var _boarding: Array = [] # passengers assigned to board this stop, still walking in
-var _board_hold := 0.0 # door-hold this stop must cover (max boarder walk time)
+var _assign_timer := 0.0 # countdown to admitting the next front boarder
 var vis_t := 0.0
 # Corridor mutex (v5.1, ported from v3 car3). held_gates = corridor GROUP indices
 # this car currently holds; waiting_gate = blocked at a corridor mouth this tick.
@@ -137,7 +138,7 @@ func set_route(r) -> void:
 	held_gates.clear()
 	waiting_gate = false
 	_boarding.clear()
-	_board_hold = 0.0
+	_assign_timer = 0.0
 	route = r
 	idx = 0
 	seg_t = 0.0
@@ -179,20 +180,25 @@ func _move_tick(dt: float) -> void:
 					door_timer = 0.0
 					door_state = DoorState.EXCHANGE
 					exchange_elapsed = 0.0
+					_assign_timer = 0.0 # admit the front boarder at once, then stagger
 					_unload()
-					_assign_boarders() # snapshot boarders; they walk in during the hold
 			DoorState.EXCHANGE:
-				# Hold the doors long enough for the assigned boarders to walk to the
-				# dock (max of their walk times) on top of the base exchange time.
-				var dur := maxf(maxf(EXCHANGE_MIN, EXCHANGE_PER_MOVE * stop_moves), _board_hold)
-				var left := maxf(0.0, dur - exchange_elapsed)
-				if left > rem:
-					exchange_elapsed += rem
-					rem = 0.0
-				else:
-					rem -= left
+				# Admit boarders ONE AT A TIME from the front of the line, spaced by
+				# BOARD_GAP, so they file in single-file instead of all rushing the door.
+				# Hold until the last has boarded (none left to admit, none still walking
+				# in), above a minimum door time.
+				var more := _has_front_boarder()
+				var walking := not _boarding.is_empty()
+				if exchange_elapsed >= EXCHANGE_MIN and not more and not walking:
 					door_state = DoorState.CLOSING
 					door_timer = DOOR_CLOSE_T
+				else:
+					exchange_elapsed += rem
+					_assign_timer -= rem
+					if _assign_timer <= 0.0 and more:
+						_assign_next_boarder()
+						_assign_timer = BOARD_GAP
+					rem = 0.0
 			DoorState.CLOSING:
 				if door_timer > rem:
 					door_timer -= rem
@@ -421,7 +427,7 @@ func _begin_stop() -> void:
 	door_state = DoorState.OPENING
 	door_timer = DOOR_OPEN_T
 	stop_moves = 0
-	_board_hold = 0.0
+	_assign_timer = 0.0
 	_boarding.clear()
 	vel = 0.0
 
@@ -490,27 +496,42 @@ func _unload() -> void:
 			game.on_alight(r, cell, r.legs[0].to_room)
 
 
-## At door-open: snapshot the waiting passengers boarding here (greedy, up to
-## capacity), reserve their space, start each one walking from its tile to the
-## dock, and record the longest walk so the exchange can hold the doors for it.
-## Anyone not assigned now (arrived late, no space) catches the next stop.
-func _assign_boarders() -> void:
+## The front-most passenger in the room's queue that wants to board HERE and fits
+## in the free space, or null. Used to decide whether to keep the doors held and
+## which passenger to admit next.
+func _front_boarder():
 	if route == null:
-		return
+		return null
 	var cell: Vector2i = route.cells[idx]
 	if not route.is_dropoff(cell):
-		return
+		return null
 	for rid in route.rooms_of_cell(cell):
-		for p in game.queues.get(rid, []).duplicate():
+		for p in game.queues.get(rid, []):
 			if not p.is_waiting_to_board():
 				continue
 			var leg: Dictionary = p.legs[0]
-			if leg.car == self and leg.board_cell == cell and fits(p.width) and free_slots() >= p.width:
-				p.boarding_car = self
-				_boarding.append(p)
-				p.start_board_walk()
-				stop_moves += 1
-				_board_hold = maxf(_board_hold, p.walk_total)
+			if leg.car == self and leg.board_cell == cell and fits(p.width) \
+					and free_slots() >= p.width:
+				return p
+	return null
+
+
+func _has_front_boarder() -> bool:
+	return _front_boarder() != null
+
+
+## Admit ONE boarder — the front of the line — reserving its space and starting its
+## walk from the front slot to the dock. It leaves the queue (so those behind step
+## forward), and the next front is admitted BOARD_GAP later. Returns false if none.
+func _assign_next_boarder() -> bool:
+	var p = _front_boarder()
+	if p == null:
+		return false
+	p.boarding_car = self
+	_boarding.append(p)
+	p.start_board_walk()
+	stop_moves += 1
+	return true
 
 
 ## An assigned boarder finished walking to the dock: it boards now (its space was
@@ -536,7 +557,7 @@ func _release_boarders() -> void:
 		p.boarding_car = null
 		p.walk_left = 0.0
 	_boarding.clear()
-	_board_hold = 0.0
+	_assign_timer = 0.0
 
 
 ## Where a rider stands inside the car (width-units per row).
