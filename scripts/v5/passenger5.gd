@@ -218,7 +218,11 @@ func start_board_walk() -> void:
 		_on_walk_done()
 
 
-## Alight walk: the alighting dock -> the room's queue tile.
+## Alight: the rider steps off and, while a dock->queue tile timer runs (so
+## finish_alight fires after the priced walk time), it is immediately owned by the
+## crowd packer (main5) — dropped straight into a non-overlapping room slot rather
+## than tweening across the room. The DURATION is the tile distance (unchanged sim
+## timing / Pathfind pricing); only the render position differs.
 func start_alight_walk(alight_cell: Vector2i, room: int) -> void:
 	riding = null
 	boarding_car = null
@@ -241,19 +245,18 @@ func _on_walk_done() -> void:
 			game.finish_alight(self)
 
 
-## Enter the post-arrival BETWEEN phase: walk to the opposite tile and dwell (no
-## patience). main5.resolve_between decides vanish vs reactivate when it ends.
+## Enter the post-arrival BETWEEN phase and dwell (no patience). It becomes a
+## stationary figure IMMEDIATELY, so the crowd packer slots it into the room's rows
+## (back of the crowd) with no overlap — it never floats at a shared tile.
+## main5.resolve_between decides vanish vs reactivate when the dwell ends.
 func begin_between() -> void:
 	between = true
 	activated = false
 	milled = false
 	between_left = BETWEEN_MIN + (BETWEEN_MAX - BETWEEN_MIN) * _r(5.0)
-	# The opposite tile in the CURRENT (destination) room — a real room cell, so the
-	# figure retires IN PLACE and never slides toward another room / off the grid.
 	queue_cell = Grid5.room_queue(cur_room)
-	far_cell = _pick_far()
-	_begin_walk(Walk.COSMETIC, queue_cell, far_cell)
-	walk_from = position # ease off from where it is standing, not a fixed cell
+	walk_kind = Walk.NONE
+	walk_left = 0.0
 
 
 ## Reset for a fresh trip to `new_dest` from the current room (spawn-in-place ->
@@ -274,9 +277,13 @@ func _process(delta: float) -> void:
 	vis_t += delta
 	if riding != null:
 		position = riding.slot_position(self)
-	elif walk_left > 0.0 and walk_total > 0.0:
+	elif walk_left > 0.0 and walk_total > 0.0 \
+			and (walk_kind == Walk.MILL or walk_kind == Walk.BOARD):
+		# Only the mill (spawn -> queue) and board (queue -> dock) walks animate.
 		var f := clampf(1.0 - walk_left / walk_total, 0.0, 1.0)
 		position = _ortho_point(walk_from, walk_to, f)
+	# Alighting / between figures are owned by the crowd packer (see main5), so they
+	# drop straight into a non-overlapping slot the instant they step off the car.
 	queue_redraw()
 
 
@@ -295,26 +302,27 @@ func _ortho_point(a: Vector2, b: Vector2, f: float) -> Vector2:
 
 
 func _draw() -> void:
-	# Finished / inactive / between-trip people keep their EXACT normal colour and
-	# look; the ONLY difference is they show no impatience bar (patience is not
-	# running). The centre destination chip is always drawn so the body never reads
-	# as a different (brighter) shade.
+	# A small upright, person-proportioned rectangle (placeholder "little person"),
+	# ~14 x 24. Finished / inactive / between-trip people keep their EXACT normal
+	# colour; the ONLY difference is they show no impatience bar (patience not
+	# running). The destination chip is always drawn.
 	var col: Color = PTYPES.get(ptype, PTYPES.visitor).color
-	draw_circle(Vector2.ZERO, 10.0, col)
-	draw_arc(Vector2.ZERO, 10.0, 0.0, TAU, 24, Color(0, 0, 0, 0.45), 2.0)
-	draw_rect(Rect2(Vector2(-7.0, -8.0), Vector2(14.0, 16.0)), Color(1, 1, 1, 0.85))
-	draw_string(ThemeDB.fallback_font, Vector2(-5.0, 5.0),
+	var body := Rect2(-7.0, -12.0, 14.0, 24.0)
+	draw_rect(body, col)
+	draw_rect(body, Color(0, 0, 0, 0.45), false, 2.0)
+	draw_rect(Rect2(Vector2(-6.0, -9.0), Vector2(12.0, 13.0)), Color(1, 1, 1, 0.85))
+	draw_string(ThemeDB.fallback_font, Vector2(-5.0, 2.0),
 			Grid5.room_letter(dest_room),
-			HORIZONTAL_ALIGNMENT_CENTER, -1.0, 13, Color(0.1, 0.1, 0.1))
+			HORIZONTAL_ALIGNMENT_CENTER, -1.0, 12, Color(0.1, 0.1, 0.1))
 	if patience_running():
-		var w := 26.0
-		var top := -20.0
+		var w := 22.0
+		var top := -22.0
 		var frac := clampf(patience / patience_max, 0.0, 1.0)
 		draw_rect(Rect2(-w / 2.0, top, w, 4.0), Color(0, 0, 0, 0.55))
 		var bar_col := Color(0.35, 0.9, 0.4).lerp(Color(0.95, 0.25, 0.2), 1.0 - frac)
 		draw_rect(Rect2(-w / 2.0, top, w * frac, 4.0), bar_col)
 	if no_path and activated and not between and riding == null:
-		var by := -34.0
-		draw_circle(Vector2(0, by), 10.0, Color(1, 1, 1, 0.92))
-		draw_string(ThemeDB.fallback_font, Vector2(-4.0, by + 6.0), "?",
-				HORIZONTAL_ALIGNMENT_CENTER, -1.0, 16, Color(0.1, 0.1, 0.1))
+		var by := -32.0
+		draw_circle(Vector2(0, by), 9.0, Color(1, 1, 1, 0.92))
+		draw_string(ThemeDB.fallback_font, Vector2(-4.0, by + 5.0), "?",
+				HORIZONTAL_ALIGNMENT_CENTER, -1.0, 15, Color(0.1, 0.1, 0.1))

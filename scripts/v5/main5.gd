@@ -569,36 +569,50 @@ func on_expired(p) -> void:
 func _reflow_queues() -> void:
 	for rid in waiting:
 		var i := 0
+		# Front: boardable queuers (nearest the dock, FIFO).
 		for p in waiting[rid]:
 			if p.riding == null and p.walk_left <= 0.0 and p.milled:
 				p.position = _room_slot(rid, i)
 				i += 1
+		# Then still-milling fresh spawns.
 		for p in waiting[rid]:
 			if p.riding == null and p.walk_left <= 0.0 and not p.milled:
 				p.position = _room_slot(rid, i)
 				i += 1
+		# Then figures stepping off the car (alight walk) and between-trip figures —
+		# packed from the instant they leave the car, so exits never pile or cross.
 		for p in active_passengers:
-			if p.between and p.cur_room == rid and p.riding == null and p.walk_left <= 0.0:
+			if p.riding != null or p.cur_room != rid:
+				continue
+			var alighting: bool = p.walk_kind == Passenger5.Walk.ALIGHT and p.walk_left > 0.0
+			if (p.between and p.walk_left <= 0.0) or alighting:
 				p.position = _room_slot(rid, i)
 				i += 1
 
 
 ## The i-th standing slot of a room: a dense, deterministic, unbounded packing that
-## never overlaps (spacing >= figure size). Slot 0 is the queue tile (front, at the
-## dock); figures fill a column vertically (centre-out) then pack back into the
-## room, column by column — so the crowd grows orderly with no hard cap.
+## never overlaps. People stand SHOULDER-TO-SHOULDER in a horizontal row (spread
+## along x, spaced SX so bodies never touch); when a row fills the room's usable
+## width it wraps to the next row set back from the dock (spaced SY in y). The front
+## row is at the queue-tile row (nearest the dock), and slot 0 is its dock-side end,
+## so the next-to-board is at the front and the crowd grows in orderly rows.
 func _room_slot(rid: int, i: int) -> Vector2:
+	const SX := 20.0 # horizontal spacing (> 14-wide body + gap)
+	const SY := 30.0 # row spacing (> 24-tall body + gap)
 	var qcell := Grid5.room_queue(rid)
 	var q := Grid5.cell_center(qcell)
+	var rect := Grid5.room_rect(rid)
 	var toward := Grid5.cell_center(qcell + Grid5.room_queue_dir(rid)) - q
 	toward = toward.normalized() if toward.length() > 0.01 else Vector2(1, 0)
-	var s := 26.0
-	var cap := maxi(1, int(Grid5.room_rect(rid).size.y / s))
-	var col := i / cap
-	var row := i % cap
-	# Vertical offset walks out from the queue row: 0, -1, +1, -2, +2, ...
-	var voff := float((row + 1) / 2) * (-1.0 if row % 2 == 1 else 1.0)
-	return q - toward * (col * s) + Vector2(0.0, voff * s)
+	var cols := maxi(1, int(rect.size.x / SX)) # people per horizontal row
+	var col := i % cols
+	var row := i / cols
+	# Fill the row from the dock-side edge inward (dock-side first = front).
+	var start_x: float = rect.end.x - SX * 0.5 if toward.x > 0.0 else rect.position.x + SX * 0.5
+	var x := start_x - toward.x * (col * SX)
+	# Rows step out from the queue-tile row: 0, -1, +1, -2, +2, ...
+	var yoff := float((row + 1) / 2) * (-1.0 if row % 2 == 1 else 1.0)
+	return Vector2(x, q.y + yoff * SY)
 
 
 # ---------------------------------------------------------------- corridors
