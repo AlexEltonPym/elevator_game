@@ -20,11 +20,10 @@ const GRID_X := 720.0 # playfield width the grid centers in
 const GRID_Y_TOP := 100.0 # grid area is y 100..1000 (below the top HUD)
 const GRID_Y_H := 900.0
 
-## Seconds of walk per tile of Manhattan distance (v5.1). Board = walk from a
-## room's anchor cell to the boarding dock; alight = walk from the alighting dock
-## back to the (next) room's anchor. Priced identically in Pathfind5 so planning
-## stays honest against the sim. Tuned for feel (spec: ~0.3-0.6 s).
-const WALK_PER_TILE := 0.45
+## Seconds of walk per tile of Manhattan distance. Board = queue tile -> boarding
+## dock; alight = alighting dock -> queue tile. Priced identically in Pathfind5 so
+## planning stays honest against the sim. Slowed to read calm/deliberate (v5.1h).
+const WALK_PER_TILE := 0.9
 
 const DEFAULT_CORRIDOR_WIDTH := 2 # a plain corridor cell = one normal lift
 

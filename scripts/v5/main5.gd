@@ -45,6 +45,7 @@ var _passengers_dirty := false
 var routes: Array = []
 var cars: Array = []
 var waiting := {} # room_id -> Array[Passenger5] in arrival order
+var queues := {} # room_id -> Array[Passenger5] in QUEUE LINE order (front boards)
 var corridors := {} # corridor group index -> {width, used, holders, queue}
 
 var log_served: Array = []
@@ -84,6 +85,7 @@ func _ready() -> void:
 				"holders": [], "queue": []}
 	for rid in Grid5.room_count():
 		waiting[rid] = []
+		queues[rid] = []
 	grid.game = self
 	hud.game = self
 	for i in CARDS.size():
@@ -101,7 +103,6 @@ func _process(delta: float) -> void:
 	if state != State.PLAYING:
 		return
 	advance(delta * time_scale)
-	_reflow_queues()
 	hud.refresh_stats()
 
 
@@ -224,6 +225,8 @@ func _clear_passengers() -> void:
 	_passengers_dirty = false
 	for rid in waiting:
 		waiting[rid].clear()
+	for rid in queues:
+		queues[rid].clear()
 	for c in cars:
 		c.riders.clear()
 		c.set_route(c.route) # re-park at route start
@@ -484,9 +487,8 @@ func on_alight(p, alight_cell: Vector2i, room: int) -> void:
 	p.start_alight_walk(alight_cell, room)
 
 
-## The alight walk finished: at the destination they are served; otherwise this
-## is a transfer room, so replan from here and start a fresh board walk toward
-## the next leg's dock (rejoining the room's waiting pool).
+## The alight walk finished: at the destination they are served; otherwise this is
+## a transfer room, so replan from here and head to the queue for the next leg.
 func finish_alight(p) -> void:
 	if p.cur_room == p.dest_room:
 		on_served(p)
@@ -494,6 +496,7 @@ func finish_alight(p) -> void:
 		_compute_path_for(p)
 		if not waiting[p.cur_room].has(p):
 			waiting[p.cur_room].append(p)
+		p.rejoin_for_transfer()
 
 
 ## A trip completed at its destination: count it served, log it, and drop the
@@ -551,6 +554,7 @@ static func _seed01(salt: float, k: int) -> float:
 
 func on_expired(p) -> void:
 	_passengers_dirty = true
+	queue_leave(p)
 	if waiting.has(p.cur_room):
 		waiting[p.cur_room].erase(p)
 	log_lost.append({"type": p.ptype, "wait": p.wait_time, "rides": p.rides})
@@ -560,74 +564,49 @@ func on_expired(p) -> void:
 		_lose()
 
 
-## Position every figure standing in a room (visual only) into a dense, ordered,
-## NON-overlapping crowd (see _room_slot). Riders and mid-walk figures drive their
-## own position and are skipped. Order (front nearest the dock, FIFO by arrival):
-## boardable queuers first, then still-milling fresh spawns, then between-trip
-## figures. It re-packs every frame, so the line advances as the front boards.
-## VISUAL ONLY — board order, sim timing, pricing and determinism are untouched.
-## Every figure standing in (or walking toward a spot in) a room gets a distinct
-## reserved slot in FIFO order, so nothing ever converges on a shared point. A
-## stationary figure is placed at its slot; a figure walking IN (activating mill
-## walk, or an alighter stepping off) has that slot set as its walk_to and animates
-## toward it. Boarders (walking OUT to the dock) hold no slot — theirs frees so the
-## line advances. VISUAL ONLY.
-func _reflow_queues() -> void:
-	for rid in waiting:
-		var i := 0
-		# 1. The boarding queue: queued (standing) + activating (walking in), FIFO.
-		for p in waiting[rid]:
-			if p.riding != null:
-				continue
-			if p.milled and p.walk_left <= 0.0:
-				p.position = _room_slot(rid, i)
-				i += 1
-			elif p.activated and p.walk_kind == Passenger5.Walk.MILL and p.walk_left > 0.0:
-				p.walk_to = _room_slot(rid, i)
-				i += 1
-		# 2. Alighters stepping off the car, walking to a reserved slot behind the queue.
-		for p in active_passengers:
-			if p.riding == null and p.cur_room == rid \
-					and p.walk_kind == Passenger5.Walk.ALIGHT and p.walk_left > 0.0:
-				p.walk_to = _room_slot(rid, i)
-				i += 1
-		# 3. Between-trip figures (arrived, dwelling before vanish/reactivate).
-		for p in active_passengers:
-			if p.riding == null and p.cur_room == rid and p.between and p.walk_left <= 0.0:
-				p.position = _room_slot(rid, i)
-				i += 1
-		# 4. Dwelling fresh spawns (not yet activated) fill the back.
-		for p in waiting[rid]:
-			if p.riding == null and not p.activated and p.walk_left <= 0.0:
-				p.position = _room_slot(rid, i)
-				i += 1
+# -------------------------------------------------------------- queue line
+
+## A passenger reached "activated" and joins its room's QUEUE at the TAIL. Its slot
+## is FIXED from here; it only moves when someone ahead leaves (queue_leave). The
+## queue is a single straight line from the dock extending back — no re-sorting.
+func queue_join(p) -> void:
+	var arr: Array = queues.get(p.cur_room, [])
+	if arr.has(p):
+		return
+	arr.append(p)
+	queues[p.cur_room] = arr
+	p.queue_slot = arr.size() - 1
+	p.set_stand(_queue_slot_pos(p.cur_room, p.queue_slot))
 
 
-## The i-th standing slot of a room: a dense, deterministic, unbounded packing.
-## Everyone STANDS ON THE FLOOR (body base on the queue cell's floor line, matching
-## how car riders stand on the car floor). The front row fills flat along x from the
-## dock-side edge back into the room. Only when a row is full does the next row
-## appear ISOMETRIC — stepped UP (DY) and BACK (DX = half a slot, a checkerboard
-## stagger) so people behind read as further away. Slot 0 is the front row's
-## dock-side end (next-to-board). Unbounded; no two figures share a spot.
-func _room_slot(rid: int, i: int) -> Vector2:
-	const SX := 20.0 # along-row spacing
-	const DX := 10.0 # iso back stagger per overflow row (= SX/2 => checkerboard)
-	const DY := 18.0 # iso up per overflow row
-	const FLOOR_MARGIN := 4.0
-	const HALF_BODY := 12.0
+## A passenger left the queue (boarded, expired, or removed). Everyone BEHIND it
+## steps FORWARD one slot — a single event-driven step, not a per-frame re-sort.
+func queue_leave(p) -> void:
+	var rid: int = p.cur_room
+	if not queues.has(rid):
+		return
+	var arr: Array = queues[rid]
+	var idx: int = arr.find(p)
+	if idx < 0:
+		return
+	arr.remove_at(idx)
+	p.queue_slot = -1
+	for j in range(idx, arr.size()):
+		arr[j].queue_slot = j
+		arr[j].set_stand(_queue_slot_pos(rid, j))
+
+
+## World position of queue slot `idx` in a room: a straight line on the floor from
+## the queue tile (slot 0, at the dock) extending back into the room.
+func _queue_slot_pos(rid: int, idx: int) -> Vector2:
+	const SPACING := 22.0
+	const FLOOR_OFFSET := 16.0 # cell bottom - half body, so the base sits on the floor
 	var qcell := Grid5.room_queue(rid)
-	var rect := Grid5.room_rect(rid)
-	var toward := Grid5.cell_center(qcell + Grid5.room_queue_dir(rid)) - Grid5.cell_center(qcell)
+	var qc := Grid5.cell_center(qcell)
+	var toward := Grid5.cell_center(qcell + Grid5.room_queue_dir(rid)) - qc
 	var tx := signf(toward.x) if absf(toward.x) > 0.01 else 1.0
-	var cols := maxi(1, int(rect.size.x / SX)) # people per floor-width row
-	var col := i % cols
-	var row := i / cols
-	var floor_y := Grid5.cell_rect(qcell).end.y - FLOOR_MARGIN # bottom of the queue cell
-	var start_x: float = rect.end.x - SX * 0.5 if tx > 0.0 else rect.position.x + SX * 0.5
-	var x := start_x - tx * (col * SX + row * DX)
-	var base_y := floor_y - row * DY
-	return Vector2(x, base_y - HALF_BODY)
+	var floor_y := Grid5.cell_rect(qcell).end.y - FLOOR_OFFSET
+	return Vector2(qc.x - tx * (idx * SPACING), floor_y)
 
 
 # ---------------------------------------------------------------- corridors

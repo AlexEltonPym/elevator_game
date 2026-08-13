@@ -350,8 +350,8 @@ func _decide_at_center() -> bool:
 func _has_work() -> bool:
 	if not riders.is_empty():
 		return true
-	for rid in game.waiting:
-		for p in game.waiting[rid]:
+	for rid in game.queues:
+		for p in game.queues[rid]:
 			if p.is_waiting_to_board() and p.legs[0].car == self:
 				return true
 	return false
@@ -501,13 +501,12 @@ func _assign_boarders() -> void:
 	if not route.is_dropoff(cell):
 		return
 	for rid in route.rooms_of_cell(cell):
-		for p in game.waiting.get(rid, []).duplicate():
+		for p in game.queues.get(rid, []).duplicate():
 			if not p.is_waiting_to_board():
 				continue
 			var leg: Dictionary = p.legs[0]
 			if leg.car == self and leg.board_cell == cell and fits(p.width) and free_slots() >= p.width:
 				p.boarding_car = self
-				p.board_lane = _boarding.size()
 				_boarding.append(p)
 				p.start_board_walk()
 				stop_moves += 1
@@ -547,13 +546,12 @@ func slot_position(p) -> Vector2:
 		if r == p:
 			break
 		i += r.width
-	var cols := maxi(1, width)
+	# Riders stand 2 per row (two columns), tight vertical spacing, on the car floor.
+	var cols := 2
 	var col := i % cols
 	var row := int(i / float(cols))
-	# Stand on the car FLOOR (base near the car's bottom edge, +BODY/2), matching how
-	# room figures stand on the room floor; extra rows step up into the car.
 	var base_y := BODY / 2.0 - 4.0 - 12.0
-	return position + Vector2((col - (cols - 1) / 2.0) * 26.0, base_y - row * 20.0)
+	return position + Vector2((col - (cols - 1) / 2.0) * 22.0, base_y - row * 14.0)
 
 
 # ---------------------------------------------------------------- visuals

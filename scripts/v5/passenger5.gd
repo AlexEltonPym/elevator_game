@@ -4,26 +4,24 @@ extends Node2D
 ## TRIPS (origin room -> destination room); on arrival it may reactivate into a
 ## fresh trip (the seed of an itinerary system) or vanish.
 ##
-## TRIP LIFECYCLE (v5.1c):
-##   MILL(inactive) - spawns on a FAR room tile, rendered there, with NO patience
-##                    timer. Dwells a short seeded beat.
-##   ACTIVATE       - patience STARTS here (not at spawn). Walks (orthogonally) to
-##                    the room's QUEUE tile (a door cell by the dock) and queues
-##                    behind whoever is already there (FIFO, boards in arrival
-##                    order).
-##   BOARD          - a stopped car assigns it; it walks queue->dock during the
-##                    door hold and boards.
-##   RIDE / ALIGHT  - aboard, then steps onto the dock and walks dock->queue;
-##                    served (dest) or replanned (transfer) on arrival.
-##   BETWEEN        - post-arrival: walks to the opposite tile and dwells (no
-##                    patience). Then, by a seeded per-level probability, either
-##                    VANISHES or REACTIVATES with a new destination (a new trip).
+## POSITION MODEL (v5.1h). People behave like PEOPLE, not a sorting pass. A figure
+## has ONE stable standing target (`stand_pos`) that changes only on DISCRETE
+## EVENTS — never re-sorted per frame. Two zones per room:
+##   * BACK zone — a loose spot (picked once, clipping allowed) where a figure
+##     spawns and mills, and where deboarders / between-trip figures wait.
+##   * QUEUE — an ordered straight line from the dock extending back. A figure
+##     joins at the TAIL when it activates and keeps its slot; when the person in
+##     front boards, everyone behind steps FORWARD one slot (a single event-driven
+##     step, main5.queue_leave). No isometric rows.
+## Standing figures EASE toward `stand_pos`; the SIM walks (mill/board/alight) tween
+## along `walk_from -> target`. All of this is visual: board order, sim timing,
+## Pathfind pricing and determinism are unaffected (positions aren't in the sig).
 ##
-## Board/alight walks are queue<->dock and are priced by Pathfind5. The dwell/mill
-## and between phases are route-independent and NOT priced; they uniformly delay
-## boardability. The reactivation DECISION + new destination are LOGICAL (run in
-## headless, affect served/outcome); the walk tweens are visual only. Everything
-## is seeded off `salt` so a repeated headless run is bit-identical.
+## TRIP LIFECYCLE:
+##   MILL(inactive) at the BACK, no patience -> ACTIVATE (patience starts, walk to
+##   the QUEUE tail) -> BOARD (queue->dock during the door hold) -> RIDE -> ALIGHT
+##   (dock->BACK) -> served (dest) or transfer (re-join the queue). On serving, a
+##   BETWEEN dwell then a seeded vanish / reactivate. All seeded off `salt`.
 
 const PTYPES := {
 	"visitor": {"width": 1, "patience": 90.0, "color": Color(0.35, 0.85, 0.45)},
@@ -31,17 +29,16 @@ const PTYPES := {
 	"shopper": {"width": 1, "patience": 95.0, "color": Color(0.9, 0.6, 0.35)},
 }
 
-enum Walk { NONE, MILL, BOARD, ALIGHT, COSMETIC }
+enum Walk { NONE, MILL, BOARD, ALIGHT }
 
 ## Seeded activation dwell (spawn -> becomes active) and post-arrival between dwell.
 const ACT_DWELL_MIN := 0.8
 const ACT_DWELL_MAX := 2.2
 const BETWEEN_MIN := 1.0
 const BETWEEN_MAX := 2.0
-## Walkers moving into the room travel this many px raised (over the floor crowd)
-## and drop onto their slot at the end — so they clear their old spot at once and
-## don't cross the standing rows.
-const WALK_RAISE := 26.0
+## Standing figures ease toward their target at this speed (px/s) — a single smooth
+## step when the queue advances, no per-frame jitter.
+const STAND_EASE := 130.0
 
 var game = null # main5.gd
 var ptype := "visitor"
@@ -65,13 +62,17 @@ var trip := 0 # trip index (seeds activation / reactivation)
 # Phase.
 var activated := false # past the spawn dwell => patience running
 var between := false # post-arrival, pre-decision => no patience
-var milled := false # reached the queue tile => boardable
-var spawn_cell := Vector2i.ZERO
+var milled := false # reached the queue => boardable
+var spawn_cell := Vector2i.ZERO # far cell (mill-walk sim distance is from here)
 var queue_cell := Vector2i.ZERO
-var far_cell := Vector2i.ZERO
 var dwell_left := 0.0
 var between_left := 0.0
-var board_lane := 0 # position in this stop's boarding queue (spaces the approach)
+var queue_slot := -1 # index in its room's queue line, or -1 (not queued)
+
+# Position targets (visual). stand_pos is the stable standing goal; back_pos is the
+# loose spot in the back this figure keeps for the trip.
+var stand_pos := Vector2.ZERO
+var back_pos := Vector2.ZERO
 
 # Walk state (sim). walk_left > 0 => walking; walk_kind says what completes it.
 var walk_kind := Walk.NONE
@@ -101,32 +102,24 @@ func _r(k: float) -> float:
 	return v - floorf(v)
 
 
-## This figure's unique raised-transit height: WALK_RAISE plus a deterministic
-## per-figure spread, so two walkers never travel along the same horizontal line
-## and cross. Purely visual.
-func _raise() -> Vector2:
-	return Vector2(0.0, -(WALK_RAISE + _r(7.0) * 30.0))
-
-
-## Begin a trip's pre-board life: pick a far spawn tile in the current room, render
-## there INACTIVE (no patience yet), and set the activation dwell.
+## Begin a trip's pre-board life: choose a loose BACK spot in the current room,
+## stand there INACTIVE (no patience yet), and set the activation dwell.
 func begin_life() -> void:
 	queue_cell = Grid5.room_queue(cur_room)
-	far_cell = _pick_far()
-	spawn_cell = far_cell
+	spawn_cell = _pick_far()
+	back_pos = _pick_back()
+	stand_pos = back_pos
+	position = back_pos
 	dwell_left = ACT_DWELL_MIN + (ACT_DWELL_MAX - ACT_DWELL_MIN) * _r(4.0)
 	activated = false
 	between = false
 	milled = false
-	board_lane = 0
+	queue_slot = -1
 	walk_kind = Walk.NONE
 	walk_left = 0.0
-	# Initial in-room position (the crowd packer re-slots it next frame).
-	position = Grid5.cell_center(spawn_cell)
 
 
-## A non-queue tile in the CURRENT room (a real room cell), deterministic. Used
-## as the spawn tile and the in-place "opposite tile" a finished figure retires to.
+## A non-queue tile in the current room (mill-walk SIM distance reference).
 func _pick_far() -> Vector2i:
 	var cells: Array = Grid5.room_cells(cur_room)
 	var opts: Array = []
@@ -138,14 +131,22 @@ func _pick_far() -> Vector2i:
 	return opts[int(_r(1.0) * opts.size()) % opts.size()]
 
 
-## Patience is only running once activated, while genuinely waiting (not aboard,
-## not claimed by a car, not mid-transfer, not between trips).
-func patience_running() -> bool:
-	return active and activated and not between and riding == null \
-			and boarding_car == null and walk_kind != Walk.ALIGHT
+## A loose standing spot in the BACK of the room (away from the dock), salt-spread.
+## Clipping allowed — it is not re-sorted.
+func _pick_back() -> Vector2:
+	var rect: Rect2 = Grid5.room_rect(cur_room)
+	var qcell: Vector2i = Grid5.room_queue(cur_room)
+	var floor_y: float = Grid5.cell_rect(qcell).end.y - 16.0
+	var qc: Vector2 = Grid5.cell_center(qcell)
+	var toward: Vector2 = Grid5.cell_center(qcell + Grid5.room_queue_dir(cur_room)) - qc
+	var tx: float = signf(toward.x) if absf(toward.x) > 0.01 else 1.0
+	# Far-from-dock edge, spread loosely across the back third and up a little.
+	var far_x: float = rect.position.x + 22.0 if tx > 0.0 else rect.end.x - 22.0
+	var x := far_x + tx * _r(1.5) * (rect.size.x * 0.45)
+	return Vector2(x, floor_y - _r(2.0) * 26.0)
 
 
-## A boarder a stopped car may pick up: activated, arrived at the queue tile, idle.
+## Waiting in the queue (reached it), boardable.
 func is_waiting_to_board() -> bool:
 	return active and activated and milled and not between and riding == null \
 			and boarding_car == null and walk_left <= 0.0 and not legs.is_empty()
@@ -155,10 +156,6 @@ func tick(dt: float) -> void:
 	if not active or riding != null:
 		return
 	if between:
-		if walk_left > 0.0:
-			walk_left -= dt
-			if walk_left < 0.0:
-				walk_left = 0.0
 		between_left -= dt
 		if between_left <= 0.0:
 			between = false
@@ -175,7 +172,7 @@ func tick(dt: float) -> void:
 		if walk_left <= 0.0:
 			walk_left = 0.0
 			_on_walk_done()
-	if patience_running():
+	if _patience_running():
 		patience -= dt
 		wait_time += dt
 		if patience <= 0.0 and active:
@@ -183,70 +180,60 @@ func tick(dt: float) -> void:
 			game.on_expired(self)
 
 
-## Dwell finished: patience starts and the passenger walks to the queue tile.
+func _patience_running() -> bool:
+	return active and activated and not between and riding == null \
+			and boarding_car == null and walk_kind != Walk.ALIGHT
+
+
+## Dwell finished: patience starts, the passenger joins the queue TAIL and walks to
+## its slot. (main5.queue_join sets queue_slot + stand_pos.)
 func _activate() -> void:
 	activated = true
-	_begin_walk(Walk.MILL, spawn_cell, queue_cell)
-	# Leave from the packed slot but a little RAISED, so it clears the spot instantly
-	# (the next spawn takes it) and travels over the floor crowd to its reserved slot.
-	walk_from = position + _raise()
-
-
-func _begin_walk(kind: int, from_cell: Vector2i, to_cell: Vector2i) -> void:
-	walk_kind = kind
-	var tiles := Grid5.manhattan(from_cell, to_cell)
-	walk_total = tiles * Grid5.WALK_PER_TILE
+	game.queue_join(self)
+	walk_kind = Walk.MILL
+	walk_total = Grid5.manhattan(spawn_cell, queue_cell) * Grid5.WALK_PER_TILE
 	walk_left = walk_total
-	walk_from = Grid5.cell_center(from_cell)
-	walk_to = Grid5.cell_center(to_cell)
-	if walk_left <= 0.0 and kind != Walk.COSMETIC:
-		walk_left = 0.0
-		_on_walk_done()
-
-
-## Board walk (called by the assigning car): queue tile -> the leg's boarding dock.
-## `board_lane` (order in this stop's boarding queue) offsets the visual approach —
-## boarders start single-file behind the queue tile and fan out at the dock — so
-## they never stack on the same pixel. The DURATION is still the tile distance, so
-## sim timing / Pathfind pricing are untouched.
-func start_board_walk() -> void:
-	if legs.is_empty():
-		walk_left = 0.0
-		return
-	var board: Vector2i = legs[0].board_cell
-	walk_kind = Walk.BOARD
-	walk_total = Grid5.manhattan(queue_cell, board) * Grid5.WALK_PER_TILE
-	walk_left = walk_total
-	var qc := Grid5.cell_center(queue_cell)
-	var bc := Grid5.cell_center(board)
-	var approach := (bc - qc)
-	approach = approach.normalized() if approach.length() > 0.01 else Vector2(1, 0)
-	# Leave raised (a per-figure height, so boarders clear the advancing queue and
-	# don't share a transit line) and target a spot staggered BACK from the dock per
-	# lane (a single file, no convergence on the dock pixel).
-	walk_from = position + _raise()
-	walk_to = bc - approach * (board_lane * 18.0)
+	walk_from = position
+	walk_to = stand_pos
 	if walk_left <= 0.0:
 		walk_left = 0.0
 		_on_walk_done()
 
 
-## Alight: the rider steps off and, while a dock->queue tile timer runs (so
-## finish_alight fires after the priced walk time), it is immediately owned by the
-## crowd packer (main5) — dropped straight into a non-overlapping room slot rather
-## than tweening across the room. The DURATION is the tile distance (unchanged sim
-## timing / Pathfind pricing); only the render position differs.
+## Board walk (called by the assigning car): leave the queue line (so those behind
+## step forward) and walk from the slot to the boarding dock.
+func start_board_walk() -> void:
+	game.queue_leave(self)
+	walk_kind = Walk.BOARD
+	if legs.is_empty():
+		walk_left = 0.0
+		return
+	walk_total = Grid5.manhattan(queue_cell, legs[0].board_cell) * Grid5.WALK_PER_TILE
+	walk_left = walk_total
+	walk_from = position
+	walk_to = Grid5.cell_center(legs[0].board_cell)
+	if walk_left <= 0.0:
+		walk_left = 0.0
+		_on_walk_done()
+
+
+## Alight: step off the car and walk to a loose BACK spot in the room. The timer is
+## the priced dock->queue walk time (finish_alight fires when it completes).
 func start_alight_walk(alight_cell: Vector2i, room: int) -> void:
 	boarding_car = null
 	cur_room = room
-	milled = true
+	milled = false
 	queue_cell = Grid5.room_queue(room)
-	_begin_walk(Walk.ALIGHT, alight_cell, queue_cell)
-	# Step off from the DISTINCT in-car slot it was riding in (raised, so it travels
-	# over the floor crowd); walk_to (its reserved room slot) is set by main5 each
-	# frame. Then drop riding so it leaves the car.
-	walk_from = position + _raise()
+	back_pos = _pick_back()
+	walk_kind = Walk.ALIGHT
+	walk_total = Grid5.manhattan(alight_cell, queue_cell) * Grid5.WALK_PER_TILE
+	walk_left = walk_total
+	walk_from = position
+	walk_to = back_pos
 	riding = null
+	if walk_left <= 0.0:
+		walk_left = 0.0
+		_on_walk_done()
 
 
 func _on_walk_done() -> void:
@@ -259,25 +246,25 @@ func _on_walk_done() -> void:
 				boarding_car._board_arrived(self)
 		Walk.ALIGHT:
 			walk_kind = Walk.NONE
+			stand_pos = back_pos
 			game.finish_alight(self)
 
 
-## Enter the post-arrival BETWEEN phase and dwell (no patience). It becomes a
-## stationary figure IMMEDIATELY, so the crowd packer slots it into the room's rows
-## (back of the crowd) with no overlap — it never floats at a shared tile.
-## main5.resolve_between decides vanish vs reactivate when the dwell ends.
+## Post-arrival BETWEEN: dwell at the back spot (already there), no patience.
 func begin_between() -> void:
 	between = true
 	activated = false
 	milled = false
+	stand_pos = back_pos
 	between_left = BETWEEN_MIN + (BETWEEN_MAX - BETWEEN_MIN) * _r(5.0)
-	queue_cell = Grid5.room_queue(cur_room)
-	walk_kind = Walk.NONE
-	walk_left = 0.0
 
 
-## Reset for a fresh trip to `new_dest` from the current room (spawn-in-place ->
-## activate -> queue -> ride). Called by main5.resolve_between when reactivating.
+## A transfer (alighted, not at destination): head to the queue for the next leg.
+func rejoin_for_transfer() -> void:
+	_activate()
+
+
+## Reset for a fresh trip to `new_dest` from the current room.
 func reactivate(new_dest: int) -> void:
 	trip += 1
 	origin_room = cur_room
@@ -290,18 +277,25 @@ func reactivate(new_dest: int) -> void:
 	begin_life()
 
 
+## Called by main5.queue_join / queue_leave when this figure's stable target moves
+## (join, or the queue advanced). A standing figure eases there; one still walking
+## in retargets its walk.
+func set_stand(pos: Vector2) -> void:
+	stand_pos = pos
+	if walk_left > 0.0 and walk_kind == Walk.MILL:
+		walk_to = pos
+
+
 func _process(delta: float) -> void:
 	vis_t += delta
 	if riding != null:
 		position = riding.slot_position(self)
-	elif walk_left > 0.0 and walk_total > 0.0 \
-			and (walk_kind == Walk.MILL or walk_kind == Walk.BOARD or walk_kind == Walk.ALIGHT):
-		# Mill (spawn->queue), board (queue->dock) and alight (car->room slot) all
-		# animate. The alight walk_to is the reserved room slot (set by main5), so
-		# stepping off is a short walk, not a pop, and never lands on another figure.
+	elif walk_left > 0.0 and walk_total > 0.0:
 		var f := clampf(1.0 - walk_left / walk_total, 0.0, 1.0)
 		position = _ortho_point(walk_from, walk_to, f)
-	# Between figures are owned by the crowd packer.
+	else:
+		# Standing: ease toward the stable target (a smooth step when it changes).
+		position = position.move_toward(stand_pos, STAND_EASE * delta)
 	queue_redraw()
 
 
@@ -321,9 +315,8 @@ func _ortho_point(a: Vector2, b: Vector2, f: float) -> Vector2:
 
 func _draw() -> void:
 	# A small upright, person-proportioned rectangle (placeholder "little person"),
-	# ~14 x 24. Finished / inactive / between-trip people keep their EXACT normal
-	# colour; the ONLY difference is they show no impatience bar (patience not
-	# running). The destination chip is always drawn.
+	# ~14 x 24, on the floor. Normal colour always (no recolour); the impatience bar
+	# shows only while patience is running.
 	var col: Color = PTYPES.get(ptype, PTYPES.visitor).color
 	var body := Rect2(-7.0, -12.0, 14.0, 24.0)
 	draw_rect(body, col)
@@ -332,7 +325,7 @@ func _draw() -> void:
 	draw_string(ThemeDB.fallback_font, Vector2(-5.0, 2.0),
 			Grid5.room_letter(dest_room),
 			HORIZONTAL_ALIGNMENT_CENTER, -1.0, 12, Color(0.1, 0.1, 0.1))
-	if patience_running():
+	if _patience_running():
 		var w := 22.0
 		var top := -22.0
 		var frac := clampf(patience / patience_max, 0.0, 1.0)
