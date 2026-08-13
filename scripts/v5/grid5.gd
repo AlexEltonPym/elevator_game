@@ -120,16 +120,16 @@ static func load_level(level: Dictionary) -> void:
 			"queue": _pick_queue(cells, door_cells, ctr)})
 
 
-## The room's QUEUE cell: the boardable waiting tile, a room cell that is NOT one
-## of the room's door cells (the door cell is only stepped onto during boarding,
-## since that is where the car opens). Nearest the centroid, deterministic; if
-## every cell is a door (e.g. the atrium), falls back to the anchor. Board/alight
-## walk time is priced from here in BOTH the sim and Pathfind5, so they match.
+## The room's QUEUE cell: the boardable waiting tile NEAR the dock — a room DOOR
+## cell (the cell an elevator opens beside). People spawn on a far tile, then walk
+## here to queue; boarding steps from here onto the dock. Nearest the centroid
+## among door cells, deterministic. Board/alight walk time is priced from here in
+## BOTH the sim and Pathfind5, so they match.
 static func _pick_queue(cells: Array, doors: Dictionary, center: Vector2) -> Vector2i:
 	var best := Vector2i(-1, -1)
 	var bd := INF
 	for c in cells:
-		if doors.has(c):
+		if not doors.has(c):
 			continue
 		var d := cell_center(c).distance_squared_to(center)
 		if d < bd - 0.001:

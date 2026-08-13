@@ -39,7 +39,7 @@ var burst_left := 0
 var burst_timer := 0.0
 
 var active_passengers: Array = []
-var _wanderers: Array = [] # served figures playing their post-served wander (visual only)
+var reactivations := 0 # completed trips that spawned a fresh trip (stat / smoke)
 var _passengers_dirty := false
 
 var routes: Array = []
@@ -123,14 +123,6 @@ func advance(dt: float) -> void:
 			if p.active:
 				keep.append(p)
 		active_passengers = keep
-	if not _wanderers.is_empty():
-		var kept: Array = []
-		for w in _wanderers:
-			if w.tick_wander(dt):
-				w.queue_free()
-			else:
-				kept.append(w)
-		_wanderers = kept
 
 
 func current_interval() -> float:
@@ -228,7 +220,7 @@ func _clear_passengers() -> void:
 		p.active = false
 		p.queue_free()
 	active_passengers = []
-	_wanderers = []
+	reactivations = 0
 	_passengers_dirty = false
 	for rid in waiting:
 		waiting[rid].clear()
@@ -504,22 +496,57 @@ func finish_alight(p) -> void:
 			waiting[p.cur_room].append(p)
 
 
+## A trip completed at its destination: count it served, log it, and drop the
+## passenger into the BETWEEN phase (walk to the opposite tile + dwell). It stays
+## alive; resolve_between decides vanish vs a fresh trip when the dwell ends.
 func on_served(p) -> void:
-	p.active = false
-	_passengers_dirty = true
 	if waiting.has(p.cur_room):
 		waiting[p.cur_room].erase(p)
 	log_served.append({"type": p.ptype, "wait": p.wait_time, "rides": p.rides})
 	served += 1
-	# The outcome is locked here. Headless frees at once; a windowed figure walks
-	# off (begin_wander) before it disappears — cosmetic, never touched by the sim.
-	if headless:
-		p.queue_free()
-	else:
-		p.begin_wander()
-		_wanderers.append(p)
+	p.begin_between()
 	if state == State.PLAYING and not endless and served >= QUOTA:
 		_win()
+
+
+## The between-trip dwell ended: by a seeded per-level probability the passenger
+## REACTIVATES with a new (reachable) destination — real demand, headless too — or
+## VANISHES. Deterministic: keyed off the passenger's salt + trip, so it never
+## perturbs the spawn rng stream and repeated runs are bit-identical.
+func resolve_between(p) -> void:
+	var prob: float = float(level.get("reactivate", 0.25))
+	if _seed01(p.salt, p.trip * 3 + 1) < prob:
+		var dest := _pick_reactivate_dest(p)
+		if dest >= 0:
+			p.reactivate(dest)
+			_compute_path_for(p)
+			waiting[p.cur_room].append(p)
+			reactivations += 1
+			return
+	# Vanish.
+	p.active = false
+	_passengers_dirty = true
+	p.queue_free()
+
+
+## A reachable room other than the current one, chosen deterministically. Empty
+## (-1) if nothing is reachable from here on the committed network.
+func _pick_reactivate_dest(p) -> int:
+	var from: int = p.cur_room
+	var reach: Array = []
+	for r in Grid5.room_count():
+		if r == from:
+			continue
+		if Pathfind5.find_path(from, r, cars, -1.0, p.width) != null:
+			reach.append(r)
+	if reach.is_empty():
+		return -1
+	return reach[int(_seed01(p.salt, p.trip * 3 + 2) * reach.size()) % reach.size()]
+
+
+static func _seed01(salt: float, k: int) -> float:
+	var v := sin(salt * 127.1 + float(k) * 311.7) * 43758.5453
+	return absf(v - floorf(v))
 
 
 func on_expired(p) -> void:

@@ -25,6 +25,11 @@ const BODY := 60.0
 const EPS_D := 1.0e-6
 const EPS_V := 1.0e-9
 const MAX_SCAN_CELLS := 24
+# Elevator dwells (v5.1c): a brief seeded/fixed pause at a ping-pong line END
+# (also the start, idx 0) before reversing, and at a loop's start cell each empty
+# lap. Small enough not to wreck throughput.
+const END_DWELL := 0.8
+const LOOP_DWELL := 0.8
 
 const DECEL_RATIO := 1.25
 const CAR_TYPES := {
@@ -64,6 +69,7 @@ var held_gates: Array = []
 var waiting_gate := false
 var gate_wait_total := 0.0 # game-seconds spent blocked at corridors (stat)
 var gate_transits := 0 # corridor lock acquisitions (stat)
+var _dwell_timer := 0.0 # end / loop-start dwell remaining
 
 
 func setup(g, i: int, card: Dictionary) -> void:
@@ -138,6 +144,7 @@ func set_route(r) -> void:
 	waiting_gate = false
 	_boarding.clear()
 	_board_hold = 0.0
+	_dwell_timer = 0.0
 	route = r
 	idx = 0
 	seg_t = 0.0
@@ -418,6 +425,14 @@ func _arrive_center() -> void:
 			held_gates.erase(g)
 	if _wants_stop(cell):
 		_begin_stop()
+		return
+	# End / loop-start dwell: a brief pause before reversing (open) or each empty
+	# lap (closed), and — since idx 0 is a line end — before the first departure.
+	if route.closed:
+		if idx == 0 and riders.is_empty():
+			_dwell_timer = maxf(_dwell_timer, LOOP_DWELL)
+	elif idx == 0 or idx == route.cells.size() - 1:
+		_dwell_timer = maxf(_dwell_timer, END_DWELL)
 
 
 func _update_position() -> void:

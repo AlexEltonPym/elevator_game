@@ -22,6 +22,7 @@ const CAP := 600.0 # game-seconds budget per level
 
 var _i := 0
 var _fail := 0
+var _reacts := 0 # total reactivations seen across levels (must be > 0 overall)
 
 
 func _c(pairs: Array) -> Array:
@@ -153,6 +154,7 @@ func _run_once(lv: Dictionary, i: int, seed: int) -> Dictionary:
 		"serve_desc": serve_desc, "serve_sizes": serve_sizes,
 		"transfer_rooms": transfer_rooms, "saw_walk": saw_walk,
 		"corridor_ok": corridor_ok, "contended": contended, "transits": transits,
+		"reactivations": node.reactivations,
 		"sig": sig,
 	}
 	node.free()
@@ -162,6 +164,12 @@ func _run_once(lv: Dictionary, i: int, seed: int) -> Dictionary:
 func _process(_delta: float) -> bool:
 	if _i >= Levels5.LEVELS.size():
 		print("---------------------------------------------------------------")
+		# Reactivation (real between-trip demand) must run in headless at least once.
+		if _reacts == 0:
+			_fail += 1
+			print("REACTIVATION never occurred across all levels  **FAIL**")
+		else:
+			print("reactivation total across levels = %d" % _reacts)
 		if _fail == 0:
 			print("V5 SMOKE: ALL PASS")
 		else:
@@ -173,7 +181,8 @@ func _process(_delta: float) -> bool:
 	var a := _run_once(lv, _i, seed)
 	# (b) determinism: a second run with the same seed is bit-identical.
 	var b := _run_once(lv, _i, seed)
-	var deterministic: bool = a.sig == b.sig
+	var deterministic: bool = a.sig == b.sig and a.reactivations == b.reactivations
+	_reacts += a.reactivations
 
 	var notes: Array = []
 	var ok: bool = a.committed and a.ready and a.served > 0 and a.ride_peak > 0
@@ -209,11 +218,11 @@ func _process(_delta: float) -> bool:
 		notes.append("not-WIN")
 	if not ok:
 		_fail += 1
-	print("%-4s %-8s served=%2d lost=%2d t=%5.1f ride_peak=%d xfers=%d det=%s walk=%s corr=%s trans=%s  serve{%s} %s %s" % [
+	print("%-4s %-8s served=%2d lost=%2d t=%5.1f ride_peak=%d xfers=%d react=%d det=%s walk=%s corr=%s  serve{%s} %s %s" % [
 			lv.id, a.state, a.served, a.lost, a.t, a.ride_peak, a.transfers,
+			a.reactivations,
 			"Y" if deterministic else "N", "Y" if a.saw_walk else "N",
 			("ok" if a.corridor_ok else "SHARED") if lv.id == "R-5" else "-",
-			str(a.transits),
 			"  ".join(a.serve_desc),
 			"OK" if ok else "**FAIL**", " ".join(notes)])
 	_i += 1
