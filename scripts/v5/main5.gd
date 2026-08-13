@@ -560,25 +560,45 @@ func on_expired(p) -> void:
 		_lose()
 
 
-## Position waiting passengers (visual only). Riders and walkers drive their own
-## position (car slot / orthogonal walk tween); a MILLING passenger idles at its
-## spawn tile; those that have reached the queue tile form a spaced SINGLE-FILE
-## line leading up to the dock (nearest the dock first) so they never overlap.
+## Position every figure standing in a room (visual only) into a dense, ordered,
+## NON-overlapping crowd (see _room_slot). Riders and mid-walk figures drive their
+## own position and are skipped. Order (front nearest the dock, FIFO by arrival):
+## boardable queuers first, then still-milling fresh spawns, then between-trip
+## figures. It re-packs every frame, so the line advances as the front boards.
+## VISUAL ONLY — board order, sim timing, pricing and determinism are untouched.
 func _reflow_queues() -> void:
 	for rid in waiting:
-		var qcell := Grid5.room_queue(rid)
-		var qc := Grid5.cell_center(qcell)
-		var approach := Grid5.cell_center(qcell + Grid5.room_queue_dir(rid)) - qc
-		approach = approach.normalized() if approach.length() > 0.01 else Vector2(1, 0)
-		var qn := 0
+		var i := 0
 		for p in waiting[rid]:
-			if p.riding != null or p.walk_left > 0.0:
-				continue # the walk tween / car slot owns this figure's position
-			if not p.milled:
-				p.position = Grid5.cell_center(p.spawn_cell) + p.spawn_jitter
-			else:
-				p.position = qc - approach * (qn * 24.0)
-				qn += 1
+			if p.riding == null and p.walk_left <= 0.0 and p.milled:
+				p.position = _room_slot(rid, i)
+				i += 1
+		for p in waiting[rid]:
+			if p.riding == null and p.walk_left <= 0.0 and not p.milled:
+				p.position = _room_slot(rid, i)
+				i += 1
+		for p in active_passengers:
+			if p.between and p.cur_room == rid and p.riding == null and p.walk_left <= 0.0:
+				p.position = _room_slot(rid, i)
+				i += 1
+
+
+## The i-th standing slot of a room: a dense, deterministic, unbounded packing that
+## never overlaps (spacing >= figure size). Slot 0 is the queue tile (front, at the
+## dock); figures fill a column vertically (centre-out) then pack back into the
+## room, column by column — so the crowd grows orderly with no hard cap.
+func _room_slot(rid: int, i: int) -> Vector2:
+	var qcell := Grid5.room_queue(rid)
+	var q := Grid5.cell_center(qcell)
+	var toward := Grid5.cell_center(qcell + Grid5.room_queue_dir(rid)) - q
+	toward = toward.normalized() if toward.length() > 0.01 else Vector2(1, 0)
+	var s := 26.0
+	var cap := maxi(1, int(Grid5.room_rect(rid).size.y / s))
+	var col := i / cap
+	var row := i % cap
+	# Vertical offset walks out from the queue row: 0, -1, +1, -2, +2, ...
+	var voff := float((row + 1) / 2) * (-1.0 if row % 2 == 1 else 1.0)
+	return q - toward * (col * s) + Vector2(0.0, voff * s)
 
 
 # ---------------------------------------------------------------- corridors

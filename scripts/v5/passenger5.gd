@@ -65,7 +65,6 @@ var milled := false # reached the queue tile => boardable
 var spawn_cell := Vector2i.ZERO
 var queue_cell := Vector2i.ZERO
 var far_cell := Vector2i.ZERO
-var spawn_jitter := Vector2.ZERO
 var dwell_left := 0.0
 var between_left := 0.0
 var board_lane := 0 # position in this stop's boarding queue (spaces the approach)
@@ -104,7 +103,6 @@ func begin_life() -> void:
 	queue_cell = Grid5.room_queue(cur_room)
 	far_cell = _pick_far()
 	spawn_cell = far_cell
-	spawn_jitter = Vector2((_r(2.0) - 0.5) * 30.0, (_r(3.0) - 0.5) * 24.0)
 	dwell_left = ACT_DWELL_MIN + (ACT_DWELL_MAX - ACT_DWELL_MIN) * _r(4.0)
 	activated = false
 	between = false
@@ -112,7 +110,8 @@ func begin_life() -> void:
 	board_lane = 0
 	walk_kind = Walk.NONE
 	walk_left = 0.0
-	position = Grid5.cell_center(spawn_cell) + spawn_jitter
+	# Initial in-room position (the crowd packer re-slots it next frame).
+	position = Grid5.cell_center(spawn_cell)
 
 
 ## A non-queue tile in the CURRENT room (a real room cell), deterministic. Used
@@ -177,6 +176,7 @@ func tick(dt: float) -> void:
 func _activate() -> void:
 	activated = true
 	_begin_walk(Walk.MILL, spawn_cell, queue_cell)
+	walk_from = position # leave from the packed slot it is standing in
 
 
 func _begin_walk(kind: int, from_cell: Vector2i, to_cell: Vector2i) -> void:
@@ -209,7 +209,9 @@ func start_board_walk() -> void:
 	var approach := (bc - qc)
 	approach = approach.normalized() if approach.length() > 0.01 else Vector2(1, 0)
 	var perp := Vector2(-approach.y, approach.x)
-	walk_from = qc - approach * (board_lane * 20.0)
+	# Leave from the actual slot it is standing in; fan out per lane at the dock so
+	# concurrent boarders don't converge on one pixel.
+	walk_from = position
 	walk_to = bc + perp * (board_lane * 14.0)
 	if walk_left <= 0.0:
 		walk_left = 0.0
@@ -251,6 +253,7 @@ func begin_between() -> void:
 	queue_cell = Grid5.room_queue(cur_room)
 	far_cell = _pick_far()
 	_begin_walk(Walk.COSMETIC, queue_cell, far_cell)
+	walk_from = position # ease off from where it is standing, not a fixed cell
 
 
 ## Reset for a fresh trip to `new_dest` from the current room (spawn-in-place ->
