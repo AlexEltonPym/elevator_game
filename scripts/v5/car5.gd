@@ -8,10 +8,11 @@ extends Node2D
 ## Adapted from scripts/v3/car3.gd. The acceleration integrator (_integrate),
 ## the analytic braking lookahead and the door phases are reused essentially
 ## verbatim — that is the "feel" the prototype must keep. What is REMOVED for
-## the prototype: the recall/redeploy state machine, home cells, and gate
-## corridor mutexes (v5 levels have no gates; all commits happen in PLAN, so
-## every car deploys instantly). Stops key off dock cells + exchanges instead of
-## v3's "is this a room cell".
+## the prototype: the recall/redeploy state machine and home cells (all commits
+## happen in PLAN, so every car deploys instantly). Stops key off dock cells +
+## exchanges instead of v3's "is this a room cell". The corridor-width mutex IS
+## ported (v5.1): held_gates / waiting_gate + _depart acquire, _arrive_center
+## release and the _stop_distance lookahead, all against Grid5 corridor groups.
 
 enum DoorState { CLOSED, OPENING, EXCHANGE, CLOSING }
 enum CarState { UNDEPLOYED, RUNNING }
@@ -55,6 +56,12 @@ var stop_moves := 0
 var idle := false
 var riders: Array = []
 var vis_t := 0.0
+# Corridor mutex (v5.1, ported from v3 car3). held_gates = corridor GROUP indices
+# this car currently holds; waiting_gate = blocked at a corridor mouth this tick.
+var held_gates: Array = []
+var waiting_gate := false
+var gate_wait_total := 0.0 # game-seconds spent blocked at corridors (stat)
+var gate_transits := 0 # corridor lock acquisitions (stat)
 
 
 func setup(g, i: int, card: Dictionary) -> void:
@@ -120,6 +127,10 @@ func current_cell() -> Vector2i:
 ## INSTANT deploy: bind a route (or null) and appear at its start. All v5
 ## commits happen in PLAN, so this is the only path.
 func set_route(r) -> void:
+	if game != null:
+		game.corridor_cancel(self)
+	held_gates.clear()
+	waiting_gate = false
 	route = r
 	idx = 0
 	seg_t = 0.0
@@ -189,7 +200,9 @@ func _move_tick(dt: float) -> void:
 						vel = 0.0
 						if door_state != DoorState.CLOSED:
 							continue # doors just began opening
-						break # idle: retry next tick
+						if waiting_gate:
+							gate_wait_total += rem
+						break # idle, or blocked at a corridor: retry next tick
 				var need := Grid5.CELL - seg_t
 				var move := _integrate(need, _stop_distance(need), rem)
 				seg_t += move.d
@@ -222,6 +235,11 @@ func _stop_distance(need: float) -> float:
 			return d
 		if not r.closed and (j + dir < 0 or j + dir >= n):
 			return d # the end of an open line: the car reverses (stops) here
+		# A corridor the car can't get into right now: stop at its mouth.
+		var nxt: Vector2i = r.cells[_wrap_idx(j + dir)]
+		var gi := Grid5.corridor_group_of(nxt)
+		if gi != -1 and not held_gates.has(gi) and not game.corridor_free_for(self, gi):
+			return d
 		d += Grid5.CELL
 	return d
 
@@ -336,7 +354,7 @@ func _wants_stop(cell: Vector2i) -> bool:
 			if p.legs.is_empty():
 				continue
 			var leg: Dictionary = p.legs[0]
-			if leg.car == self and leg.board_cell == cell and fits(p.width) \
+			if p.at_dock and leg.car == self and leg.board_cell == cell and fits(p.width) \
 					and free >= p.width:
 				return true
 	return false
@@ -366,11 +384,27 @@ func _depart(target_idx: int) -> bool:
 	if want != dir:
 		vel = 0.0
 	dir = want
+	# Acquire the corridor group ahead before leaving this centre toward it.
+	var next: Vector2i = route.cells[_wrap_idx(idx + dir)]
+	var gi := Grid5.corridor_group_of(next)
+	if gi != -1 and not held_gates.has(gi):
+		if game.corridor_request(self, gi):
+			held_gates.append(gi)
+			gate_transits += 1
+		else:
+			waiting_gate = true
+			return false
+	waiting_gate = false
 	return true
 
 
 func _arrive_center() -> void:
 	var cell: Vector2i = route.cells[idx]
+	var cur_gi := Grid5.corridor_group_of(cell)
+	for g in held_gates.duplicate():
+		if g != cur_gi:
+			game.corridor_release(self, g)
+			held_gates.erase(g)
 	if _wants_stop(cell):
 		_begin_stop()
 
@@ -394,7 +428,7 @@ func _unload() -> void:
 		if not r.legs.is_empty() and r.legs[0].alight_cell == cell:
 			riders.erase(r)
 			stop_moves += 1
-			game.on_alight(r, r.legs[0].to_room)
+			game.on_alight(r, cell, r.legs[0].to_room)
 
 
 func _load_waiting() -> void:
@@ -406,7 +440,7 @@ func _load_waiting() -> void:
 			if p.legs.is_empty():
 				continue
 			var leg: Dictionary = p.legs[0]
-			if leg.car == self and leg.board_cell == cell and fits(p.width) \
+			if p.at_dock and leg.car == self and leg.board_cell == cell and fits(p.width) \
 					and free_slots() >= p.width:
 				game.waiting[rid].erase(p)
 				p.riding = self
@@ -482,3 +516,7 @@ func _draw() -> void:
 	if parked:
 		draw_string(ThemeDB.fallback_font, Vector2(-8.0, 7.0), "!",
 				HORIZONTAL_ALIGNMENT_CENTER, -1.0, 24, Color(0.9, 0.3, 0.25))
+	# Blocked at a corridor mouth: a pulsing hazard-yellow outline.
+	if waiting_gate:
+		var pulse := 0.5 + 0.5 * sin(vis_t * 6.0)
+		draw_rect(body.grow(3.0), Color(0.95, 0.8, 0.3, 0.35 + 0.4 * pulse), false, 3.0)

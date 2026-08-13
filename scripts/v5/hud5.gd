@@ -14,6 +14,7 @@ var speed_buttons: Array = []
 var hint_label: Label
 var chip_buttons: Array = []
 var chip_pips: Array = []
+var _last_serves: Array = [] # per-card serve counts last shown on the chips
 var clear_btn: Button
 var action_btn: Button
 var overlay: Control = null
@@ -214,9 +215,24 @@ func refresh_stats() -> void:
 		speed_buttons[i].modulate = Color(1, 1, 1, 1.0) if active else Color(1, 1, 1, 0.45)
 	clear_btn.visible = game.can_edit() and game.selected_card >= 0 \
 			and game.routes[game.selected_card] != null
+	if _serves_changed():
+		refresh_cards()
 	_refresh_action()
 	_refresh_hint()
 
+
+## The serve-count (rooms reached via dock cells) each committed route reports
+## right now, so refresh_stats can repaint the chips the instant it changes
+## (guards the "serves 0" symptom against any path that skips refresh_cards).
+func _serves_changed() -> bool:
+	var cur: Array = []
+	for i in game.CARDS.size():
+		var route = game.routes[i]
+		cur.append(route.served_rooms().size() if route != null else -1)
+	if cur == _last_serves:
+		return false
+	_last_serves = cur
+	return true
 
 func _refresh_hint() -> void:
 	hint_label.add_theme_color_override("font_color", Color(1, 1, 1, 0.6))

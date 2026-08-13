@@ -20,6 +20,14 @@ const GRID_X := 720.0 # playfield width the grid centers in
 const GRID_Y_TOP := 100.0 # grid area is y 100..1000 (below the top HUD)
 const GRID_Y_H := 900.0
 
+## Seconds of walk per tile of Manhattan distance (v5.1). Board = walk from a
+## room's anchor cell to the boarding dock; alight = walk from the alighting dock
+## back to the (next) room's anchor. Priced identically in Pathfind5 so planning
+## stays honest against the sim. Tuned for feel (spec: ~0.3-0.6 s).
+const WALK_PER_TILE := 0.45
+
+const DEFAULT_CORRIDOR_WIDTH := 2 # a plain corridor cell = one normal lift
+
 const ROOM_LETTERS := "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 static var COLS := 5
@@ -31,9 +39,19 @@ static var view_offset := Vector2.ZERO
 # Per-level derived data (rebuilt in load_level).
 static var _blocked := {} # Vector2i -> true
 static var _room_of := {} # Vector2i -> room_id (cells that belong to a room)
-static var _rooms: Array = [] # room_id -> {type, cells, letter, drops, center, rect}
+static var _rooms: Array = [] # room_id -> {type, cells, letter, drops, center, rect, anchor}
 static var _dock_of := {} # dock cell -> Array[room_id] served from that cell
 static var _dock_marks: Array = [] # {room_id, cell (room cell), dir, dock}
+
+# Corridors (v5.1): open ROUTABLE cells that carry a width and form FIFO mutex
+# groups (ported from v3 grid gates). A car may enter iff car.width <= width, and
+# cars share while the sum of widths inside <= width. Default width 2 = one
+# normal (width-2) lift at a time. Contiguous corridor cells = one group.
+static var _corridor_width := {} # Vector2i -> corridor width (int)
+static var _corridor_groups: Array = [] # gi -> Array[Vector2i]
+static var _corridor_group_of := {} # Vector2i -> gi
+static var _corridor_group_width: Array = [] # gi -> narrowest cell width in group
+static var _corridors_dirty := true
 
 var game = null # main5.gd
 
@@ -64,6 +82,16 @@ static func load_level(level: Dictionary) -> void:
 	_blocked = {}
 	for c in level.get("blocked", []):
 		_blocked[c] = true
+	# Corridors: each entry is {cells:Array[Vector2i], width:int?} (default 2).
+	_corridor_width = {}
+	_corridor_groups = []
+	_corridor_group_of = {}
+	_corridor_group_width = []
+	_corridors_dirty = true
+	for co in level.get("corridors", []):
+		var cw := int(co.get("width", DEFAULT_CORRIDOR_WIDTH))
+		for c in co.cells:
+			_corridor_width[c] = cw
 	_room_of = {}
 	_rooms = []
 	_dock_of = {}
@@ -82,9 +110,25 @@ static func load_level(level: Dictionary) -> void:
 			if not _dock_of[dock].has(i):
 				_dock_of[dock].append(i)
 			_dock_marks.append({"room_id": i, "cell": d.cell, "dir": d.dir, "dock": dock})
+		var ctr := _cells_center(cells)
 		_rooms.append({
 			"type": str(rm.type), "cells": cells, "letter": ROOM_LETTERS.substr(i, 1),
-			"drops": drops, "center": _cells_center(cells), "rect": _cells_rect(cells)})
+			"drops": drops, "center": ctr, "rect": _cells_rect(cells),
+			"anchor": _closest_cell(cells, ctr)})
+
+
+## The room cell nearest the room centroid: a deterministic "where people stand"
+## anchor for walk-time distances (board = anchor -> dock, alight = dock ->
+## anchor). Tie-break by list order so it never depends on float wobble.
+static func _closest_cell(cells: Array, center: Vector2) -> Vector2i:
+	var best: Vector2i = cells[0]
+	var bd := INF
+	for c in cells:
+		var d := cell_center(c).distance_squared_to(center)
+		if d < bd - 0.001:
+			bd = d
+			best = c
+	return best
 
 
 # ---------------------------------------------------------------- queries
@@ -143,6 +187,91 @@ static func is_dock(cell: Vector2i) -> bool:
 	return _dock_of.has(cell)
 
 
+## The room's anchor cell (where its people are treated as standing for walk-time
+## distances). Deterministic; used by both the sim and Pathfind5 so board/alight
+## walk costs match exactly.
+static func room_anchor(id: int) -> Vector2i:
+	if id < 0 or id >= _rooms.size():
+		return Vector2i(-1, -1)
+	return _rooms[id].anchor
+
+
+static func manhattan(a: Vector2i, b: Vector2i) -> int:
+	return absi(a.x - b.x) + absi(a.y - b.y)
+
+
+# ---------------------------------------------------------------- corridors
+
+## Is this an open cell that carries a corridor width / mutex? (Still passable:
+## corridors are routable cells, just width-limited and one-at-a-time by default.)
+static func is_corridor(c: Vector2i) -> bool:
+	return _corridor_width.has(c)
+
+
+## Corridor width of a single CELL (0 if not a corridor cell).
+static func corridor_width(c: Vector2i) -> int:
+	return int(_corridor_width.get(c, 0))
+
+
+## Orthogonally contiguous corridor cells form ONE mutex group (flood-filled at
+## load). A lone corridor cell is a group of 1.
+static func corridor_groups() -> Array:
+	_ensure_corridor_groups()
+	return _corridor_groups
+
+
+static func corridor_group_of(c: Vector2i) -> int:
+	_ensure_corridor_groups()
+	return int(_corridor_group_of.get(c, -1))
+
+
+## Width of a whole corridor = its NARROWEST cell. -1 for a non-group index.
+static func corridor_group_width(gi: int) -> int:
+	_ensure_corridor_groups()
+	if gi < 0 or gi >= _corridor_group_width.size():
+		return -1
+	return _corridor_group_width[gi]
+
+
+## The narrowest corridor a polyline enters, or a large number when it enters
+## none. Behind the "this car is too wide for this route" commit check.
+static func route_min_corridor_width(cells: Array) -> int:
+	var w := 9999
+	for c in cells:
+		var gi := corridor_group_of(c)
+		if gi != -1:
+			w = mini(w, corridor_group_width(gi))
+	return w
+
+
+static func _ensure_corridor_groups() -> void:
+	if not _corridors_dirty:
+		return
+	_corridors_dirty = false
+	_corridor_groups = []
+	_corridor_group_of = {}
+	_corridor_group_width = []
+	for c in _corridor_width:
+		if _corridor_group_of.has(c):
+			continue
+		var gi := _corridor_groups.size()
+		var group: Array = []
+		var stack: Array = [c]
+		var w := 9999
+		_corridor_group_of[c] = gi
+		while not stack.is_empty():
+			var u: Vector2i = stack.pop_back()
+			group.append(u)
+			w = mini(w, corridor_width(u))
+			for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+				var v: Vector2i = u + d
+				if _corridor_width.has(v) and not _corridor_group_of.has(v):
+					_corridor_group_of[v] = gi
+					stack.append(v)
+		_corridor_groups.append(group)
+		_corridor_group_width.append(w)
+
+
 # ---------------------------------------------------------------- geometry
 
 static func cell_rect(c: Vector2i) -> Rect2:
@@ -193,7 +322,9 @@ func _draw() -> void:
 			if Grid5.is_room_cell(c):
 				continue
 			var rect := cell_rect(c).grow(-1.0)
-			if not Grid5.passable(c):
+			if Grid5.is_corridor(c):
+				_draw_corridor(rect, c)
+			elif not Grid5.passable(c):
 				draw_rect(rect, Color(0.10, 0.10, 0.12))
 				draw_rect(rect, Color(0, 0, 0, 0.22), false, 1.0)
 			else:
@@ -289,6 +420,68 @@ func _draw_dock(mark: Dictionary, cover: Array) -> void:
 	else:
 		for k in cover.size():
 			draw_rect(dock.grow(-k * 3.0), Color(cover[k], 0.7), false, 3.0)
+
+
+
+## A corridor cell: the calm v4 hazard identity (thin striped border on the group
+## boundary + width bars down the middle) plus a whole-corridor occupied tint that
+## glows faintly in the colour of any car currently inside the group.
+func _draw_corridor(rect: Rect2, c: Vector2i) -> void:
+	draw_rect(rect, Color(0.22, 0.21, 0.20))
+	var gi := Grid5.corridor_group_of(c)
+	if game != null and gi != -1 and game.corridors.has(gi):
+		for holder in game.corridors[gi].holders:
+			draw_rect(rect, Color(holder.color, 0.20))
+	# Width bars: one bar = pod-only, two = one normal lift, three = cargo-wide.
+	var w := Grid5.corridor_width(c)
+	if w > 0:
+		var col := Color(0.90, 0.76, 0.28, 0.34)
+		var bar := 7.0
+		var gap := 5.0
+		var total := w * bar + (w - 1) * gap
+		var x0 := rect.position.x + (rect.size.x - total) / 2.0
+		for i in w:
+			draw_rect(Rect2(x0 + i * (bar + gap), rect.get_center().y - 13.0, bar, 26.0), col)
+	# Thin hazard stripe only on edges shared with a non-corridor neighbour, so a
+	# contiguous corridor reads as one striped tunnel (docs/ui-pass calm band).
+	var eb := 3.0
+	var dark := Color(0.10, 0.10, 0.10, 0.85)
+	var yellow := Color(0.90, 0.76, 0.28, 0.85)
+	var e_top := Grid5.corridor_group_of(c + Vector2i(0, 1)) != gi
+	var e_bot := Grid5.corridor_group_of(c + Vector2i(0, -1)) != gi
+	var e_left := Grid5.corridor_group_of(c + Vector2i(-1, 0)) != gi
+	var e_right := Grid5.corridor_group_of(c + Vector2i(1, 0)) != gi
+	if e_top:
+		draw_rect(Rect2(rect.position, Vector2(rect.size.x, eb)), dark)
+	if e_bot:
+		draw_rect(Rect2(Vector2(rect.position.x, rect.end.y - eb), Vector2(rect.size.x, eb)), dark)
+	if e_left:
+		draw_rect(Rect2(rect.position, Vector2(eb, rect.size.y)), dark)
+	if e_right:
+		draw_rect(Rect2(Vector2(rect.end.x - eb, rect.position.y), Vector2(eb, rect.size.y)), dark)
+	var step := 16.0
+	var n := 0
+	var t := 0.0
+	while t < rect.size.x:
+		if n % 2 == 0:
+			var dw := minf(step * 0.6, rect.size.x - t)
+			if e_top:
+				draw_rect(Rect2(rect.position.x + t, rect.position.y, dw, eb), yellow)
+			if e_bot:
+				draw_rect(Rect2(rect.position.x + t, rect.end.y - eb, dw, eb), yellow)
+		t += step
+		n += 1
+	n = 0
+	t = 0.0
+	while t < rect.size.y:
+		if n % 2 == 0:
+			var dh := minf(step * 0.6, rect.size.y - t)
+			if e_left:
+				draw_rect(Rect2(rect.position.x, rect.position.y + t, eb, dh), yellow)
+			if e_right:
+				draw_rect(Rect2(rect.end.x - eb, rect.position.y + t, eb, dh), yellow)
+		t += step
+		n += 1
 
 
 func _draw_route(cells: Array, col: Color, index: int, selected: bool, warn: bool,

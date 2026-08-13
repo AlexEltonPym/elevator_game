@@ -116,10 +116,10 @@ const LEVELS := [
 		"rooms": [
 			{"type": "lobby", "cells": [Vector2i(0, 0), Vector2i(1, 0)],
 					"drops": [{"cell": Vector2i(1, 0), "dir": R}]},
-			{"type": "atrium", "cells": [Vector2i(3, 3), Vector2i(3, 4)],
+			{"type": "atrium", "cells": [Vector2i(3, 3), Vector2i(4, 3)],
 					"drops": [
 						{"cell": Vector2i(3, 3), "dir": L},
-						{"cell": Vector2i(3, 4), "dir": R}]},
+						{"cell": Vector2i(4, 3), "dir": R}]},
 			{"type": "office", "cells": [Vector2i(5, 6), Vector2i(6, 6)],
 					"drops": [{"cell": Vector2i(5, 6), "dir": L}]},
 		],
@@ -183,6 +183,46 @@ const LEVELS := [
 			{"w": 0.10, "from": "D", "to": "B"},
 			{"w": 0.10, "from": "A", "to": "E"},
 			{"w": 0.10, "from": "E", "to": "B"},
+		],
+	},
+	{
+		"id": "R-5",
+		"name": "Bottleneck",
+		"thesis": "one width-2 corridor, two lifts - only one fits, so they take turns",
+		"intro": "Walls pinch the middle to a single striped CORRIDOR. It is
+width 2 - room for exactly ONE normal lift at a time. Both
+lifts must thread it to reach the far side, so when they meet
+one waits at the mouth while the other passes. Send BLUE up
+the centre past A and B; send GREEN from C, through the
+corridor, on to D.",
+		"cols": 5, "rows": 7,
+		"blocked": [Vector2i(0, 3), Vector2i(1, 3), Vector2i(3, 3), Vector2i(4, 3)],
+		"corridors": [
+			{"cells": [Vector2i(2, 2), Vector2i(2, 3), Vector2i(2, 4)], "width": 2},
+		],
+		"rooms": [
+			{"type": "lobby", "cells": [Vector2i(0, 0), Vector2i(1, 0)],
+					"drops": [{"cell": Vector2i(1, 0), "dir": R}]},
+			{"type": "office", "cells": [Vector2i(0, 6), Vector2i(1, 6)],
+					"drops": [{"cell": Vector2i(1, 6), "dir": R}]},
+			{"type": "office", "cells": [Vector2i(3, 0), Vector2i(4, 0)],
+					"drops": [{"cell": Vector2i(4, 0), "dir": U}]},
+			{"type": "cafe", "cells": [Vector2i(3, 6), Vector2i(4, 6)],
+					"drops": [{"cell": Vector2i(4, 6), "dir": D}]},
+		],
+		"cards": [
+			{"name": "BLUE", "type": "standard", "color": COL_A},
+			{"name": "GREEN", "type": "standard", "color": COL_B},
+		],
+		"quota": 12, "max_lost": 8,
+		"spawn": {"interval_start": 3.2, "interval_end": 2.8, "ramp": 55.0,
+				"burst_min": 1, "burst_max": 2, "gap": 1.0},
+		"mix": {"visitor": 1.0},
+		"trips": [
+			{"w": 0.30, "from": "A", "to": "B"},
+			{"w": 0.20, "from": "B", "to": "A"},
+			{"w": 0.30, "from": "C", "to": "D"},
+			{"w": 0.20, "from": "D", "to": "C"},
 		],
 	},
 ]

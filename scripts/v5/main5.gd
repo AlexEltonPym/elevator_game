@@ -44,6 +44,7 @@ var _passengers_dirty := false
 var routes: Array = []
 var cars: Array = []
 var waiting := {} # room_id -> Array[Passenger5] in arrival order
+var corridors := {} # corridor group index -> {width, used, holders, queue}
 
 var log_served: Array = []
 var log_lost: Array = []
@@ -77,6 +78,9 @@ func _ready() -> void:
 	MAX_LOST = level.max_lost
 	routes = []
 	cars = []
+	for gi in Grid5.corridor_groups().size():
+		corridors[gi] = {"width": Grid5.corridor_group_width(gi), "used": 0,
+				"holders": [], "queue": []}
 	for rid in Grid5.room_count():
 		waiting[rid] = []
 	grid.game = self
@@ -380,6 +384,8 @@ func commit_route(i: int, cells: Array, closed := false) -> bool:
 	var r: Route5 = null
 	if cells.size() > 0:
 		var err := Route5.validate(cells, closed and cells.size() >= 4)
+		if err == "" and Grid5.route_min_corridor_width(cells) < cars[i].width:
+			err = "too wide for that corridor"
 		if err != "":
 			push_error("commit_route(%d) rejected: %s" % [i, err])
 			reject_card = i
@@ -463,26 +469,37 @@ func spawn_passenger(ptype: String, origin: int, dest: int) -> Passenger5:
 	active_passengers.append(p)
 	waiting[origin].append(p)
 	_compute_path_for(p)
+	p.start_board_walk()
 	return p
 
 
-## A rider stepped out of a car at `room` (a served room): served, or a transfer
-## (replan from here and rejoin that room's waiting pool).
-func on_alight(p, room: int) -> void:
-	p.riding = null
+## A rider stepped out of a car at dock `alight_cell` beside `room`. The rider
+## now WALKS from that dock to the room's anchor (real game-time); only when the
+## walk finishes (finish_alight) are they served or replanned for a transfer.
+func on_alight(p, alight_cell: Vector2i, room: int) -> void:
 	if not p.legs.is_empty():
 		p.legs.pop_front()
-	p.cur_room = room
-	if room == p.dest_room:
+	p.start_alight_walk(alight_cell, room)
+
+
+## The alight walk finished: at the destination they are served; otherwise this
+## is a transfer room, so replan from here and start a fresh board walk toward
+## the next leg's dock (rejoining the room's waiting pool).
+func finish_alight(p) -> void:
+	if p.cur_room == p.dest_room:
 		on_served(p)
 	else:
 		_compute_path_for(p)
-		waiting[room].append(p)
+		if not waiting[p.cur_room].has(p):
+			waiting[p.cur_room].append(p)
+		p.start_board_walk()
 
 
 func on_served(p) -> void:
 	p.active = false
 	_passengers_dirty = true
+	if waiting.has(p.cur_room):
+		waiting[p.cur_room].erase(p)
 	log_served.append({"type": p.ptype, "wait": p.wait_time, "rides": p.rides})
 	p.queue_free()
 	served += 1
@@ -501,7 +518,9 @@ func on_expired(p) -> void:
 		_lose()
 
 
-## Stack waiting passengers inside their room's footprint (visual only).
+## Position waiting passengers (visual only). Walkers and riders drive their own
+## position (walk tween / car slot); passengers standing READY at a dock stack by
+## that dock cell; everyone else (idle / no path) stacks inside the room footprint.
 func _reflow_queues() -> void:
 	for rid in waiting:
 		var rect := Grid5.room_rect(rid)
@@ -509,10 +528,72 @@ func _reflow_queues() -> void:
 		var base := rect.get_center() + Vector2(0.0, rect.size.y / 2.0 - 16.0)
 		var x := 0.0
 		var row := 0
+		var dock_stack := {} # dock cell -> count, so at_dock riders queue at the door
 		for p in waiting[rid]:
+			if p.riding != null or p.walk_left > 0.0:
+				continue # the tween / car slot owns this figure's position
+			if p.at_dock and not p.legs.is_empty():
+				var dcell: Vector2i = p.legs[0].board_cell
+				var k := int(dock_stack.get(dcell, 0))
+				dock_stack[dcell] = k + 1
+				p.position = Grid5.cell_center(dcell) + Vector2(0.0, -k * 20.0)
+				continue
 			var w := 24.0
 			if x > 0.0 and x + w > band:
 				row += 1
 				x = 0.0
 			p.position = base + Vector2(-band / 2.0 + x + w / 2.0, -row * 22.0)
 			x += w
+
+
+# ---------------------------------------------------------------- corridors
+
+## FIFO WIDTH-SHARED corridor mutex per contiguous corridor GROUP, ported from
+## v3 main3. A car may be inside only if car.width <= corridor.width AND the sum
+## of widths inside <= corridor.width, and only the FRONT of the queue is ever
+## admitted (strict FIFO, so a stream of pods can't starve a waiting normal car).
+## With the default corridor width 2 and a normal car at width 2 this is exactly
+## a one-lift mutex: the first car takes all the width, the next can't fit until
+## it leaves.
+func corridor_request(car, group: int) -> bool:
+	var g: Dictionary = corridors[group]
+	if g.holders.has(car):
+		return true
+	if car.width > g.width:
+		return false # too wide for this corridor, ever: never queue for it
+	if not g.queue.has(car):
+		g.queue.append(car)
+	if g.queue[0] == car and g.used + car.width <= g.width:
+		g.queue.pop_front()
+		g.holders.append(car)
+		g.used += car.width
+		return true
+	return false
+
+
+## Would corridor_request() succeed right now? A PURE PREDICATE (never queues) —
+## the braking lookahead asks it so a car that can't enter arrives at the mouth
+## already stopped.
+func corridor_free_for(car, group: int) -> bool:
+	var g: Dictionary = corridors[group]
+	if g.holders.has(car):
+		return true
+	if car.width > g.width:
+		return false
+	if not g.queue.is_empty() and g.queue[0] != car:
+		return false
+	return g.used + car.width <= g.width
+
+
+func corridor_release(car, group: int) -> void:
+	var g: Dictionary = corridors[group]
+	if g.holders.has(car):
+		g.holders.erase(car)
+		g.used -= car.width
+
+
+## Remove a car from every corridor queue/lock (route replaced or cleared).
+func corridor_cancel(car) -> void:
+	for gi in corridors:
+		corridors[gi].queue.erase(car)
+		corridor_release(car, gi)

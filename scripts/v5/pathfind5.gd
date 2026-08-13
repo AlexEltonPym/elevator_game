@@ -9,8 +9,11 @@ extends RefCounted
 ##            ride time between their dock cells (dist / speed)
 ##          + intermediate dock stops x Car5.stop_penalty()   (acceleration)
 ##          + LEG_WAIT (expected wait for the car)
-##          + WALK (the tiny in-room walk to the dock, a flat constant, NOT a
-##            pedestrian sim).
+##          + WALK: real board+alight walk time, Grid5.WALK_PER_TILE per Manhattan
+##            tile from room a's anchor to the boarding dock, plus from the
+##            alighting dock back to room b's anchor. This is the SAME formula the
+##            sim delays the passenger by, so the plan is priced against reality
+##            (v5.1 replaced the old flat WALK constant).
 ## A room served by 2+ cars is where legs join — that is a TRANSFER room, and it
 ## emerges for free because both cars contribute edges through that node.
 ##
@@ -19,7 +22,6 @@ extends RefCounted
 ##     "board_cell": Vector2i, "alight_cell": Vector2i }.
 
 const LEG_WAIT := 6.0
-const WALK := 0.6 # flat in-room walk added per leg (spec: ~0-1 s constant)
 const TIE_EPS := 0.5
 const INF_T := 1.0e18
 
@@ -51,8 +53,12 @@ static func find_path(start_room: int, dest_room: int, cars: Array,
 					continue
 				var ca: Vector2i = served[a]
 				var cb: Vector2i = served[b]
+				# Real walk: anchor(a) -> board dock, then alight dock -> anchor(b),
+				# the SAME delay the sim imposes per leg (v5.1).
+				var walk: float = float(Grid5.manhattan(Grid5.room_anchor(a), ca) \
+						+ Grid5.manhattan(cb, Grid5.room_anchor(b))) * Grid5.WALK_PER_TILE
 				var cost: float = route.ride_dist(ca, cb) / car.speed \
-						+ route.stops_between(ca, cb) * pen + LEG_WAIT + WALK + eps
+						+ route.stops_between(ca, cb) * pen + LEG_WAIT + walk + eps
 				if not edges.has(a):
 					edges[a] = []
 				edges[a].append({"to": b, "car": car, "board": ca, "alight": cb,
