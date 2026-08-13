@@ -550,7 +550,10 @@ func slot_position(p) -> Vector2:
 	var cols := maxi(1, width)
 	var col := i % cols
 	var row := int(i / float(cols))
-	return position + Vector2((col - (cols - 1) / 2.0) * 26.0, 12.0 - row * 20.0)
+	# Stand on the car FLOOR (base near the car's bottom edge, +BODY/2), matching how
+	# room figures stand on the room floor; extra rows step up into the car.
+	var base_y := BODY / 2.0 - 4.0 - 12.0
+	return position + Vector2((col - (cols - 1) / 2.0) * 26.0, base_y - row * 20.0)
 
 
 # ---------------------------------------------------------------- visuals

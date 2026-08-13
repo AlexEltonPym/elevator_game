@@ -127,9 +127,13 @@ const LEVELS := [
 			{"name": "BLUE", "type": "standard", "color": COL_A},
 			{"name": "GREEN", "type": "standard", "color": COL_B},
 		],
-		"quota": 14, "max_lost": 8,
-		"spawn": {"interval_start": 2.8, "interval_end": 2.3, "ramp": 60.0,
-				"burst_min": 1, "burst_max": 2, "gap": 0.9},
+		# CROWD STRESS (v5.1g): spawn is cranked WAY up so the rooms overflow into
+		# multiple isometric rows — a visual load test for the crowd packer. With so
+		# many arrivals two lifts can't keep pace, so R-3 is NOT expected to win here
+		# (max_lost is set high so it keeps running and piling instead of ending).
+		"quota": 24, "max_lost": 400,
+		"spawn": {"interval_start": 0.5, "interval_end": 0.4, "ramp": 20.0,
+				"burst_min": 4, "burst_max": 8, "gap": 0.15},
 		"mix": {"visitor": 1.0},
 		"trips": [
 			{"w": 0.44, "from": "A", "to": "C"},

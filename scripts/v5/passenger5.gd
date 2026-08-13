@@ -38,6 +38,10 @@ const ACT_DWELL_MIN := 0.8
 const ACT_DWELL_MAX := 2.2
 const BETWEEN_MIN := 1.0
 const BETWEEN_MAX := 2.0
+## Walkers moving into the room travel this many px raised (over the floor crowd)
+## and drop onto their slot at the end — so they clear their old spot at once and
+## don't cross the standing rows.
+const WALK_RAISE := 26.0
 
 var game = null # main5.gd
 var ptype := "visitor"
@@ -95,6 +99,13 @@ func setup(g, t: String, o: int, d: int) -> void:
 func _r(k: float) -> float:
 	var v: float = sin(salt * 91.7 + trip * 13.1 + k) * 43758.5453
 	return v - floorf(v)
+
+
+## This figure's unique raised-transit height: WALK_RAISE plus a deterministic
+## per-figure spread, so two walkers never travel along the same horizontal line
+## and cross. Purely visual.
+func _raise() -> Vector2:
+	return Vector2(0.0, -(WALK_RAISE + _r(7.0) * 30.0))
 
 
 ## Begin a trip's pre-board life: pick a far spawn tile in the current room, render
@@ -176,7 +187,9 @@ func tick(dt: float) -> void:
 func _activate() -> void:
 	activated = true
 	_begin_walk(Walk.MILL, spawn_cell, queue_cell)
-	walk_from = position # leave from the packed slot it is standing in
+	# Leave from the packed slot but a little RAISED, so it clears the spot instantly
+	# (the next spawn takes it) and travels over the floor crowd to its reserved slot.
+	walk_from = position + _raise()
 
 
 func _begin_walk(kind: int, from_cell: Vector2i, to_cell: Vector2i) -> void:
@@ -208,11 +221,11 @@ func start_board_walk() -> void:
 	var bc := Grid5.cell_center(board)
 	var approach := (bc - qc)
 	approach = approach.normalized() if approach.length() > 0.01 else Vector2(1, 0)
-	var perp := Vector2(-approach.y, approach.x)
-	# Leave from the actual slot it is standing in; fan out per lane at the dock so
-	# concurrent boarders don't converge on one pixel.
-	walk_from = position
-	walk_to = bc + perp * (board_lane * 14.0)
+	# Leave raised (a per-figure height, so boarders clear the advancing queue and
+	# don't share a transit line) and target a spot staggered BACK from the dock per
+	# lane (a single file, no convergence on the dock pixel).
+	walk_from = position + _raise()
+	walk_to = bc - approach * (board_lane * 18.0)
 	if walk_left <= 0.0:
 		walk_left = 0.0
 		_on_walk_done()
@@ -224,12 +237,16 @@ func start_board_walk() -> void:
 ## than tweening across the room. The DURATION is the tile distance (unchanged sim
 ## timing / Pathfind pricing); only the render position differs.
 func start_alight_walk(alight_cell: Vector2i, room: int) -> void:
-	riding = null
 	boarding_car = null
 	cur_room = room
 	milled = true
 	queue_cell = Grid5.room_queue(room)
 	_begin_walk(Walk.ALIGHT, alight_cell, queue_cell)
+	# Step off from the DISTINCT in-car slot it was riding in (raised, so it travels
+	# over the floor crowd); walk_to (its reserved room slot) is set by main5 each
+	# frame. Then drop riding so it leaves the car.
+	walk_from = position + _raise()
+	riding = null
 
 
 func _on_walk_done() -> void:
@@ -278,12 +295,13 @@ func _process(delta: float) -> void:
 	if riding != null:
 		position = riding.slot_position(self)
 	elif walk_left > 0.0 and walk_total > 0.0 \
-			and (walk_kind == Walk.MILL or walk_kind == Walk.BOARD):
-		# Only the mill (spawn -> queue) and board (queue -> dock) walks animate.
+			and (walk_kind == Walk.MILL or walk_kind == Walk.BOARD or walk_kind == Walk.ALIGHT):
+		# Mill (spawn->queue), board (queue->dock) and alight (car->room slot) all
+		# animate. The alight walk_to is the reserved room slot (set by main5), so
+		# stepping off is a short walk, not a pop, and never lands on another figure.
 		var f := clampf(1.0 - walk_left / walk_total, 0.0, 1.0)
 		position = _ortho_point(walk_from, walk_to, f)
-	# Alighting / between figures are owned by the crowd packer (see main5), so they
-	# drop straight into a non-overlapping slot the instant they step off the car.
+	# Between figures are owned by the crowd packer.
 	queue_redraw()
 
 

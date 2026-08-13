@@ -211,9 +211,9 @@ func _process(_delta: float) -> bool:
 		if ci < a.serve_sizes.size() and a.serve_sizes[ci] != exp[ci]:
 			ok = false
 			notes.append("serves[%d]=%d!=%d" % [ci, a.serve_sizes[ci], exp[ci]])
-	if lv.id == "R-5" and not (a.state == "WIN"):
-		pass # win asserted below via state anyway
-	if a.state != "WIN":
+	# R-3 runs a deliberate CROWD STRESS spawn and is NOT required to win; the other
+	# four keep normal spawns and must WIN. (det / served / transfer still checked.)
+	if a.state != "WIN" and lv.id != "R-3":
 		ok = false
 		notes.append("not-WIN")
 	if not ok:
