@@ -25,11 +25,6 @@ const BODY := 60.0
 const EPS_D := 1.0e-6
 const EPS_V := 1.0e-9
 const MAX_SCAN_CELLS := 24
-# Elevator dwells (v5.1c): a brief seeded/fixed pause at a ping-pong line END
-# (also the start, idx 0) before reversing, and at a loop's start cell each empty
-# lap. Small enough not to wreck throughput.
-const END_DWELL := 0.8
-const LOOP_DWELL := 0.8
 
 const DECEL_RATIO := 1.25
 const CAR_TYPES := {
@@ -69,7 +64,6 @@ var held_gates: Array = []
 var waiting_gate := false
 var gate_wait_total := 0.0 # game-seconds spent blocked at corridors (stat)
 var gate_transits := 0 # corridor lock acquisitions (stat)
-var _dwell_timer := 0.0 # end / loop-start dwell remaining
 
 
 func setup(g, i: int, card: Dictionary) -> void:
@@ -144,7 +138,6 @@ func set_route(r) -> void:
 	waiting_gate = false
 	_boarding.clear()
 	_board_hold = 0.0
-	_dwell_timer = 0.0
 	route = r
 	idx = 0
 	seg_t = 0.0
@@ -236,7 +229,7 @@ func _stop_distance(need: float) -> float:
 	var r = route
 	var n: int = r.cells.size()
 	if not _has_work():
-		return need # nothing to do: park at the very next centre
+		return _dist_home(need) # no work: coast home (the path end / loop start) and park
 	var scan := 2 + int(speed * speed / (2.0 * decel) / Grid5.CELL)
 	scan = mini(scan, mini(MAX_SCAN_CELLS, n))
 	var d := need
@@ -342,18 +335,66 @@ func _decide_at_center() -> bool:
 	if _has_work():
 		idle = false
 		return _depart(_pingpong_target())
-	idle = true
-	return false
+	# No work: rest at home (the path end / loop start). Deadhead there, then park
+	# indefinitely — the car does NOT keep cycling empty.
+	if idx == 0:
+		idle = true
+		return false
+	idle = false
+	return _depart_home()
 
 
+## "Called": a rider still aboard to deliver, or a boardable waiter (one that has
+## reached its queue tile) whose current leg names THIS car. A passenger merely
+## planning onto this car but still spawning / milling does NOT wake it.
 func _has_work() -> bool:
 	if not riders.is_empty():
 		return true
 	for rid in game.waiting:
 		for p in game.waiting[rid]:
-			if not p.legs.is_empty() and p.legs[0].car == self:
+			if p.is_waiting_to_board() and p.legs[0].car == self:
 				return true
 	return false
+
+
+## Depart toward home (idx 0): the reversing end of an open line, or forward around
+## a loop to its start. Acquires the corridor ahead like a normal departure.
+func _depart_home() -> bool:
+	var want := 1 if route.closed else (-1 if idx > 0 else 1)
+	if want != dir:
+		vel = 0.0
+	dir = want
+	var next: Vector2i = route.cells[_wrap_idx(idx + dir)]
+	var gi := Grid5.corridor_group_of(next)
+	if gi != -1 and not held_gates.has(gi):
+		if game.corridor_request(self, gi):
+			held_gates.append(gi)
+			gate_transits += 1
+		else:
+			waiting_gate = true
+			return false
+	waiting_gate = false
+	return true
+
+
+## Path distance (px) from here to home (idx 0) in the current travel direction,
+## so an idle car brakes to REST at home rather than at every centre.
+func _dist_home(need: float) -> float:
+	if idx == 0:
+		return need
+	var n: int = route.cells.size()
+	var d := need
+	var j := idx
+	var guard := 0
+	while guard < n + 2:
+		guard += 1
+		j = _wrap_idx(j + dir)
+		if j == 0:
+			return d
+		if not route.closed and (j <= 0 or j >= n - 1):
+			return d
+		d += Grid5.CELL
+	return d
 
 
 ## Would the car stop at `cell`: a dock where a rider alights, or a boarder in a
@@ -425,14 +466,6 @@ func _arrive_center() -> void:
 			held_gates.erase(g)
 	if _wants_stop(cell):
 		_begin_stop()
-		return
-	# End / loop-start dwell: a brief pause before reversing (open) or each empty
-	# lap (closed), and — since idx 0 is a line end — before the first departure.
-	if route.closed:
-		if idx == 0 and riders.is_empty():
-			_dwell_timer = maxf(_dwell_timer, LOOP_DWELL)
-	elif idx == 0 or idx == route.cells.size() - 1:
-		_dwell_timer = maxf(_dwell_timer, END_DWELL)
 
 
 func _update_position() -> void:
@@ -474,6 +507,7 @@ func _assign_boarders() -> void:
 			var leg: Dictionary = p.legs[0]
 			if leg.car == self and leg.board_cell == cell and fits(p.width) and free_slots() >= p.width:
 				p.boarding_car = self
+				p.board_lane = _boarding.size()
 				_boarding.append(p)
 				p.start_board_walk()
 				stop_moves += 1

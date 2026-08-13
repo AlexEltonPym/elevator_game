@@ -562,10 +562,14 @@ func on_expired(p) -> void:
 
 ## Position waiting passengers (visual only). Riders and walkers drive their own
 ## position (car slot / orthogonal walk tween); a MILLING passenger idles at its
-## spawn tile; one that has reached the queue tile stacks there by the door.
+## spawn tile; those that have reached the queue tile form a spaced SINGLE-FILE
+## line leading up to the dock (nearest the dock first) so they never overlap.
 func _reflow_queues() -> void:
 	for rid in waiting:
-		var qbase := Grid5.cell_center(Grid5.room_queue(rid))
+		var qcell := Grid5.room_queue(rid)
+		var qc := Grid5.cell_center(qcell)
+		var approach := Grid5.cell_center(qcell + Grid5.room_queue_dir(rid)) - qc
+		approach = approach.normalized() if approach.length() > 0.01 else Vector2(1, 0)
 		var qn := 0
 		for p in waiting[rid]:
 			if p.riding != null or p.walk_left > 0.0:
@@ -573,7 +577,7 @@ func _reflow_queues() -> void:
 			if not p.milled:
 				p.position = Grid5.cell_center(p.spawn_cell) + p.spawn_jitter
 			else:
-				p.position = qbase + Vector2(((qn % 2) - 0.5) * 26.0, -int(qn / 2) * 20.0)
+				p.position = qc - approach * (qn * 24.0)
 				qn += 1
 
 

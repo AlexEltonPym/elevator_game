@@ -68,6 +68,7 @@ var far_cell := Vector2i.ZERO
 var spawn_jitter := Vector2.ZERO
 var dwell_left := 0.0
 var between_left := 0.0
+var board_lane := 0 # position in this stop's boarding queue (spaces the approach)
 
 # Walk state (sim). walk_left > 0 => walking; walk_kind says what completes it.
 var walk_kind := Walk.NONE
@@ -101,23 +102,30 @@ func _r(k: float) -> float:
 ## there INACTIVE (no patience yet), and set the activation dwell.
 func begin_life() -> void:
 	queue_cell = Grid5.room_queue(cur_room)
-	var cells: Array = Grid5.room_cells(cur_room)
-	var far_opts: Array = []
-	for c in cells:
-		if c != queue_cell:
-			far_opts.append(c)
-	if far_opts.is_empty():
-		far_opts = cells
-	far_cell = far_opts[int(_r(1.0) * far_opts.size()) % far_opts.size()]
+	far_cell = _pick_far()
 	spawn_cell = far_cell
 	spawn_jitter = Vector2((_r(2.0) - 0.5) * 30.0, (_r(3.0) - 0.5) * 24.0)
 	dwell_left = ACT_DWELL_MIN + (ACT_DWELL_MAX - ACT_DWELL_MIN) * _r(4.0)
 	activated = false
 	between = false
 	milled = false
+	board_lane = 0
 	walk_kind = Walk.NONE
 	walk_left = 0.0
 	position = Grid5.cell_center(spawn_cell) + spawn_jitter
+
+
+## A non-queue tile in the CURRENT room (a real room cell), deterministic. Used
+## as the spawn tile and the in-place "opposite tile" a finished figure retires to.
+func _pick_far() -> Vector2i:
+	var cells: Array = Grid5.room_cells(cur_room)
+	var opts: Array = []
+	for c in cells:
+		if c != queue_cell:
+			opts.append(c)
+	if opts.is_empty():
+		opts = cells
+	return opts[int(_r(1.0) * opts.size()) % opts.size()]
 
 
 ## Patience is only running once activated, while genuinely waiting (not aboard,
@@ -184,11 +192,28 @@ func _begin_walk(kind: int, from_cell: Vector2i, to_cell: Vector2i) -> void:
 
 
 ## Board walk (called by the assigning car): queue tile -> the leg's boarding dock.
+## `board_lane` (order in this stop's boarding queue) offsets the visual approach —
+## boarders start single-file behind the queue tile and fan out at the dock — so
+## they never stack on the same pixel. The DURATION is still the tile distance, so
+## sim timing / Pathfind pricing are untouched.
 func start_board_walk() -> void:
 	if legs.is_empty():
 		walk_left = 0.0
 		return
-	_begin_walk(Walk.BOARD, queue_cell, legs[0].board_cell)
+	var board: Vector2i = legs[0].board_cell
+	walk_kind = Walk.BOARD
+	walk_total = Grid5.manhattan(queue_cell, board) * Grid5.WALK_PER_TILE
+	walk_left = walk_total
+	var qc := Grid5.cell_center(queue_cell)
+	var bc := Grid5.cell_center(board)
+	var approach := (bc - qc)
+	approach = approach.normalized() if approach.length() > 0.01 else Vector2(1, 0)
+	var perp := Vector2(-approach.y, approach.x)
+	walk_from = qc - approach * (board_lane * 20.0)
+	walk_to = bc + perp * (board_lane * 14.0)
+	if walk_left <= 0.0:
+		walk_left = 0.0
+		_on_walk_done()
 
 
 ## Alight walk: the alighting dock -> the room's queue tile.
@@ -221,6 +246,10 @@ func begin_between() -> void:
 	activated = false
 	milled = false
 	between_left = BETWEEN_MIN + (BETWEEN_MAX - BETWEEN_MIN) * _r(5.0)
+	# The opposite tile in the CURRENT (destination) room — a real room cell, so the
+	# figure retires IN PLACE and never slides toward another room / off the grid.
+	queue_cell = Grid5.room_queue(cur_room)
+	far_cell = _pick_far()
 	_begin_walk(Walk.COSMETIC, queue_cell, far_cell)
 
 
@@ -263,17 +292,17 @@ func _ortho_point(a: Vector2, b: Vector2, f: float) -> Vector2:
 
 
 func _draw() -> void:
-	# Finished / inactive / between-trip people keep their NORMAL colour; the only
-	# difference is they show no impatience bar (patience is not running).
+	# Finished / inactive / between-trip people keep their EXACT normal colour and
+	# look; the ONLY difference is they show no impatience bar (patience is not
+	# running). The centre destination chip is always drawn so the body never reads
+	# as a different (brighter) shade.
 	var col: Color = PTYPES.get(ptype, PTYPES.visitor).color
 	draw_circle(Vector2.ZERO, 10.0, col)
 	draw_arc(Vector2.ZERO, 10.0, 0.0, TAU, 24, Color(0, 0, 0, 0.45), 2.0)
-	# Destination chip (hidden between trips, when it has no active goal).
-	if not between:
-		draw_rect(Rect2(Vector2(-7.0, -8.0), Vector2(14.0, 16.0)), Color(1, 1, 1, 0.85))
-		draw_string(ThemeDB.fallback_font, Vector2(-5.0, 5.0),
-				Grid5.room_letter(dest_room),
-				HORIZONTAL_ALIGNMENT_CENTER, -1.0, 13, Color(0.1, 0.1, 0.1))
+	draw_rect(Rect2(Vector2(-7.0, -8.0), Vector2(14.0, 16.0)), Color(1, 1, 1, 0.85))
+	draw_string(ThemeDB.fallback_font, Vector2(-5.0, 5.0),
+			Grid5.room_letter(dest_room),
+			HORIZONTAL_ALIGNMENT_CENTER, -1.0, 13, Color(0.1, 0.1, 0.1))
 	if patience_running():
 		var w := 26.0
 		var top := -20.0

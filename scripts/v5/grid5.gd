@@ -106,18 +106,20 @@ static func load_level(level: Dictionary) -> void:
 		for d in rm.get("drops", []):
 			var dock: Vector2i = d.cell + d.dir
 			drops.append({"cell": d.cell, "dir": d.dir, "dock": dock})
-			door_cells[d.cell] = true
+			door_cells[d.cell] = d.dir
 			if not _dock_of.has(dock):
 				_dock_of[dock] = []
 			if not _dock_of[dock].has(i):
 				_dock_of[dock].append(i)
 			_dock_marks.append({"room_id": i, "cell": d.cell, "dir": d.dir, "dock": dock})
 		var ctr := _cells_center(cells)
+		var qcell: Vector2i = _pick_queue(cells, door_cells, ctr)
 		_rooms.append({
 			"type": str(rm.type), "cells": cells, "letter": ROOM_LETTERS.substr(i, 1),
 			"drops": drops, "center": ctr, "rect": _cells_rect(cells),
 			"anchor": _closest_cell(cells, ctr),
-			"queue": _pick_queue(cells, door_cells, ctr)})
+			"queue": qcell,
+			"queue_dir": door_cells.get(qcell, Vector2i(1, 0))})
 
 
 ## The room's QUEUE cell: the boardable waiting tile NEAR the dock — a room DOOR
@@ -225,6 +227,14 @@ static func room_queue(id: int) -> Vector2i:
 	if id < 0 or id >= _rooms.size():
 		return Vector2i(-1, -1)
 	return _rooms[id].queue
+
+
+## The direction from the queue tile toward its dock — the boarding queue lines up
+## behind the queue tile along the opposite of this.
+static func room_queue_dir(id: int) -> Vector2i:
+	if id < 0 or id >= _rooms.size():
+		return Vector2i(1, 0)
+	return _rooms[id].queue_dir
 
 
 static func manhattan(a: Vector2i, b: Vector2i) -> int:
