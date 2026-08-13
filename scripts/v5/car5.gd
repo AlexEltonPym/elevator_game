@@ -55,6 +55,8 @@ var exchange_elapsed := 0.0
 var stop_moves := 0
 var idle := false
 var riders: Array = []
+var _boarding: Array = [] # passengers assigned to board this stop, still walking in
+var _board_hold := 0.0 # door-hold this stop must cover (max boarder walk time)
 var vis_t := 0.0
 # Corridor mutex (v5.1, ported from v3 car3). held_gates = corridor GROUP indices
 # this car currently holds; waiting_gate = blocked at a corridor mouth this tick.
@@ -107,7 +109,10 @@ func used_slots() -> int:
 
 
 func free_slots() -> int:
-	return capacity - used_slots()
+	var reserved := 0
+	for p in _boarding:
+		reserved += p.width
+	return capacity - used_slots() - reserved
 
 
 func _wrap_idx(i: int) -> int:
@@ -131,6 +136,8 @@ func set_route(r) -> void:
 		game.corridor_cancel(self)
 	held_gates.clear()
 	waiting_gate = false
+	_boarding.clear()
+	_board_hold = 0.0
 	route = r
 	idx = 0
 	seg_t = 0.0
@@ -164,7 +171,6 @@ func _move_tick(dt: float) -> void:
 		guard += 1
 		match door_state:
 			DoorState.OPENING:
-				_load_waiting()
 				if door_timer > rem:
 					door_timer -= rem
 					rem = 0.0
@@ -174,10 +180,11 @@ func _move_tick(dt: float) -> void:
 					door_state = DoorState.EXCHANGE
 					exchange_elapsed = 0.0
 					_unload()
-					_load_waiting()
+					_assign_boarders() # snapshot boarders; they walk in during the hold
 			DoorState.EXCHANGE:
-				_load_waiting()
-				var dur := maxf(EXCHANGE_MIN, EXCHANGE_PER_MOVE * stop_moves)
+				# Hold the doors long enough for the assigned boarders to walk to the
+				# dock (max of their walk times) on top of the base exchange time.
+				var dur := maxf(maxf(EXCHANGE_MIN, EXCHANGE_PER_MOVE * stop_moves), _board_hold)
 				var left := maxf(0.0, dur - exchange_elapsed)
 				if left > rem:
 					exchange_elapsed += rem
@@ -323,6 +330,8 @@ func _decide_at_center() -> bool:
 		idle = false
 		_begin_stop()
 		return false
+	if not _boarding.is_empty():
+		_release_boarders()
 	if _has_work():
 		idle = false
 		return _depart(_pingpong_target())
@@ -354,7 +363,7 @@ func _wants_stop(cell: Vector2i) -> bool:
 			if p.legs.is_empty():
 				continue
 			var leg: Dictionary = p.legs[0]
-			if p.at_dock and leg.car == self and leg.board_cell == cell and fits(p.width) \
+			if p.is_waiting_to_board() and leg.car == self and leg.board_cell == cell and fits(p.width) \
 					and free >= p.width:
 				return true
 	return false
@@ -364,6 +373,8 @@ func _begin_stop() -> void:
 	door_state = DoorState.OPENING
 	door_timer = DOOR_OPEN_T
 	stop_moves = 0
+	_board_hold = 0.0
+	_boarding.clear()
 	vel = 0.0
 
 
@@ -431,23 +442,53 @@ func _unload() -> void:
 			game.on_alight(r, cell, r.legs[0].to_room)
 
 
-func _load_waiting() -> void:
+## At door-open: snapshot the waiting passengers boarding here (greedy, up to
+## capacity), reserve their space, start each one walking from its tile to the
+## dock, and record the longest walk so the exchange can hold the doors for it.
+## Anyone not assigned now (arrived late, no space) catches the next stop.
+func _assign_boarders() -> void:
+	if route == null:
+		return
 	var cell: Vector2i = route.cells[idx]
-	if route == null or not route.is_dropoff(cell):
+	if not route.is_dropoff(cell):
 		return
 	for rid in route.rooms_of_cell(cell):
 		for p in game.waiting.get(rid, []).duplicate():
-			if p.legs.is_empty():
+			if not p.is_waiting_to_board():
 				continue
 			var leg: Dictionary = p.legs[0]
-			if p.at_dock and leg.car == self and leg.board_cell == cell and fits(p.width) \
-					and free_slots() >= p.width:
-				game.waiting[rid].erase(p)
-				p.riding = self
-				p.no_path = false
-				p.rides += 1
-				riders.append(p)
+			if leg.car == self and leg.board_cell == cell and fits(p.width) and free_slots() >= p.width:
+				p.boarding_car = self
+				_boarding.append(p)
+				p.start_board_walk()
 				stop_moves += 1
+				_board_hold = maxf(_board_hold, p.walk_total)
+
+
+## An assigned boarder finished walking to the dock: it boards now (its space was
+## reserved at assignment). Called from Passenger5 when its board walk completes.
+func _board_arrived(p) -> void:
+	if not _boarding.has(p):
+		return
+	_boarding.erase(p)
+	if game.waiting.has(p.cur_room):
+		game.waiting[p.cur_room].erase(p)
+	p.riding = self
+	p.boarding_car = null
+	p.no_path = false
+	p.rides += 1
+	riders.append(p)
+
+
+## Release any still-walking assigned boarders (car is leaving): they return to
+## waiting in the room and catch the next stop. Normally never fires because the
+## door hold covers every assigned walk.
+func _release_boarders() -> void:
+	for p in _boarding.duplicate():
+		p.boarding_car = null
+		p.walk_left = 0.0
+	_boarding.clear()
+	_board_hold = 0.0
 
 
 ## Where a rider stands inside the car (width-units per row).

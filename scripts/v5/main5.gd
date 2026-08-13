@@ -469,7 +469,6 @@ func spawn_passenger(ptype: String, origin: int, dest: int) -> Passenger5:
 	active_passengers.append(p)
 	waiting[origin].append(p)
 	_compute_path_for(p)
-	p.start_board_walk()
 	return p
 
 
@@ -492,7 +491,6 @@ func finish_alight(p) -> void:
 		_compute_path_for(p)
 		if not waiting[p.cur_room].has(p):
 			waiting[p.cur_room].append(p)
-		p.start_board_walk()
 
 
 func on_served(p) -> void:
@@ -518,9 +516,9 @@ func on_expired(p) -> void:
 		_lose()
 
 
-## Position waiting passengers (visual only). Walkers and riders drive their own
-## position (walk tween / car slot); passengers standing READY at a dock stack by
-## that dock cell; everyone else (idle / no path) stacks inside the room footprint.
+## Position waiting passengers (visual only). Riders and walkers drive their own
+## position (car slot / orthogonal walk tween); everyone else waits stacked inside
+## the room footprint until a car stops and assigns them.
 func _reflow_queues() -> void:
 	for rid in waiting:
 		var rect := Grid5.room_rect(rid)
@@ -528,16 +526,9 @@ func _reflow_queues() -> void:
 		var base := rect.get_center() + Vector2(0.0, rect.size.y / 2.0 - 16.0)
 		var x := 0.0
 		var row := 0
-		var dock_stack := {} # dock cell -> count, so at_dock riders queue at the door
 		for p in waiting[rid]:
 			if p.riding != null or p.walk_left > 0.0:
-				continue # the tween / car slot owns this figure's position
-			if p.at_dock and not p.legs.is_empty():
-				var dcell: Vector2i = p.legs[0].board_cell
-				var k := int(dock_stack.get(dcell, 0))
-				dock_stack[dcell] = k + 1
-				p.position = Grid5.cell_center(dcell) + Vector2(0.0, -k * 20.0)
-				continue
+				continue # the walk tween / car slot owns this figure's position
 			var w := 24.0
 			if x > 0.0 and x + w > band:
 				row += 1

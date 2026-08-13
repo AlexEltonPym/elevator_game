@@ -153,17 +153,17 @@ const LEVELS := [
 					"drops": [
 						{"cell": Vector2i(1, 1), "dir": L},
 						{"cell": Vector2i(2, 1), "dir": R},
-						{"cell": Vector2i(2, 2), "dir": U}]},
+						{"cell": Vector2i(2, 2), "dir": R}]},
 			{"type": "lobby", "cells": [Vector2i(5, 0), Vector2i(6, 0)],
 					"drops": [
-						{"cell": Vector2i(5, 0), "dir": U},
+						{"cell": Vector2i(5, 0), "dir": L},
 						{"cell": Vector2i(6, 0), "dir": R}]},
 			{"type": "office", "cells": [Vector2i(0, 5), Vector2i(1, 5)],
 					"drops": [{"cell": Vector2i(1, 5), "dir": R}]},
 			{"type": "office", "cells": [Vector2i(6, 5), Vector2i(7, 5)],
 					"drops": [{"cell": Vector2i(6, 5), "dir": L}]},
 			{"type": "cafe", "cells": [Vector2i(3, 7), Vector2i(4, 7)],
-					"drops": [{"cell": Vector2i(3, 7), "dir": D}]},
+					"drops": [{"cell": Vector2i(3, 7), "dir": L}]},
 		],
 		"cards": [
 			{"name": "LIFT A", "type": "standard", "color": COL_A},
@@ -195,8 +195,9 @@ lifts must thread it to reach the far side, so when they meet
 one waits at the mouth while the other passes. Send BLUE up
 the centre past A and B; send GREEN from C, through the
 corridor, on to D.",
-		"cols": 5, "rows": 7,
-		"blocked": [Vector2i(0, 3), Vector2i(1, 3), Vector2i(3, 3), Vector2i(4, 3)],
+		"cols": 6, "rows": 7,
+		"blocked": [Vector2i(0, 3), Vector2i(1, 3), Vector2i(3, 3), Vector2i(4, 3),
+				Vector2i(5, 3)],
 		"corridors": [
 			{"cells": [Vector2i(2, 2), Vector2i(2, 3), Vector2i(2, 4)], "width": 2},
 		],
@@ -205,10 +206,10 @@ corridor, on to D.",
 					"drops": [{"cell": Vector2i(1, 0), "dir": R}]},
 			{"type": "office", "cells": [Vector2i(0, 6), Vector2i(1, 6)],
 					"drops": [{"cell": Vector2i(1, 6), "dir": R}]},
-			{"type": "office", "cells": [Vector2i(3, 0), Vector2i(4, 0)],
-					"drops": [{"cell": Vector2i(4, 0), "dir": U}]},
-			{"type": "cafe", "cells": [Vector2i(3, 6), Vector2i(4, 6)],
-					"drops": [{"cell": Vector2i(4, 6), "dir": D}]},
+			{"type": "office", "cells": [Vector2i(4, 0), Vector2i(5, 0)],
+					"drops": [{"cell": Vector2i(4, 0), "dir": L}]},
+			{"type": "cafe", "cells": [Vector2i(4, 6), Vector2i(5, 6)],
+					"drops": [{"cell": Vector2i(4, 6), "dir": L}]},
 		],
 		"cards": [
 			{"name": "BLUE", "type": "standard", "color": COL_A},

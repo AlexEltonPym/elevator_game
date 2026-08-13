@@ -2,22 +2,24 @@ class_name Passenger5
 extends Node2D
 ## One v5 passenger. Spawns INSIDE a room (origin), wants another ROOM (dest),
 ## and waits rendered inside its current room. Holds a planned path (Array of
-## legs, see pathfind5.gd) and a patience meter that drains only while waiting.
-## Adapted from scripts/v3/passenger3.gd; the destination shown is a room letter.
+## legs, see pathfind5.gd) and a patience meter that drains only while it is
+## waiting in the room. Adapted from scripts/v3/passenger3.gd.
 ##
-## WALK TIME (v5.1). Boarding and alighting are no longer instant hops. Getting a
-## plan starts a BOARD walk from the room's anchor cell to the leg's boarding
-## dock; only when that walk finishes is the passenger `at_dock` (boardable). If the
-## car's doors close before they arrive, they simply catch the next stop (like v4
-## late arrivals). Alighting starts an ALIGHT walk from the dock back to the
-## room's anchor; only when it finishes are they served (or replanned for a
-## transfer). Walk duration = Manhattan tiles * Grid5.WALK_PER_TILE, the exact
-## cost Pathfind5 prices — no collision, no congestion, fully deterministic.
+## WALK TIME (v5.1). A waiting passenger stays at its in-room tile. It does NOT
+## pre-walk to the dock. Only when the elevator it wants STOPS at the adjacent
+## dock and opens its doors with space does the car ASSIGN the passenger, at which
+## point it walks (orthogonally) from its tile to the dock and boards on arrival.
+## The car holds the doors open long enough to cover its boarders' walks (see
+## car5._assign_boarders). Alighting: the rider steps off onto the dock at door
+## open, then walks dock->room and is served / replanned on arrival; the car does
+## NOT wait for alighters. Walk duration = Manhattan tiles * Grid5.WALK_PER_TILE,
+## the exact cost Pathfind5 prices; the board walk now lands inside the (extended)
+## door exchange, so it is additive to journey time just as the planner assumes.
 ##
-## The figure TWEENS along the walk for legibility: `_process` reads the logical
-## walk progress (`walk_left`) and interpolates position. That is VISUAL ONLY and
-## never writes back into the sim, so a headless run (where _process is off) is
-## bit-identical to a windowed one.
+## The figure walks a right-angle TILE path (X axis then Y axis), never a diagonal
+## lerp — `_process` reads the logical progress (`walk_left`) and places the figure
+## along that orthogonal path. Visual only; it never writes back into the sim, so
+## a headless run (where _process is off) is bit-identical to a windowed one.
 
 const PTYPES := {
 	"visitor": {"width": 1, "patience": 90.0, "color": Color(0.35, 0.85, 0.45)},
@@ -35,6 +37,7 @@ var patience_max := 90.0
 var patience := 90.0
 var legs: Array = [] # remaining legs; legs[0] is current
 var riding = null # Car5 while aboard, else null
+var boarding_car = null # Car5 that has assigned this passenger to board this stop
 var no_path := false
 var active := true
 var vis_t := 0.0
@@ -43,13 +46,12 @@ var rides := 0
 var salt := 0.0
 
 # Walk state (sim). walk_left > 0 => currently walking; walk_alight tells the
-# completion handler whether this was a board walk (-> at_dock) or an alight walk
-# (-> served / transfer). at_dock => board walk done, standing at the dock.
+# completion handler whether this was a board walk (-> board the car) or an alight
+# walk (-> served / transfer).
 var walk_left := 0.0
 var walk_total := 0.0
 var walk_alight := false
-var at_dock := false
-# Visual endpoints (logical px) for the tween — read by _process only.
+# Visual endpoints (logical px) for the orthogonal tween — read by _process only.
 var walk_from := Vector2.ZERO
 var walk_to := Vector2.ZERO
 
@@ -68,28 +70,36 @@ func setup(g, t: String, o: int, d: int) -> void:
 	patience = patience_max
 
 
+## Waiting in the room with a plan, not yet walking or assigned: a boarder a
+## stopped car may pick up. Patience drains only in this state.
+func is_waiting_to_board() -> bool:
+	return active and riding == null and boarding_car == null \
+			and walk_left <= 0.0 and not legs.is_empty()
+
+
 func tick(dt: float) -> void:
 	if not active:
 		return
 	if riding != null:
 		return # aboard: no walk, no patience drain
-	# Not aboard: patience drains whether idling, walking, or waiting at the dock.
-	patience -= dt
+	var pure_wait := boarding_car == null and walk_left <= 0.0
 	wait_time += dt
 	if walk_left > 0.0:
 		walk_left -= dt
 		if walk_left <= 0.0:
 			walk_left = 0.0
 			_on_walk_done()
-	if patience <= 0.0 and active:
-		active = false
-		game.on_expired(self)
+	elif pure_wait:
+		patience -= dt
+		if patience <= 0.0 and active:
+			active = false
+			game.on_expired(self)
 
 
-## Begin the board walk: room anchor -> the current leg's boarding dock. The tile
-## distance is what delays boarding; the figure slides toward the car meanwhile.
+## Begin the board walk (called by the car that assigned this passenger): from
+## the passenger's in-room tile to the current leg's boarding dock. The duration
+## is the tile distance the car must hold its doors for.
 func start_board_walk() -> void:
-	at_dock = false
 	walk_alight = false
 	if legs.is_empty():
 		walk_left = 0.0
@@ -100,7 +110,7 @@ func start_board_walk() -> void:
 	var tiles := Grid5.manhattan(anchor, board)
 	walk_total = tiles * Grid5.WALK_PER_TILE
 	walk_left = walk_total
-	walk_from = Grid5.cell_center(anchor)
+	walk_from = position # wherever it was standing in the room
 	walk_to = Grid5.cell_center(board)
 	if walk_left <= 0.0:
 		walk_left = 0.0
@@ -111,7 +121,7 @@ func start_board_walk() -> void:
 ## finishes is the passenger served (or replanned onto the next leg).
 func start_alight_walk(alight_cell: Vector2i, room: int) -> void:
 	riding = null
-	at_dock = false
+	boarding_car = null
 	walk_alight = true
 	cur_room = room
 	var anchor := Grid5.room_anchor(room)
@@ -128,8 +138,8 @@ func start_alight_walk(alight_cell: Vector2i, room: int) -> void:
 func _on_walk_done() -> void:
 	if walk_alight:
 		game.finish_alight(self)
-	else:
-		at_dock = true # standing at the dock, now boardable
+	elif boarding_car != null:
+		boarding_car._board_arrived(self)
 
 
 func _process(delta: float) -> void:
@@ -138,8 +148,22 @@ func _process(delta: float) -> void:
 		position = riding.slot_position(self)
 	elif walk_left > 0.0 and walk_total > 0.0:
 		var f := clampf(1.0 - walk_left / walk_total, 0.0, 1.0)
-		position = walk_from.lerp(walk_to, f)
+		position = _ortho_point(walk_from, walk_to, f)
 	queue_redraw()
+
+
+## Right-angle path from a to b: cover the X axis first, then the Y axis, at a
+## constant pace over the whole Manhattan length. Deterministic axis order.
+func _ortho_point(a: Vector2, b: Vector2, f: float) -> Vector2:
+	var dx := b.x - a.x
+	var dy := b.y - a.y
+	var total := absf(dx) + absf(dy)
+	if total <= 0.001:
+		return b
+	var d := f * total
+	if d <= absf(dx):
+		return Vector2(a.x + signf(dx) * d, a.y)
+	return Vector2(b.x, a.y + signf(dy) * (d - absf(dx)))
 
 
 func _draw() -> void:
