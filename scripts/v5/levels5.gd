@@ -233,40 +233,50 @@ corridor, on to D.",
 	{
 		"id": "R-6",
 		"name": "Squeeze",
-		"thesis": "one shared column, cap 2 - two lifts can't both thread a tile, so snake around",
-		"intro": "The centre column is CAPPED: the amber pips show how many lift-
-widths a tile can carry (2 here). A and C want one lift; B and D
-the other - but their doors interleave up the column, so the two
-routes cannot both run straight. Thread one lift out into the
-open right lane to squeeze past the other.",
-		"cols": 5, "rows": 7,
+		"thesis": "a capped shared shaft - two lifts must SPLIT it and hand off at the transfer",
+		"intro": "One shaft, everyone's doors on it. The pips show its cap: 2 per\ntile - so two lifts can't both run the whole shaft. Split it:\none lift works the bottom (A, B), one the top (C, D). They can\nonly meet at the transfer E in the middle (cap 4), so a rider\ncrossing ends has to change lifts there. One lift can't keep up.",
+		"cols": 5, "rows": 11,
 		"overlaps": [
 			{"cells": [Vector2i(2, 0), Vector2i(2, 1), Vector2i(2, 2), Vector2i(2, 3),
-					Vector2i(2, 4), Vector2i(2, 5), Vector2i(2, 6)], "max": 2},
+					Vector2i(2, 4), Vector2i(2, 6), Vector2i(2, 7), Vector2i(2, 8),
+					Vector2i(2, 9), Vector2i(2, 10)], "max": 2},
+			{"cells": [Vector2i(2, 5)], "max": 4},
 		],
 		"rooms": [
 			{"type": "lobby", "cells": [Vector2i(0, 0), Vector2i(1, 0)],
 					"drops": [{"cell": Vector2i(1, 0), "dir": R}]},
 			{"type": "office", "cells": [Vector2i(0, 2), Vector2i(1, 2)],
 					"drops": [{"cell": Vector2i(1, 2), "dir": R}]},
-			{"type": "office", "cells": [Vector2i(0, 4), Vector2i(1, 4)],
-					"drops": [{"cell": Vector2i(1, 4), "dir": R}]},
-			{"type": "office", "cells": [Vector2i(0, 6), Vector2i(1, 6)],
-					"drops": [{"cell": Vector2i(1, 6), "dir": R}]},
+			{"type": "office", "cells": [Vector2i(0, 8), Vector2i(1, 8)],
+					"drops": [{"cell": Vector2i(1, 8), "dir": R}]},
+			{"type": "office", "cells": [Vector2i(0, 10), Vector2i(1, 10)],
+					"drops": [{"cell": Vector2i(1, 10), "dir": R}]},
+			{"type": "atrium", "cells": [Vector2i(0, 5), Vector2i(1, 5)],
+					"drops": [{"cell": Vector2i(1, 5), "dir": R}]},
 		],
 		"cards": [
 			{"name": "LIFT 1", "type": "standard", "color": COL_A},
 			{"name": "LIFT 2", "type": "standard", "color": COL_B},
 		],
-		"quota": 10, "max_lost": 8,
-		"spawn": {"interval_start": 2.8, "interval_end": 2.3, "ramp": 55.0,
-				"burst_min": 1, "burst_max": 2, "gap": 0.9},
+		"quota": 24, "max_lost": 8,
+		# Short patience so a lift that can't keep up (one lift on the whole shaft) or
+		# strands riders (disjoint, no transfer) actually loses them.
+		"patience": {"visitor": 28.0},
+		"spawn": {"interval_start": 0.8, "interval_end": 0.6, "ramp": 30.0,
+				"burst_min": 3, "burst_max": 4, "gap": 0.35},
 		"mix": {"visitor": 1.0},
+		# HALF the demand is LOCAL at the two far-apart clusters (A,B bottom; C,D top)
+		# and HALF is CROSS (A<->C, B<->D). One lift can't carry the volume across the
+		# whole shaft; skipping the transfer strands the whole cross half.
 		"trips": [
-			{"w": 0.30, "from": "A", "to": "C"},
-			{"w": 0.20, "from": "C", "to": "A"},
-			{"w": 0.30, "from": "B", "to": "D"},
-			{"w": 0.20, "from": "D", "to": "B"},
+			{"w": 0.13, "from": "A", "to": "B"},
+			{"w": 0.12, "from": "B", "to": "A"},
+			{"w": 0.13, "from": "C", "to": "D"},
+			{"w": 0.12, "from": "D", "to": "C"},
+			{"w": 0.14, "from": "A", "to": "C"},
+			{"w": 0.11, "from": "C", "to": "A"},
+			{"w": 0.14, "from": "B", "to": "D"},
+			{"w": 0.11, "from": "D", "to": "B"},
 		],
 	},
 ]

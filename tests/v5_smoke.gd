@@ -49,10 +49,11 @@ func _solution(id: String) -> Array:
 			return [_c([[2,0],[2,1],[2,2],[2,3],[2,4],[2,5],[2,6]]),
 					_c([[3,0],[3,1],[3,2],[2,2],[2,3],[2,4],[3,4],[3,5],[3,6]])]
 		"R-6":
-			# Interleaved doors + a cap-2 centre column force a snake: LIFT 1 serves
-			# A+C detouring out the right lane, LIFT 2 serves B+D (both x=2-disjoint).
-			return [_c([[2,0],[3,0],[3,1],[3,2],[3,3],[3,4],[2,4]]),
-					_c([[2,2],[3,2],[3,3],[3,4],[3,5],[3,6],[2,6]])]
+			# The cap-2 shaft forces a split: LIFT 1 works the bottom (A,B,E), LIFT 2
+			# the top (E,C,D); they share only the cap-4 transfer E at (2,4). Cross-end
+			# riders hand off at E.
+			return [_c([[2,0],[2,1],[2,2],[2,3],[2,4],[2,5]]),
+					_c([[2,5],[2,6],[2,7],[2,8],[2,9],[2,10]])]
 	return []
 
 
@@ -64,18 +65,22 @@ func _expect_serves(id: String) -> Array:
 		"R-5":
 			return [2, 2]
 		"R-6":
-			return [2, 2]
+			return [3, 3] # LIFT 1 serves A,B,E; LIFT 2 serves E,C,D
 	return []
 
 
-## The overlap-cap drawing limit on R-6's cap-2 centre column: (a) a legal route is
-## accepted, (b) a route pushing a tile over its cap is REFUSED, (c) clearing the
-## first route frees the width so the same route is then accepted.
-func _overlap_test() -> bool:
-	var idx := -1
+func _r6_index() -> int:
 	for i in Levels5.LEVELS.size():
 		if str(Levels5.LEVELS[i].id) == "R-6":
-			idx = i
+			return i
+	return -1
+
+
+## The overlap-cap drawing limit on R-6: (b) a legal route is accepted; the two
+## cooperative routes SHARE the cap-4 transfer tile (2,4) legally; a route pushing
+## a cap-2 tile over its cap is REFUSED; and (c) clearing frees the width back.
+func _overlap_test() -> bool:
+	var idx := _r6_index()
 	if idx < 0:
 		print("  overlap: R-6 not found **FAIL**")
 		return false
@@ -86,19 +91,67 @@ func _overlap_test() -> bool:
 	root.add_child(node)
 	node.to_plan()
 	var ok := true
-	var l1 := _c([[2,0],[2,1],[2,2],[2,3],[2,4]]) # straight, legal alone (cap 2)
-	var l2 := _c([[2,2],[2,3],[2,4],[2,5],[2,6]]) # overlaps l1 at 2,2/2,3/2,4
+	var l1 := _c([[2,0],[2,1],[2,2],[2,3],[2,4],[2,5]]) # bottom half + transfer, legal
+	var l2coop := _c([[2,5],[2,6],[2,7],[2,8],[2,9],[2,10]]) # top half; shares (2,5) cap-4
+	var l2bad := _c([[2,2],[2,3]]) # would overlap L1 on cap-2 tiles (2+2 > 2)
 	if not node.commit_route(0, l1, false):
 		ok = false
-		print("  overlap: (b) legal L1 was rejected **FAIL**")
-	if node.commit_route(1, l2, false):
+		print("  overlap: (b) legal L1 rejected **FAIL**")
+	if not node.commit_route(1, l2coop, false):
 		ok = false
-		print("  overlap: over-cap L2 was accepted **FAIL**")
+		print("  overlap: cap-4 transfer crossover rejected **FAIL**")
+	node.commit_route(1, [], false)
+	if node.commit_route(1, l2bad, false):
+		ok = false
+		print("  overlap: over-cap route accepted **FAIL**")
 	node.commit_route(0, [], false) # clear L1, freeing its width
-	if not node.commit_route(1, l2, false):
+	if not node.commit_route(1, l2bad, false):
 		ok = false
-		print("  overlap: L2 still rejected after clearing L1 (width not freed) **FAIL**")
+		print("  overlap: route still rejected after clear (width not freed) **FAIL**")
 	node.free()
+	return ok
+
+
+## Runs R-6 with the given routes (r1 may be null for a one-lift attempt) to a
+## decision, returning the final state string.
+func _run_r6(r0, r1) -> String:
+	Levels5.current = _r6_index()
+	Levels5.headless = true
+	var node = load("res://scenes/v5_main.tscn").instantiate()
+	node.headless = true
+	root.add_child(node)
+	node.rng.seed = 20260814
+	node.to_plan()
+	if r0 != null:
+		node.commit_route(0, _c(r0), false)
+	if r1 != null:
+		node.commit_route(1, _c(r1), false)
+	node.start_run()
+	var t := 0.0
+	while t < CAP and node.state == node.State.PLAYING:
+		node.advance(STEP)
+		t += STEP
+	var st: String = "WIN" if node.state == node.State.WIN \
+			else ("LOSE" if node.state == node.State.LOSE else "TIMEOUT")
+	node.free()
+	return st
+
+
+## R-6 must genuinely REQUIRE two cooperating lifts: (b) ONE lift running the whole
+## shaft cannot keep up (does not WIN); (c) two lifts serving DISJOINT halves with
+## no shared transfer cannot serve the cross-end trips (does not WIN). The intended
+## cooperative split is verified by the main loop (R-6 WINs with transfers > 0).
+func _cooperation_test() -> bool:
+	var ok := true
+	var one := _run_r6([[2,0],[2,1],[2,2],[2,3],[2,4],[2,5],[2,6],[2,7],[2,8],[2,9],[2,10]], null)
+	if one == "WIN":
+		ok = false
+		print("  cooperation: one lift alone WON (should be insufficient) **FAIL**")
+	var disjoint := _run_r6([[2,0],[2,1],[2,2]], [[2,8],[2,9],[2,10]])
+	if disjoint == "WIN":
+		ok = false
+		print("  cooperation: disjoint two (no transfer) WON (cross trips should fail) **FAIL**")
+	print("  cooperation: one-lift=%s  disjoint-two=%s" % [one, disjoint])
 	return ok
 
 
@@ -211,6 +264,12 @@ func _process(_delta: float) -> bool:
 		else:
 			_fail += 1
 			print("OVERLAP CAP  **FAIL**")
+		# R-6 must REQUIRE two cooperating lifts (one-lift + disjoint-two both fail).
+		if _cooperation_test():
+			print("R-6 COOPERATION: one-lift + disjoint-two both fail as required")
+		else:
+			_fail += 1
+			print("R-6 COOPERATION  **FAIL**")
 		# Reactivation (real between-trip demand) must run in headless at least once.
 		if _reacts == 0:
 			_fail += 1
@@ -240,8 +299,8 @@ func _process(_delta: float) -> bool:
 	if not a.saw_walk:
 		ok = false
 		notes.append("no-walk")
-	# R-3 must actually show a transfer (crossing the 2-wide atrium).
-	if lv.id == "R-3" and a.transfers == 0:
+	# R-3 and R-6 must actually show a transfer (a cross-end rider changes lifts).
+	if (lv.id == "R-3" or lv.id == "R-6") and a.transfers == 0:
 		ok = false
 		notes.append("no-xfer")
 	# (c) one-lift corridor serialises two contenders.
