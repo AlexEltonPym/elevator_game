@@ -282,7 +282,15 @@ corridor, on to D.",
 ]
 
 
+## An off-table level the headless depth tools (tools/v5/sim_api5.gd) can run
+## without touching LEVELS. null (the default) => get_level returns the shipped
+## table exactly, so the game and the fingerprint are unchanged by its presence.
+static var injected = null
+
+
 static func get_level(i: int) -> Dictionary:
+	if injected != null:
+		return injected
 	return LEVELS[clampi(i, 0, LEVELS.size() - 1)]
 
 
