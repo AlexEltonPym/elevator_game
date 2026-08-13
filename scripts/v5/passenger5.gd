@@ -296,6 +296,10 @@ func _process(delta: float) -> void:
 	else:
 		# Standing: ease toward the stable target (a smooth step when it changes).
 		position = position.move_toward(stand_pos, STAND_EASE * delta)
+	# Depth sort: figures lower on screen (larger y) draw in front, so the back
+	# row of a car stack (smaller y) sits behind the front, and room crowds layer
+	# right. Render-only.
+	z_index = clampi(int(position.y), -4096, 4096)
 	queue_redraw()
 
 
