@@ -230,6 +230,45 @@ corridor, on to D.",
 			{"w": 0.20, "from": "D", "to": "C"},
 		],
 	},
+	{
+		"id": "R-6",
+		"name": "Squeeze",
+		"thesis": "one shared column, cap 2 - two lifts can't both thread a tile, so snake around",
+		"intro": "The centre column is CAPPED: the amber pips show how many lift-
+widths a tile can carry (2 here). A and C want one lift; B and D
+the other - but their doors interleave up the column, so the two
+routes cannot both run straight. Thread one lift out into the
+open right lane to squeeze past the other.",
+		"cols": 5, "rows": 7,
+		"overlaps": [
+			{"cells": [Vector2i(2, 0), Vector2i(2, 1), Vector2i(2, 2), Vector2i(2, 3),
+					Vector2i(2, 4), Vector2i(2, 5), Vector2i(2, 6)], "max": 2},
+		],
+		"rooms": [
+			{"type": "lobby", "cells": [Vector2i(0, 0), Vector2i(1, 0)],
+					"drops": [{"cell": Vector2i(1, 0), "dir": R}]},
+			{"type": "office", "cells": [Vector2i(0, 2), Vector2i(1, 2)],
+					"drops": [{"cell": Vector2i(1, 2), "dir": R}]},
+			{"type": "office", "cells": [Vector2i(0, 4), Vector2i(1, 4)],
+					"drops": [{"cell": Vector2i(1, 4), "dir": R}]},
+			{"type": "office", "cells": [Vector2i(0, 6), Vector2i(1, 6)],
+					"drops": [{"cell": Vector2i(1, 6), "dir": R}]},
+		],
+		"cards": [
+			{"name": "LIFT 1", "type": "standard", "color": COL_A},
+			{"name": "LIFT 2", "type": "standard", "color": COL_B},
+		],
+		"quota": 10, "max_lost": 8,
+		"spawn": {"interval_start": 2.8, "interval_end": 2.3, "ramp": 55.0,
+				"burst_min": 1, "burst_max": 2, "gap": 0.9},
+		"mix": {"visitor": 1.0},
+		"trips": [
+			{"w": 0.30, "from": "A", "to": "C"},
+			{"w": 0.20, "from": "C", "to": "A"},
+			{"w": 0.30, "from": "B", "to": "D"},
+			{"w": 0.20, "from": "D", "to": "B"},
+		],
+	},
 ]
 
 

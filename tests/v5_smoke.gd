@@ -48,6 +48,11 @@ func _solution(id: String) -> Array:
 		"R-5":
 			return [_c([[2,0],[2,1],[2,2],[2,3],[2,4],[2,5],[2,6]]),
 					_c([[3,0],[3,1],[3,2],[2,2],[2,3],[2,4],[3,4],[3,5],[3,6]])]
+		"R-6":
+			# Interleaved doors + a cap-2 centre column force a snake: LIFT 1 serves
+			# A+C detouring out the right lane, LIFT 2 serves B+D (both x=2-disjoint).
+			return [_c([[2,0],[3,0],[3,1],[3,2],[3,3],[3,4],[2,4]]),
+					_c([[2,2],[3,2],[3,3],[3,4],[3,5],[3,6],[2,6]])]
 	return []
 
 
@@ -58,7 +63,43 @@ func _expect_serves(id: String) -> Array:
 			return [3]
 		"R-5":
 			return [2, 2]
+		"R-6":
+			return [2, 2]
 	return []
+
+
+## The overlap-cap drawing limit on R-6's cap-2 centre column: (a) a legal route is
+## accepted, (b) a route pushing a tile over its cap is REFUSED, (c) clearing the
+## first route frees the width so the same route is then accepted.
+func _overlap_test() -> bool:
+	var idx := -1
+	for i in Levels5.LEVELS.size():
+		if str(Levels5.LEVELS[i].id) == "R-6":
+			idx = i
+	if idx < 0:
+		print("  overlap: R-6 not found **FAIL**")
+		return false
+	Levels5.current = idx
+	Levels5.headless = true
+	var node = load("res://scenes/v5_main.tscn").instantiate()
+	node.headless = true
+	root.add_child(node)
+	node.to_plan()
+	var ok := true
+	var l1 := _c([[2,0],[2,1],[2,2],[2,3],[2,4]]) # straight, legal alone (cap 2)
+	var l2 := _c([[2,2],[2,3],[2,4],[2,5],[2,6]]) # overlaps l1 at 2,2/2,3/2,4
+	if not node.commit_route(0, l1, false):
+		ok = false
+		print("  overlap: (b) legal L1 was rejected **FAIL**")
+	if node.commit_route(1, l2, false):
+		ok = false
+		print("  overlap: over-cap L2 was accepted **FAIL**")
+	node.commit_route(0, [], false) # clear L1, freeing its width
+	if not node.commit_route(1, l2, false):
+		ok = false
+		print("  overlap: L2 still rejected after clearing L1 (width not freed) **FAIL**")
+	node.free()
+	return ok
 
 
 ## Run one level once from a fresh scene; return stats + a determinism signature
@@ -164,6 +205,12 @@ func _run_once(lv: Dictionary, i: int, seed: int) -> Dictionary:
 func _process(_delta: float) -> bool:
 	if _i >= Levels5.LEVELS.size():
 		print("---------------------------------------------------------------")
+		# Overlap-cap mechanic: reject over-cap, accept legal, free width on clear.
+		if _overlap_test():
+			print("OVERLAP CAP: reject/accept/free OK")
+		else:
+			_fail += 1
+			print("OVERLAP CAP  **FAIL**")
 		# Reactivation (real between-trip demand) must run in headless at least once.
 		if _reacts == 0:
 			_fail += 1

@@ -375,9 +375,28 @@ func _end_stroke() -> void:
 	stroke_closed = false
 
 
-## True when the selected card may draw through `cell`: an open, routable cell.
+## True when the selected card may draw through `cell`: an open, routable cell
+## that still has overlap capacity for THIS car's width (a capped tile already
+## full for the selected car reads as a wall — felt as resistance, like corridors).
 func _drawable(cell: Vector2i) -> bool:
-	return Grid5.passable(cell)
+	if not Grid5.passable(cell):
+		return false
+	if selected_card < 0:
+		return true
+	return _overlap_used(cell, selected_card) + cars[selected_card].width \
+			<= Grid5.overlap_cap(cell)
+
+
+## Summed car-width of every committed route (except route `except_i`) drawn
+## through `cell` — how much of the tile's overlap cap is already spent.
+func _overlap_used(cell: Vector2i, except_i: int) -> int:
+	var used := 0
+	for j in routes.size():
+		if j == except_i or routes[j] == null:
+			continue
+		if routes[j].index_of(cell) >= 0:
+			used += cars[j].width
+	return used
 
 
 # ---------------------------------------------------------------- route edits
@@ -391,6 +410,14 @@ func commit_route(i: int, cells: Array, closed := false) -> bool:
 		var err := Route5.validate(cells, closed and cells.size() >= 4)
 		if err == "" and Grid5.route_min_corridor_width(cells) < cars[i].width:
 			err = "too wide for that corridor"
+		if err == "":
+			# Overlap cap: this route's width plus the OTHER committed routes' widths
+			# through any capped tile must not exceed that tile's cap (Numberlink-
+			# style drawing limit; frees back on clear because routes[i] is replaced).
+			for c in cells:
+				if _overlap_used(c, i) + cars[i].width > Grid5.overlap_cap(c):
+					err = "no room to thread through %s" % str(c)
+					break
 		if err != "":
 			push_error("commit_route(%d) rejected: %s" % [i, err])
 			reject_card = i

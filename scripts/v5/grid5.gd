@@ -52,6 +52,16 @@ static var _corridor_group_of := {} # Vector2i -> gi
 static var _corridor_group_width: Array = [] # gi -> narrowest cell width in group
 static var _corridors_dirty := true
 
+# Route-OVERLAP width cap (v5.1j, transition phase 1). A capped tile carries an
+# `overlap_max` in {1,2,3}: the SUM of the car-widths of all committed routes drawn
+# through it must be <= the cap. This is a STATIC, planning-time drawing limit
+# (enforced at commit + felt while drawing) — SEPARATE from the runtime corridor
+# mutex above (which caps car-widths physically PRESENT in a group each sim step).
+# The two compose: a tile may be both an overlap-capped tile and a corridor cell.
+# Default (un-annotated) tiles are uncapped, so all existing levels stay legal.
+const OVERLAP_UNCAPPED := 99
+static var _overlap_cap := {} # Vector2i -> overlap width cap (int)
+
 var game = null # main5.gd
 
 const ROOM_TINT := {
@@ -91,6 +101,12 @@ static func load_level(level: Dictionary) -> void:
 		var cw := int(co.get("width", DEFAULT_CORRIDOR_WIDTH))
 		for c in co.cells:
 			_corridor_width[c] = cw
+	# Overlap caps: each entry is {cells:Array[Vector2i], max:int} (default 2).
+	_overlap_cap = {}
+	for ov in level.get("overlaps", []):
+		var om := int(ov.get("max", 2))
+		for c in ov.cells:
+			_overlap_cap[c] = om
 	_room_of = {}
 	_rooms = []
 	_dock_of = {}
@@ -284,6 +300,18 @@ static func route_min_corridor_width(cells: Array) -> int:
 	return w
 
 
+# ------------------------------------------------------------ overlap caps
+
+## The overlap width cap of a tile: the max SUM of car-widths of routes that may
+## be drawn through it. OVERLAP_UNCAPPED (a large number) for un-annotated tiles.
+static func overlap_cap(c: Vector2i) -> int:
+	return int(_overlap_cap.get(c, OVERLAP_UNCAPPED))
+
+
+static func is_overlap_capped(c: Vector2i) -> bool:
+	return _overlap_cap.has(c)
+
+
 static func _ensure_corridor_groups() -> void:
 	if not _corridors_dirty:
 		return
@@ -370,6 +398,8 @@ func _draw() -> void:
 			else:
 				draw_rect(rect, Color(0.175, 0.175, 0.21))
 				draw_rect(rect, Color(0, 0, 0, 0.18), false, 1.0)
+			if Grid5.is_overlap_capped(c):
+				draw_rect(rect, Color(0.86, 0.72, 0.34, 0.5), false, 2.0)
 	for id in Grid5._rooms.size():
 		_draw_room(id)
 	if game == null:
@@ -394,6 +424,7 @@ func _draw() -> void:
 			continue
 		_draw_route(route.cells, game.CARDS[i].color, i,
 				game.selected_card == i, route.served_rooms().size() < 2, route.closed)
+	_draw_overlap_caps()
 	# Live drag preview on top.
 	if game.drawing and game.stroke.size() > 0 and game.selected_card >= 0:
 		_draw_stroke_preview(game.stroke, game.CARDS[game.selected_card].color,
@@ -522,6 +553,35 @@ func _draw_corridor(rect: Rect2, c: Vector2i) -> void:
 				draw_rect(Rect2(rect.end.x - eb, rect.position.y + t, eb, dh), yellow)
 		t += step
 		n += 1
+
+
+
+## Draw each capped tile's capacity as pips along the top: `cap` squares, filled in
+## a covering car's colour up to the summed route-width currently threaded through
+## it, empty for the room that remains. So the player sees the tight tiles fill up.
+func _draw_overlap_caps() -> void:
+	for c in Grid5._overlap_cap:
+		var cap: int = Grid5._overlap_cap[c]
+		var used := 0
+		var fill_col := Color(0.86, 0.72, 0.34)
+		for i in game.routes.size():
+			var r = game.routes[i]
+			if r != null and r.index_of(c) >= 0:
+				used += int(game.cars[i].width)
+				fill_col = game.CARDS[i].color
+		var rect := cell_rect(c)
+		var pip := 8.0
+		var gap := 3.0
+		var total := cap * pip + (cap - 1) * gap
+		var x0 := rect.position.x + (rect.size.x - total) / 2.0
+		var y := rect.position.y + 6.0
+		for k in cap:
+			var pr := Rect2(x0 + k * (pip + gap), y, pip, pip)
+			if k < used:
+				draw_rect(pr, Color(fill_col, 0.95))
+			else:
+				draw_rect(pr, Color(0.86, 0.72, 0.34, 0.22))
+			draw_rect(pr, Color(0.86, 0.72, 0.34, 0.7), false, 1.0)
 
 
 func _draw_route(cells: Array, col: Color, index: int, selected: bool, warn: bool,
