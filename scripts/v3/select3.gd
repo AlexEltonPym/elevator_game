@@ -92,6 +92,22 @@ func _ready() -> void:
 	page.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(page)
 	_rebuild()
+	# ADDITIVE v5 hook: one button (topmost, so it takes its own clicks) that
+	# opens the v5 "Rooms" feel-prototype. Nothing else here is touched.
+	var v5 := Button.new()
+	v5.text = "v5 ROOMS\n(prototype)"
+	v5.position = Vector2(vp.x - 174, 12)
+	v5.size = Vector2(160, 56)
+	v5.add_theme_font_size_override("font_size", 17)
+	var sb5 := StyleBoxFlat.new()
+	sb5.bg_color = Color(0.20, 0.28, 0.45)
+	sb5.border_color = Color(0.45, 0.6, 0.9)
+	sb5.set_border_width_all(2)
+	sb5.set_corner_radius_all(8)
+	v5.add_theme_stylebox_override("normal", sb5)
+	v5.pressed.connect(func():
+		get_tree().change_scene_to_file("res://scenes/v5_select.tscn"))
+	add_child(v5)
 
 
 func _arrow(text: String, x: float) -> Button:

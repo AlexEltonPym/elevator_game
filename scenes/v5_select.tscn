@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/v5/select5.gd" id="1_select5"]
+
+[node name="Select5" type="Control"]
+script = ExtResource("1_select5")
