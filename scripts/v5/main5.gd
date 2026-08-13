@@ -39,6 +39,7 @@ var burst_left := 0
 var burst_timer := 0.0
 
 var active_passengers: Array = []
+var _wanderers: Array = [] # served figures playing their post-served wander (visual only)
 var _passengers_dirty := false
 
 var routes: Array = []
@@ -122,6 +123,14 @@ func advance(dt: float) -> void:
 			if p.active:
 				keep.append(p)
 		active_passengers = keep
+	if not _wanderers.is_empty():
+		var kept: Array = []
+		for w in _wanderers:
+			if w.tick_wander(dt):
+				w.queue_free()
+			else:
+				kept.append(w)
+		_wanderers = kept
 
 
 func current_interval() -> float:
@@ -219,6 +228,7 @@ func _clear_passengers() -> void:
 		p.active = false
 		p.queue_free()
 	active_passengers = []
+	_wanderers = []
 	_passengers_dirty = false
 	for rid in waiting:
 		waiting[rid].clear()
@@ -469,6 +479,7 @@ func spawn_passenger(ptype: String, origin: int, dest: int) -> Passenger5:
 	active_passengers.append(p)
 	waiting[origin].append(p)
 	_compute_path_for(p)
+	p.begin_life()
 	return p
 
 
@@ -499,8 +510,14 @@ func on_served(p) -> void:
 	if waiting.has(p.cur_room):
 		waiting[p.cur_room].erase(p)
 	log_served.append({"type": p.ptype, "wait": p.wait_time, "rides": p.rides})
-	p.queue_free()
 	served += 1
+	# The outcome is locked here. Headless frees at once; a windowed figure walks
+	# off (begin_wander) before it disappears — cosmetic, never touched by the sim.
+	if headless:
+		p.queue_free()
+	else:
+		p.begin_wander()
+		_wanderers.append(p)
 	if state == State.PLAYING and not endless and served >= QUOTA:
 		_win()
 
@@ -517,24 +534,20 @@ func on_expired(p) -> void:
 
 
 ## Position waiting passengers (visual only). Riders and walkers drive their own
-## position (car slot / orthogonal walk tween); everyone else waits stacked inside
-## the room footprint until a car stops and assigns them.
+## position (car slot / orthogonal walk tween); a MILLING passenger idles at its
+## spawn tile; one that has reached the queue tile stacks there by the door.
 func _reflow_queues() -> void:
 	for rid in waiting:
-		var rect := Grid5.room_rect(rid)
-		var band := rect.size.x - 16.0
-		var base := rect.get_center() + Vector2(0.0, rect.size.y / 2.0 - 16.0)
-		var x := 0.0
-		var row := 0
+		var qbase := Grid5.cell_center(Grid5.room_queue(rid))
+		var qn := 0
 		for p in waiting[rid]:
 			if p.riding != null or p.walk_left > 0.0:
 				continue # the walk tween / car slot owns this figure's position
-			var w := 24.0
-			if x > 0.0 and x + w > band:
-				row += 1
-				x = 0.0
-			p.position = base + Vector2(-band / 2.0 + x + w / 2.0, -row * 22.0)
-			x += w
+			if not p.milled:
+				p.position = Grid5.cell_center(p.spawn_cell) + p.spawn_jitter
+			else:
+				p.position = qbase + Vector2(((qn % 2) - 0.5) * 26.0, -int(qn / 2) * 20.0)
+				qn += 1
 
 
 # ---------------------------------------------------------------- corridors

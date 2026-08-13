@@ -102,9 +102,11 @@ static func load_level(level: Dictionary) -> void:
 		for c in cells:
 			_room_of[c] = i
 		var drops: Array = []
+		var door_cells := {}
 		for d in rm.get("drops", []):
 			var dock: Vector2i = d.cell + d.dir
 			drops.append({"cell": d.cell, "dir": d.dir, "dock": dock})
+			door_cells[d.cell] = true
 			if not _dock_of.has(dock):
 				_dock_of[dock] = []
 			if not _dock_of[dock].has(i):
@@ -114,7 +116,28 @@ static func load_level(level: Dictionary) -> void:
 		_rooms.append({
 			"type": str(rm.type), "cells": cells, "letter": ROOM_LETTERS.substr(i, 1),
 			"drops": drops, "center": ctr, "rect": _cells_rect(cells),
-			"anchor": _closest_cell(cells, ctr)})
+			"anchor": _closest_cell(cells, ctr),
+			"queue": _pick_queue(cells, door_cells, ctr)})
+
+
+## The room's QUEUE cell: the boardable waiting tile, a room cell that is NOT one
+## of the room's door cells (the door cell is only stepped onto during boarding,
+## since that is where the car opens). Nearest the centroid, deterministic; if
+## every cell is a door (e.g. the atrium), falls back to the anchor. Board/alight
+## walk time is priced from here in BOTH the sim and Pathfind5, so they match.
+static func _pick_queue(cells: Array, doors: Dictionary, center: Vector2) -> Vector2i:
+	var best := Vector2i(-1, -1)
+	var bd := INF
+	for c in cells:
+		if doors.has(c):
+			continue
+		var d := cell_center(c).distance_squared_to(center)
+		if d < bd - 0.001:
+			bd = d
+			best = c
+	if best.x < 0:
+		return _closest_cell(cells, center)
+	return best
 
 
 ## The room cell nearest the room centroid: a deterministic "where people stand"
@@ -194,6 +217,14 @@ static func room_anchor(id: int) -> Vector2i:
 	if id < 0 or id >= _rooms.size():
 		return Vector2i(-1, -1)
 	return _rooms[id].anchor
+
+
+## The boardable waiting tile (see _pick_queue). Board walk = queue -> dock,
+## alight walk = dock -> queue; priced identically in Pathfind5.
+static func room_queue(id: int) -> Vector2i:
+	if id < 0 or id >= _rooms.size():
+		return Vector2i(-1, -1)
+	return _rooms[id].queue
 
 
 static func manhattan(a: Vector2i, b: Vector2i) -> int:

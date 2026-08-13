@@ -53,10 +53,11 @@ static func find_path(start_room: int, dest_room: int, cars: Array,
 					continue
 				var ca: Vector2i = served[a]
 				var cb: Vector2i = served[b]
-				# Real walk: anchor(a) -> board dock, then alight dock -> anchor(b),
-				# the SAME delay the sim imposes per leg (v5.1).
-				var walk: float = float(Grid5.manhattan(Grid5.room_anchor(a), ca) \
-						+ Grid5.manhattan(cb, Grid5.room_anchor(b))) * Grid5.WALK_PER_TILE
+				# Real walk: queue(a) -> board dock, then alight dock -> queue(b),
+				# the SAME per-leg delay the sim imposes (the spawn dwell/mill is
+				# route-independent, so it is NOT priced here).
+				var walk: float = float(Grid5.manhattan(Grid5.room_queue(a), ca) \
+						+ Grid5.manhattan(cb, Grid5.room_queue(b))) * Grid5.WALK_PER_TILE
 				var cost: float = route.ride_dist(ca, cb) / car.speed \
 						+ route.stops_between(ca, cb) * pen + LEG_WAIT + walk + eps
 				if not edges.has(a):
