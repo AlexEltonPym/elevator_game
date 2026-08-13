@@ -296,7 +296,7 @@ func _smoke() -> bool:
 		if sets.has("naive"):
 			want_n += 1
 	ok = _p("select: pages through every world",
-			worlds_seen.size() == n_worlds and worlds_seen[0].begins_with("PATH")
+			worlds_seen.size() == n_worlds and worlds_seen[0].begins_with("LEARN")
 			and sel.right_btn.disabled,
 			"seen %s right_disabled %s" % [str(worlds_seen), str(sel.right_btn.disabled)]) and ok
 	ok = _p("select: a PLAY card for every level across the worlds",
@@ -898,8 +898,8 @@ func _write_report(results: Array) -> void:
 	L.append("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
 	for r in results:
 		var top: String = "ea@%s" % _last_budget(r)
-		L.append("| **%s** %s | %s | %s | %s | %s | %s | %+.1f | %+.1f | %d | %.2f | %+.1f | %.1f | %.2f | %.2f |" % [
-				r.id, r.name, _s(r, "thesis"), _s(r, "naive"), _s(r, "random"),
+		L.append("| **%s** %s _(%s)_ | %s | %s | %s | %s | %s | %+.1f | %+.1f | %d | %.2f | %+.1f | %.1f | %.2f | %.2f |" % [
+				r.id, r.name, _lvclass(r.id), _s(r, "thesis"), _s(r, "naive"), _s(r, "random"),
 				_s(r, "greedy"), _s(r, top), r.skill_gap, r.beat_thesis,
 				int(r.ladder_steps), r.structural_distance, r.seed_fragility,
 				r.plan_fragility, r.rank_correlation.rho,
@@ -939,6 +939,10 @@ func _level_section(r: Dictionary) -> Array:
 	L.append("")
 	L.append("Thesis: *%s*" % r.thesis_text)
 	L.append("")
+	if _lvclass(r.id) == "generic":
+		var band := _winband_of(r.id)
+		L.append("**Class: generic (tutorial).** This LEARN-campaign level teaches ONE concept; it does not claim a skill gap. A low `skill_gap`, a flat ladder and a high random-win rate are WORKING AS INTENDED — the difficulty bar is the declared uniform-random `winband` %s%%, and the descending G-1..G-7 random-win curve is the ramp (docs/generic-levels-spec.md). tests/balance.gd asserts only that the intended plan WINS >= 15/16 here." % band)
+		L.append("")
 	L.append("%d rooms, %d cards. Search cost: %d simulation runs in %.0f s wall (random %d + greedy %d + ea %d, plus the test-seed re-scoring)." % [
 			int(r.rooms), int(r.cards), int(r.sim_runs), r.wall_s,
 			int(r.budgets.random), int(r.budgets.greedy), int(r.budgets.ea)])
@@ -1148,6 +1152,21 @@ func _write_discovered(results: Array) -> void:
 	L.append("static func desc(level_id: String) -> String:")
 	L.append("\treturn SETS.get(level_id, {}).get(\"desc\", \"\")")
 	_store(DISCOVERED_PATH, "\n".join(L) + "\n")
+
+
+## A level's class ("thesis" / "generic") looked up from the live table by id,
+## so the generated report can mark the generic tutorials for what they are.
+func _lvclass(id: String) -> String:
+	var i := Levels3.index_of(id)
+	return Levels3.level_class(Levels3.LEVELS[i]) if i >= 0 else "thesis"
+
+
+func _winband_of(id: String) -> String:
+	var i := Levels3.index_of(id)
+	if i < 0 or not Levels3.LEVELS[i].has("winband"):
+		return "n/a"
+	var b: Array = Levels3.LEVELS[i].winband
+	return "[%.0f, %.0f]" % [b[0], b[1]]
 
 
 func _desc_of(r: Dictionary) -> String:

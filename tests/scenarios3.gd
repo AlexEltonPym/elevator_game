@@ -16,7 +16,12 @@ const Scen = preload("res://scripts/v3/scenarios3.gd")
 
 static func scenarios() -> Array:
 	var out: Array = []
-	for id in ["L1", "L2", "L3", "L4", "W-1", "W-2", "W-3"]:
+	# LEARN (generic) levels lead, in campaign order, then the L/W thesis levels.
+	# Both naive and intended are listed for every one; tests/balance.gd decides
+	# per level class what to assert (generic: intended WINS; thesis: intended
+	# WINS + naive LOSES).
+	for id in ["G-1", "G-2", "G-3", "G-4", "G-5", "G-6", "G-7",
+			"L1", "L2", "L3", "L4", "W-1", "W-2", "W-3"]:
 		var sets: Dictionary = Scen.route_sets(id)
 		out.append({"key": "%s_naive" % id, "level": id,
 				"desc": sets.naive.desc, "routes": sets.naive.routes})

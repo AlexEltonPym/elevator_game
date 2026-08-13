@@ -163,6 +163,344 @@ static func card_decel(card: Dictionary) -> float:
 ## is already knife-edge at full length; any cut flips it). See the final
 ## length-sweep table in the pass notes.
 static var LEVELS := [
+	# ============================================================ LEARN (generic)
+	# The GENERIC / tutorial campaign (docs/generic-levels-spec.md). These are the
+	# OPPOSITE of the thesis levels above: forgiving, one-concept-at-a-time, ramping
+	# from near-unloseable (G-1) to bridging into thesis rigor (G-7). Their axiom is
+	# NOT "naive loses / thesis wins / random <= 5%" but "the intended plan WINS
+	# >= 15/16, the uniform-random win rate lands in `winband`, and every room has
+	# demand" — a ~0 skill gap is EXPECTED and correct here. `class` = "generic"
+	# tells tests/balance.gd to branch onto that softer bar; the descending
+	# `winband`s ARE the difficulty ramp (a suite check asserts they are monotone).
+	{
+		"id": "G-1",
+		"name": "First Lift",
+		"class": "generic",
+		"winband": [82.0, 100.0], # near-unloseable: almost any plan wins
+		"thesis": "draw a line through the rooms and press RUN - any lift will do",
+		"intro": "Your first building: three floors on one shaft. Draw a\nroute through the rooms for each lift and press RUN. There\nis no wrong answer here - any lift that reaches the floors\nserves the tiny crowd in time.",
+		"rows": [
+			"R", # row4  TOP (0,4)
+			".", # row3
+			"R", # row2  MID (0,2)
+			".", # row1
+			"R", # row0  LOBBY (0,0)
+		],
+		"cards": [
+			{"name": "LIFT A", "type": "standard", "cap": 4, "speed": STANDARD_SPEED,
+					"color": Color(0.45, 0.68, 0.95)},
+			{"name": "LIFT B", "type": "standard", "cap": 4, "speed": STANDARD_SPEED,
+					"color": Color(0.5, 0.88, 0.55)},
+			{"name": "LIFT C", "type": "standard", "cap": 4, "speed": STANDARD_SPEED,
+					"color": Color(0.98, 0.68, 0.2)},
+		],
+		"quota": 12,
+		"max_lost": 6,
+		"spawn": {"interval_start": 2.4, "interval_end": 2.0, "ramp": 60.0,
+				"burst_min": 2, "burst_max": 3, "gap": 0.8},
+		"mix": {"visitor": 1.0},
+		"exec_origins": [],
+		"exec_dests": [],
+		"groups": {
+			"lobby": [Vector2i(0, 0)],
+			"mid": [Vector2i(0, 2)],
+			"top": [Vector2i(0, 4)],
+		},
+		"trips": [
+			{"w": 0.22, "from": "lobby", "to": "mid"},
+			{"w": 0.22, "from": "mid", "to": "lobby"},
+			{"w": 0.22, "from": "lobby", "to": "top"},
+			{"w": 0.22, "from": "top", "to": "lobby"},
+			{"w": 0.06, "from": "mid", "to": "top"},
+			{"w": 0.06, "from": "top", "to": "mid"},
+		],
+	},
+	{
+		"id": "G-2",
+		"name": "Full Line",
+		"class": "generic",
+		"winband": [62.0, 90.0],
+		"thesis": "one car can run the whole line - draw it lobby to roof",
+		"intro": "A taller shaft, five floors now. A single lift drawn from\nthe lobby to the roof serves the whole line; the others\ncan pick up the slack. Cover the floors and the crowd\ngets home.",
+		"rows": [
+			"R", # row8  TOP (0,8)
+			".", # row7
+			"R", # row6  (0,6)
+			".", # row5
+			"R", # row4  (0,4)
+			".", # row3
+			"R", # row2  (0,2)
+			".", # row1
+			"R", # row0  LOBBY (0,0)
+		],
+		"cards": [
+			{"name": "CAR A", "type": "standard", "cap": 4, "speed": STANDARD_SPEED,
+					"color": Color(0.45, 0.68, 0.95)},
+			{"name": "CAR B", "type": "standard", "cap": 4, "speed": STANDARD_SPEED,
+					"color": Color(0.5, 0.88, 0.55)},
+			{"name": "CAR C", "type": "standard", "cap": 4, "speed": STANDARD_SPEED,
+					"color": Color(0.98, 0.68, 0.2)},
+		],
+		"quota": 20,
+		"max_lost": 5,
+		"spawn": {"interval_start": 2.0, "interval_end": 1.6, "ramp": 70.0,
+				"burst_min": 2, "burst_max": 4, "gap": 0.7},
+		"mix": {"visitor": 0.6, "patient": 0.4},
+		"patience": {"visitor": 60.0, "patient": 52.0},
+		"exec_origins": [],
+		"exec_dests": [],
+		"groups": {
+			"lobby": [Vector2i(0, 0)],
+			"a": [Vector2i(0, 2)],
+			"b": [Vector2i(0, 4)],
+			"c": [Vector2i(0, 6)],
+			"top": [Vector2i(0, 8)],
+		},
+		"trips": [
+			{"w": 0.16, "from": "lobby", "to": "top"},
+			{"w": 0.16, "from": "top", "to": "lobby"},
+			{"w": 0.10, "from": "lobby", "to": "a"},
+			{"w": 0.10, "from": "a", "to": "lobby"},
+			{"w": 0.09, "from": "lobby", "to": "b"},
+			{"w": 0.09, "from": "b", "to": "lobby"},
+			{"w": 0.08, "from": "lobby", "to": "c"},
+			{"w": 0.08, "from": "c", "to": "lobby"},
+			{"w": 0.04, "from": "a", "to": "top"},
+			{"w": 0.04, "from": "top", "to": "a"},
+		],
+	},
+	{
+		"id": "G-3",
+		"name": "Second Shaft",
+		"class": "generic",
+		"winband": [44.0, 72.0],
+		"thesis": "two shafts, two cars - give each column its own lift",
+		"intro": "Now there are TWO columns of rooms, and each has its own\ncommute. One lift cannot be in both places at once, so\nsplit the work: a car for the left column, a car for the\nright, and the crowd on both sides keeps moving.",
+		"rows": [
+			"R.R", # row6  (0,6) (2,6)
+			"...", # row5
+			"R.R", # row4  (0,4) (2,4)
+			"...", # row3
+			"R.R", # row2  (0,2) (2,2)
+			"...", # row1
+			"R.R", # row0  (0,0) (2,0)
+		],
+		"cards": [
+			{"name": "CAR A", "type": "standard", "cap": 4, "speed": STANDARD_SPEED,
+					"color": Color(0.45, 0.68, 0.95)},
+			{"name": "CAR B", "type": "standard", "cap": 4, "speed": STANDARD_SPEED,
+					"color": Color(0.5, 0.88, 0.55)},
+			{"name": "CAR C", "type": "standard", "cap": 4, "speed": STANDARD_SPEED,
+					"color": Color(0.98, 0.68, 0.2)},
+		],
+		"quota": 24,
+		"max_lost": 5,
+		"spawn": {"interval_start": 1.8, "interval_end": 1.45, "ramp": 75.0,
+				"burst_min": 3, "burst_max": 4, "gap": 0.6},
+		"mix": {"visitor": 0.55, "patient": 0.45},
+		"patience": {"visitor": 56.0, "patient": 48.0},
+		"exec_origins": [],
+		"exec_dests": [],
+		"groups": {
+			"left": [Vector2i(0, 0), Vector2i(0, 2), Vector2i(0, 4), Vector2i(0, 6)],
+			"right": [Vector2i(2, 0), Vector2i(2, 2), Vector2i(2, 4), Vector2i(2, 6)],
+		},
+		"trips": [
+			{"w": 0.4, "from": "left", "to": "left"},
+			{"w": 0.4, "from": "right", "to": "right"},
+			{"w": 0.1, "from": "left", "to": "right"},
+			{"w": 0.1, "from": "right", "to": "left"},
+		],
+	},
+	{
+		"id": "G-4",
+		"name": "Interchange",
+		"class": "generic",
+		"winband": [30.0, 56.0],
+		"thesis": "feeders meet the express at the HUB - riders change there for the top",
+		"intro": "A T of rooms: LEFT, HUB and RIGHT along the bottom, and\nan express spine climbing from the HUB to the TOP. Nobody\nfrom a wing can reach the top in one ride - they ride a\nfeeder to the HUB and CHANGE onto the express. Run the two\nfeeders to the HUB and let the express own the spine.",
+		"rows": [
+			"..R..", # row6  TOP (2,6)
+			"##.##", # row5  spine (2,5)
+			"##.##", # row4  spine (2,4)
+			"##.##", # row3  spine (2,3)
+			"R#.#R", # row2  LEFT-UP(0,2) | RIGHT-UP(4,2), spine (2,2)
+			".#.#.", # row1  arm connectors (0,1) (4,1), spine (2,1)
+			"R.R.R", # row0  LEFT(0,0) HUB(2,0) RIGHT(4,0)
+		],
+		"cards": [
+			{"name": "FEEDER A", "type": "standard", "cap": 4, "speed": STANDARD_SPEED,
+					"color": Color(0.45, 0.68, 0.95)},
+			{"name": "FEEDER B", "type": "standard", "cap": 4, "speed": STANDARD_SPEED,
+					"color": Color(0.5, 0.88, 0.55)},
+			{"name": "EXPRESS", "type": "express", "cap": 4, "speed": EXPRESS_SPEED,
+					"color": Color(0.98, 0.68, 0.2)},
+		],
+		"quota": 24,
+		"max_lost": 3,
+		"spawn": {"interval_start": 1.15, "interval_end": 0.85, "ramp": 60.0,
+				"burst_min": 4, "burst_max": 6, "gap": 0.45},
+		"mix": {"visitor": 0.5, "patient": 0.5},
+		"patience": {"visitor": 30.0, "patient": 26.0},
+		"exec_origins": [],
+		"exec_dests": [],
+		"groups": {
+			"top": [Vector2i(2, 6)],
+			"left": [Vector2i(0, 0), Vector2i(0, 2)],
+			"hub": [Vector2i(2, 0)],
+			"right": [Vector2i(4, 0), Vector2i(4, 2)],
+		},
+		"trips": [
+			{"w": 0.12, "from": "left", "to": "hub"},
+			{"w": 0.12, "from": "hub", "to": "left"},
+			{"w": 0.12, "from": "right", "to": "hub"},
+			{"w": 0.12, "from": "hub", "to": "right"},
+			{"w": 0.11, "from": "left", "to": "top"},
+			{"w": 0.11, "from": "top", "to": "left"},
+			{"w": 0.11, "from": "right", "to": "top"},
+			{"w": 0.11, "from": "top", "to": "right"},
+			{"w": 0.04, "from": "hub", "to": "top"},
+			{"w": 0.04, "from": "top", "to": "hub"},
+		],
+	},
+	{
+		"id": "G-5",
+		"name": "One at a Time",
+		"class": "generic",
+		"winband": [20.0, 46.0],
+		"thesis": "one shuttle spends the gate; the wings each keep their own car",
+		"intro": "The only way between the bottom rooms and the top rooms is\na striped GATE CORRIDOR, and only ONE car fits it at a\ntime. Cram every lift into the gate and they queue nose to\ntail. Instead: one dedicated shuttle rides the gate, and a\nlocal car serves each wing on its own floor.",
+		"rows": [
+			"RRR", # row7  TL(0,7) TM(1,7) TR(2,7)
+			"#.#", # row6  funnel (1,6)
+			"#G#", # row5  gate (1,5)
+			"#G#", # row4  gate (1,4)
+			"#G#", # row3  gate (1,3)
+			"#G#", # row2  gate (1,2)
+			"#.#", # row1  funnel (1,1)
+			"RRR", # row0  BL(0,0) BM(1,0) BR(2,0)
+		],
+		"cards": [
+			{"name": "SHUTTLE", "type": "standard", "cap": 4, "speed": STANDARD_SPEED,
+					"color": Color(0.98, 0.68, 0.2)},
+			{"name": "LOCAL LO", "type": "standard", "cap": 4, "speed": STANDARD_SPEED,
+					"color": Color(0.45, 0.68, 0.95)},
+			{"name": "LOCAL HI", "type": "standard", "cap": 4, "speed": STANDARD_SPEED,
+					"color": Color(0.5, 0.88, 0.55)},
+		],
+		"quota": 26,
+		"max_lost": 3,
+		"spawn": {"interval_start": 1.15, "interval_end": 0.85, "ramp": 65.0,
+				"burst_min": 4, "burst_max": 6, "gap": 0.45},
+		"mix": {"visitor": 0.6, "patient": 0.4},
+		"patience": {"visitor": 38.0, "patient": 33.0},
+		"exec_origins": [],
+		"exec_dests": [],
+		"groups": {
+			"top": [Vector2i(0, 7), Vector2i(1, 7), Vector2i(2, 7)],
+			"bot": [Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0)],
+			"tmid": [Vector2i(1, 7)],
+			"bmid": [Vector2i(1, 0)],
+		},
+		"trips": [
+			# The cross tide runs through the gate (the wing MIDs face it);
+			# each wing also has its own along-the-floor local commute.
+			{"w": 0.25, "from": "tmid", "to": "bmid"},
+			{"w": 0.25, "from": "bmid", "to": "tmid"},
+			{"w": 0.25, "from": "top", "to": "top"},
+			{"w": 0.25, "from": "bot", "to": "bot"},
+		],
+	},
+	{
+		"id": "G-6",
+		"name": "Pods & Freight",
+		"class": "generic",
+		"winband": [12.0, 36.0],
+		"thesis": "only the cargo car fits the freight - give it the dock-to-delivery run",
+		"intro": "Width matters now. BIG DELIVERIES (three crates wide) ride\nthe DOCK up to DELIVERY - and ONLY the wide CARGO car can\ntake them. The slim POD and the STANDARD car serve the\nwings. Put a general lift on the freight and the crates\npile up at the dock. Dedicate the cargo car to the run.",
+		"rows": [
+			"R.R.R", # row4  W(0,4) DELIVERY(2,4) E(4,4)
+			".....", # row3
+			"R...R", # row2  W(0,2) E(4,2)
+			".....", # row1
+			"R.R.R", # row0  W(0,0) DOCK(2,0) E(4,0)
+		],
+		"cards": [
+			{"name": "POD", "type": "pod",
+					"color": Color(0.45, 0.68, 0.95)},
+			{"name": "STANDARD", "type": "standard",
+					"color": Color(0.5, 0.88, 0.55)},
+			{"name": "CARGO", "type": "cargo",
+					"color": Color(0.98, 0.68, 0.2)},
+		],
+		"quota": 24,
+		"max_lost": 4,
+		"spawn": {"interval_start": 1.6, "interval_end": 1.25, "ramp": 80.0,
+				"burst_min": 3, "burst_max": 5, "gap": 0.5},
+		"mix": {"visitor": 0.33, "patient": 0.23, "big delivery": 0.44},
+		"patience": {"big delivery": 70.0},
+		"exec_origins": [],
+		"exec_dests": [],
+		"type_rooms": {"big delivery": {
+				"from": [Vector2i(2, 0), Vector2i(2, 4)],
+				"to": [Vector2i(2, 4), Vector2i(2, 0)]}},
+		"groups": {
+			"west": [Vector2i(0, 0), Vector2i(0, 2), Vector2i(0, 4)],
+			"east": [Vector2i(4, 0), Vector2i(4, 2), Vector2i(4, 4)],
+		},
+		"trips": [
+			{"w": 0.5, "from": "west", "to": "west"},
+			{"w": 0.5, "from": "east", "to": "east"},
+		],
+	},
+	{
+		"id": "G-7",
+		"name": "Express Lane",
+		"class": "generic",
+		"winband": [5.0, 22.0],
+		"thesis": "give the express one clean nonstop run; let the pods do the local hops",
+		"intro": "A tall tower with a clear EXPRESS SHAFT beside the rooms.\nMost of the crowd rides LOBBY to PENTHOUSE end to end. The\nexpress only earns its speed on a long unbroken run - stop\nit at every floor and it never gets going. Send it nonstop\nup the shaft and let the pod cover the local hops.",
+		"rows": [
+			"R.", # row8  PENTHOUSE (0,8)
+			"..", # row7
+			"R.", # row6  (0,6)
+			"..", # row5
+			"R.", # row4  (0,4)
+			"..", # row3
+			"R.", # row2  (0,2)
+			"..", # row1
+			"R.", # row0  LOBBY (0,0)
+		],
+		"cards": [
+			{"name": "POD", "type": "pod",
+					"color": Color(0.45, 0.68, 0.95)},
+			{"name": "LOCAL", "type": "standard",
+					"color": Color(0.5, 0.88, 0.55)},
+			{"name": "EXPRESS", "type": "express",
+					"color": Color(0.98, 0.68, 0.2)},
+		],
+		"quota": 24,
+		"max_lost": 3,
+		"spawn": {"interval_start": 1.6, "interval_end": 1.2, "ramp": 82.0,
+				"burst_min": 3, "burst_max": 5, "gap": 0.5},
+		"mix": {"visitor": 0.5, "patient": 0.5},
+		"patience": {"visitor": 28.0, "patient": 24.0},
+		"exec_origins": [],
+		"exec_dests": [],
+		"groups": {
+			"lobby": [Vector2i(0, 0)],
+			"pent": [Vector2i(0, 8)],
+			"lower": [Vector2i(0, 0), Vector2i(0, 2), Vector2i(0, 4)],
+			"upper": [Vector2i(0, 4), Vector2i(0, 6), Vector2i(0, 8)],
+		},
+		"trips": [
+			{"w": 0.28, "from": "lobby", "to": "pent"},
+			{"w": 0.28, "from": "pent", "to": "lobby"},
+			{"w": 0.22, "from": "lower", "to": "lower"},
+			{"w": 0.22, "from": "upper", "to": "upper"},
+		],
+	},
+	# ============================================================ PATH (thesis)
 	{
 		"id": "L1",
 		"name": "Tower",
@@ -617,6 +955,7 @@ static var LEVELS := [
 ## at a time and pages between them. Every LEVELS id must appear in exactly one
 ## world (X-1 closes out PATH).
 const WORLDS := [
+	{"name": "LEARN", "levels": ["G-1", "G-2", "G-3", "G-4", "G-5", "G-6", "G-7"]},
 	{"name": "PATH", "levels": ["L1", "L2", "L3", "L4", "X-1"]},
 	{"name": "WIDTH", "levels": ["W-1", "W-2", "W-3"]},
 ]
@@ -626,6 +965,20 @@ static func get_level(i: int) -> Dictionary:
 	if injected != null:
 		return injected
 	return LEVELS[clampi(i, 0, LEVELS.size() - 1)]
+
+
+## The level's class: "thesis" (the strict L/W/X axiom levels) or "generic" (the
+## LEARN campaign, docs/generic-levels-spec.md). A level with no explicit `class`
+## is a thesis level — so the existing L/W/X entries stay byte-identical and only
+## the generic levels carry the tag. tests/balance.gd branches its assertions on
+## this, and a generic level also declares a `winband` [lo, hi] its measured
+## uniform-random win rate must fall inside.
+static func level_class(lv: Dictionary) -> String:
+	return str(lv.get("class", "thesis"))
+
+
+static func is_generic(lv: Dictionary) -> bool:
+	return level_class(lv) == "generic"
 
 
 # ------------------------------------------------------ briefing (v4 phase 1)

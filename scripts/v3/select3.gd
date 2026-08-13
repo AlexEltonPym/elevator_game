@@ -141,8 +141,17 @@ func _rebuild() -> void:
 	var top := HEADER_Y + ARROW + 18.0
 	var avail := (vp.y - LEGEND_H - 8.0) - top
 	var slot := avail / float(maxi(n, 1))
+	# A block is a full-width PLAY card with the N/T/B strip under it. For worlds
+	# of up to 5 levels the card/strip keep their generous sizes (existing PATH /
+	# WIDTH layout, unchanged); a crowded world (LEARN holds 7) compresses both to
+	# fit its slot without overlap, the strip staying a comfortable tap target.
+	var strip_h := STRIP_H
 	var card_h := clampf(slot - STRIP_H - CARD_STRIP_GAP - 14.0, 100.0, 132.0)
-	var block_h := card_h + CARD_STRIP_GAP + STRIP_H
+	var block_h := card_h + CARD_STRIP_GAP + strip_h
+	if block_h > slot - 8.0:
+		block_h = slot - 8.0
+		strip_h = clampf(block_h * 0.5, 72.0, STRIP_H)
+		card_h = block_h - CARD_STRIP_GAP - strip_h
 	for k in n:
 		var id: String = ids[k]
 		var idx: int = Levels3.index_of(id)
@@ -150,10 +159,11 @@ func _rebuild() -> void:
 			continue
 		var slot_top := top + k * slot
 		var y := slot_top + (slot - block_h) / 2.0
-		_make_block(Levels3.LEVELS[idx], idx, y, card_h)
+		_make_block(Levels3.LEVELS[idx], idx, y, card_h, strip_h)
 
 
-func _make_block(lv: Dictionary, idx: int, y: float, card_h: float) -> void:
+func _make_block(lv: Dictionary, idx: int, y: float, card_h: float,
+		strip_h := STRIP_H) -> void:
 	var col := Color(0.93, 0.58, 0.16) if lv.id != "X-1" else Color(0.5, 0.55, 0.65)
 	var play := Button.new()
 	play.text = "%s  %s\n%s" % [lv.id, str(lv.name).to_upper(), lv.thesis]
@@ -181,7 +191,7 @@ func _make_block(lv: Dictionary, idx: int, y: float, card_h: float) -> void:
 		var wb := Button.new()
 		wb.text = STRAT_LETTER[strat]
 		wb.position = Vector2(sx, sy)
-		wb.size = Vector2(STRIP_W, STRIP_H)
+		wb.size = Vector2(STRIP_W, strip_h)
 		wb.add_theme_font_size_override("font_size", 34)
 		wb.add_theme_stylebox_override("normal", _style(TONES[strat]))
 		wb.pressed.connect(_start.bind(idx, strat))

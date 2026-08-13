@@ -59,6 +59,13 @@ const TIMEOUT := 900.0 # game-seconds per scenario before declaring TIMEOUT
 ## order; two means the level, not the seed, is wrong.
 const MIN_HITS := 15
 
+## Generic-ramp tolerance: how far a generic level's measured uniform-random
+## win rate may rise above the previous level's and still count as "monotonically
+## non-increasing" (docs/generic-levels-spec.md). The measurement is fully
+## deterministic (fixed sampling seed + one fixed arrival seed), so this is a
+## small design cushion, not measurement noise.
+const MONO_TOL := 3.0 # percentage points
+
 const ScenData = preload("res://tests/scenarios3.gd")
 
 var quick := Array(OS.get_cmdline_user_args()).has("--quick")
@@ -76,6 +83,8 @@ var unit_done := false
 var unit_checks: Array = [] # Route3.validate / gene decode / injected level
 var v4_done := false
 var v4_checks: Array = [] # width / acceleration / home floor (v4 phase 2)
+var generic_done := false
+var generic_checks: Array = [] # LEARN campaign: winband + monotone ramp
 
 
 func _init() -> void:
@@ -120,6 +129,10 @@ func step(tree: SceneTree) -> bool:
 	if not v4_done:
 		v4_done = true
 		v4_checks = _v4_mechanics(tree)
+		return false
+	if not generic_done:
+		generic_done = true
+		generic_checks = _generic_checks(tree)
 		return false
 	var ok := _report()
 	tree.quit(0 if ok else 1)
@@ -325,13 +338,22 @@ func _checks() -> Array:
 				out.append({"name": sc.key + " routes valid", "ok": false,
 						"detail": r.route_error})
 				break
-	# THE AXIOMS. Every playable level, over the whole seed set: the intended
-	# strategy WINS and the honest-beginner strategy LOSES (hits max_lost
-	# before quota). Asserted as a count, reported as a count.
-	for id in ["L1", "L2", "L3", "L4", "W-1", "W-2", "W-3"]:
+	# THE AXIOMS, branched on level CLASS (docs/generic-levels-spec.md):
+	#   thesis  (L/W)  — intended WINS >= 15/16, its median lost <= 3, AND the
+	#                    honest-beginner naive LOSES >= 15/16 (the strict bar).
+	#   generic (G)    — intended WINS >= 15/16 ONLY. A generic tutorial makes no
+	#                    naive-loses / skill-gap claim: the naive plan is allowed
+	#                    to win (and on the early levels it should). The generic
+	#                    difficulty bar is the winband + monotone ramp, asserted
+	#                    separately in _generic_checks.
+	for id in ["G-1", "G-2", "G-3", "G-4", "G-5", "G-6", "G-7",
+			"L1", "L2", "L3", "L4", "W-1", "W-2", "W-3"]:
 		var ki: String = "%s_intended" % id
 		var kn: String = "%s_naive" % id
+		var lv: Dictionary = Levels3.LEVELS[Levels3.index_of(id)]
 		out.append(_axiom("%s intended WINS" % id, ki, "WIN"))
+		if Levels3.is_generic(lv):
+			continue # generic levels stop here; no naive-loses, no skill gap
 		out.append(_c("%s intended median lost <= 3" % id, _med(ki, "lost") <= 3.0,
 				"median %.0f, worst %.0f" % [_med(ki, "lost"), _worst(ki, "lost")]))
 		out.append(_axiom("%s naive LOSES" % id, kn, "LOSE"))
@@ -356,6 +378,7 @@ func _checks() -> Array:
 	out.append_array(loop_checks)
 	out.append_array(unit_checks)
 	out.append_array(v4_checks)
+	out.append_array(generic_checks)
 	return out
 
 
@@ -1351,6 +1374,76 @@ func _v4_mechanics(tree: SceneTree) -> Array:
 	out.append_array(_width_checks(tree))
 	out.append_array(_accel_checks(tree))
 	out.append_array(_home_checks(tree))
+	return out
+
+
+# ---------------------------------------------------- generic (LEARN) campaign
+#
+# THE GENERIC DIFFICULTY BAR (docs/generic-levels-spec.md). The thesis levels
+# assert a skill gap ("naive loses"); a generic tutorial asserts instead that
+# its measured UNIFORM-RANDOM win rate lands in the level's declared `winband`,
+# and that the whole G-1..G-7 ramp is monotonically non-increasing — the
+# descending random-win curve IS the difficulty ramp.
+#
+# The measurement mirrors tools/run_depth.gd --scorecheck EXACTLY (same per-
+# level sampling seed `4242 + level_index`, the same single arrival seed
+# SEEDS_TRAIN[0], the same STEP_COARSE, decodable samples only), so the number
+# asserted here is the number that tool reports. It is fully deterministic, so
+# the band check is exact rather than statistical. The heavy sampling runs on
+# tools/sim_api.gd, the batched headless path built to survive thousands of runs
+# in one engine frame (game kept OUT of the tree, HUD builds nothing) — 7 x 200
+# runs is far under the queue cap that path exists to respect.
+func _generic_checks(tree: SceneTree) -> Array:
+	var out: Array = []
+	var SimApi = load("res://tools/sim_api.gd")
+	var RG = load("res://tools/routegen.gd")
+	var n := 200
+	var ids: Array = ["G-1", "G-2", "G-3", "G-4", "G-5", "G-6", "G-7"]
+	var prev_headless: bool = Levels3.headless
+	var sim = SimApi.new(tree) # sets Levels3.headless = true
+	var rng := RandomNumberGenerator.new()
+	var rates: Array = []
+	for id in ids:
+		var li: int = Levels3.index_of(id)
+		var lv: Dictionary = Levels3.LEVELS[li]
+		SimApi.load_maze(lv)
+		var rooms: Array = Grid3.rooms()
+		rng.seed = 4242 + li
+		var wins := 0
+		var valid := 0
+		for k in n:
+			var g: Array = RG.random_genome(rng, rooms, lv.cards.size())
+			if g.is_empty():
+				continue
+			var dec: Dictionary = RG.decode_genome(g)
+			if dec.err != "":
+				continue
+			valid += 1
+			var r: Dictionary = sim.run(li, dec.routes, SimApi.SEEDS_TRAIN[0],
+					SimApi.STEP_COARSE)
+			if r.result == "win":
+				wins += 1
+		var rate := 100.0 * float(wins) / maxf(1.0, float(valid))
+		rates.append(rate)
+		var band: Array = lv.winband
+		out.append(_c("%s random win-rate in band [%.0f, %.0f]" % [id, band[0], band[1]],
+				rate >= band[0] and rate <= band[1],
+				"measured %.1f%% (%d/%d valid)" % [rate, wins, valid]))
+	Levels3.headless = prev_headless
+	# The ramp itself: each level no more forgiving than the one before it.
+	var mono := true
+	var detail := ""
+	for i in range(1, rates.size()):
+		if rates[i] > rates[i - 1] + MONO_TOL:
+			mono = false
+			detail += " %s(%.1f) > %s(%.1f)" % [ids[i], rates[i], ids[i - 1], rates[i - 1]]
+	out.append(_c("generic ramp monotonically non-increasing (tol %.0f pp)" % MONO_TOL,
+			mono, "rises:" + detail))
+	# Report the actual curve so it is visible in the run, not just asserted.
+	var curve: Array = []
+	for i in ids.size():
+		curve.append("%s %.0f%%" % [ids[i], rates[i]])
+	print("   generic random-win ramp: " + "  ->  ".join(curve))
 	return out
 
 

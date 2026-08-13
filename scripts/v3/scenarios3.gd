@@ -28,7 +28,9 @@ extends RefCounted
 ## comparison the level is about. The claim "the thesis wins" is made by
 ## tests/balance.gd over the 16 held-out SEEDS_ASSERT, never by this number.)
 const SEEDS := {"L1": 101, "L2": 202, "L3": 303, "L4": 511, "X-1": 404,
-		"W-1": 601, "W-2": 602, "W-3": 603}
+		"W-1": 601, "W-2": 602, "W-3": 603,
+		"G-1": 701, "G-2": 702, "G-3": 703, "G-4": 704, "G-5": 705,
+		"G-6": 706, "G-7": 707}
 ## W-4 "Home" was cut: mechanic #29 (home floor) measured as chrome - at its
 ## most sensitive tuning an identical route-set with a home cell beat the same
 ## route-set without one by only ~2 of 16 seeds, never near the axiom bar
@@ -108,6 +110,146 @@ static func home_of(entry):
 ## X-1 has no naive strategy - only "thesis" (the old smoke-test route set).
 static func route_sets(level_id: String) -> Dictionary:
 	match level_id:
+		# ----------------------------------------------- LEARN (generic) campaign
+		# For the generic levels the "naive" set is the honest beginner first try,
+		# and for the EARLY ones it also WINS — that is the point, not a failure
+		# (docs/generic-levels-spec.md). The "thesis" set is the clean one-concept
+		# demonstration and must WIN >= 15/16 SEEDS_ASSERT. Both cover every room.
+		"G-1":
+			return {
+				"naive": {
+					"desc": "every lift runs the full shaft, lobby to top",
+					"routes": [
+						path([Vector2i(0, 0), Vector2i(0, 4)]),
+						path([Vector2i(0, 0), Vector2i(0, 4)]),
+						path([Vector2i(0, 0), Vector2i(0, 4)]),
+					],
+				},
+				"thesis": {
+					"desc": "one full-shaft lift plus a low and a high local",
+					"routes": [
+						path([Vector2i(0, 0), Vector2i(0, 4)]),
+						path([Vector2i(0, 0), Vector2i(0, 2)]),
+						path([Vector2i(0, 2), Vector2i(0, 4)]),
+					],
+				},
+			}
+		"G-2":
+			return {
+				"naive": {
+					"desc": "all three cars run the whole line together",
+					"routes": [
+						path([Vector2i(0, 0), Vector2i(0, 8)]),
+						path([Vector2i(0, 0), Vector2i(0, 8)]),
+						path([Vector2i(0, 0), Vector2i(0, 8)]),
+					],
+				},
+				"thesis": {
+					"desc": "one full line + a lower half + an upper half",
+					"routes": [
+						path([Vector2i(0, 0), Vector2i(0, 8)]),
+						path([Vector2i(0, 0), Vector2i(0, 4)]),
+						path([Vector2i(0, 4), Vector2i(0, 8)]),
+					],
+				},
+			}
+		"G-3":
+			return {
+				"naive": {
+					"desc": "every car weaves both columns in a big S",
+					"routes": [
+						path([Vector2i(0, 0), Vector2i(0, 6), Vector2i(2, 6), Vector2i(2, 0)]),
+						path([Vector2i(0, 0), Vector2i(0, 6), Vector2i(2, 6), Vector2i(2, 0)]),
+						path([Vector2i(0, 0), Vector2i(0, 6), Vector2i(2, 6), Vector2i(2, 0)]),
+					],
+				},
+				"thesis": {
+					"desc": "a car per column, plus a bottom cross-link",
+					"routes": [
+						path([Vector2i(0, 0), Vector2i(0, 6)]), # left column
+						path([Vector2i(2, 0), Vector2i(2, 6)]), # right column
+						path([Vector2i(0, 0), Vector2i(2, 0)]), # bottom cross
+					],
+				},
+			}
+		"G-4":
+			return {
+				"naive": {
+					"desc": "two direct wing-to-top climbs plus a coverage sweep",
+					"routes": [
+						path([Vector2i(0, 0), Vector2i(2, 0), Vector2i(2, 6)]),
+						path([Vector2i(4, 0), Vector2i(2, 0), Vector2i(2, 6)]),
+						path([Vector2i(0, 2), Vector2i(0, 0), Vector2i(4, 0), Vector2i(4, 2)]),
+					],
+				},
+				"thesis": {
+					"desc": "each feeder runs its whole wing to the HUB; express owns the spine",
+					"routes": [
+						path([Vector2i(0, 2), Vector2i(0, 0), Vector2i(2, 0)]), # FEEDER A: left wing -> hub
+						path([Vector2i(4, 2), Vector2i(4, 0), Vector2i(2, 0)]), # FEEDER B: right wing -> hub
+						path([Vector2i(2, 0), Vector2i(2, 6)]), # EXPRESS: hub -> top
+					],
+				},
+			}
+		"G-5":
+			return {
+				"naive": {
+					"desc": "all three cars barge through the gate to serve everything",
+					"routes": [
+						path([Vector2i(0, 0), Vector2i(1, 0), Vector2i(1, 7), Vector2i(0, 7)]),
+						path([Vector2i(2, 0), Vector2i(1, 0), Vector2i(1, 7), Vector2i(2, 7)]),
+						path([Vector2i(0, 0), Vector2i(1, 0), Vector2i(1, 7), Vector2i(2, 7)]),
+					],
+				},
+				"thesis": {
+					"desc": "one gate shuttle (mid to mid) + a local sweep on each wing",
+					"routes": [
+						# SHUTTLE: the only car that spends the gate, BM <-> TM.
+						path([Vector2i(1, 0), Vector2i(1, 7)]),
+						path([Vector2i(0, 0), Vector2i(2, 0)]), # LOCAL LO: BL-BM-BR
+						path([Vector2i(0, 7), Vector2i(2, 7)]), # LOCAL HI: TL-TM-TR
+					],
+				},
+			}
+		"G-6":
+			return {
+				"naive": {
+					"desc": "the cargo car serves a wing; the freight is stranded at the dock",
+					"routes": [
+						path([Vector2i(0, 0), Vector2i(0, 4)]), # POD: west
+						path([Vector2i(0, 0), Vector2i(4, 0)]), # STANDARD: bottom row
+						path([Vector2i(4, 0), Vector2i(4, 4)]), # CARGO: east (freight ignored)
+					],
+				},
+				"thesis": {
+					"desc": "cargo runs the dock<->delivery freight; pod & standard take the wings",
+					"routes": [
+						path([Vector2i(0, 0), Vector2i(0, 4)]), # POD: west wing
+						path([Vector2i(4, 0), Vector2i(4, 4)]), # STANDARD: east wing
+						path([Vector2i(2, 0), Vector2i(2, 4)]), # CARGO: freight shuttle
+					],
+				},
+			}
+		"G-7":
+			return {
+				"naive": {
+					"desc": "every car stops at every floor; the express never gets going",
+					"routes": [
+						path([Vector2i(0, 0), Vector2i(0, 8)]),
+						path([Vector2i(0, 0), Vector2i(0, 8)]),
+						path([Vector2i(0, 0), Vector2i(0, 8)]),
+					],
+				},
+				"thesis": {
+					"desc": "express runs nonstop up the shaft; pod & local take the hops",
+					"routes": [
+						path([Vector2i(0, 0), Vector2i(0, 4)]), # POD: lower hops
+						path([Vector2i(0, 4), Vector2i(0, 8)]), # LOCAL: upper hops
+						# EXPRESS: lobby up the clear shaft to the penthouse, nonstop.
+						path([Vector2i(0, 0), Vector2i(1, 0), Vector2i(1, 8), Vector2i(0, 8)]),
+					],
+				},
+			}
 		"L1":
 			return {
 				"naive": {

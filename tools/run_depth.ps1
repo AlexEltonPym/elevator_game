@@ -35,7 +35,7 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 Push-Location $root
 
-if ($Levels -eq "") { $ids = @("L1", "L2", "L3", "L4", "W-1", "W-2", "W-3", "X-1") }
+if ($Levels -eq "") { $ids = @("G-1", "G-2", "G-3", "G-4", "G-5", "G-6", "G-7", "L1", "L2", "L3", "L4", "W-1", "W-2", "W-3", "X-1") }
 else { $ids = $Levels.Split(",") | ForEach-Object { $_.Trim() } }
 
 $quickFlag = @()

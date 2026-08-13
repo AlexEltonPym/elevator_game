@@ -9,6 +9,69 @@ extends RefCounted
 ## (docs/autodesign-research.md §5.3 step 4).
 
 const SETS := {
+	"G-1": {
+		"desc": "search elite: 0 loop(s), 6 stops, 9 cells (beat thesis +5.1)",
+		"score": 1382.10,
+		"routes": [
+			[Vector2i(0, 4), Vector2i(0, 3), Vector2i(0, 2)],
+			[Vector2i(0, 0), Vector2i(0, 1), Vector2i(0, 2)],
+			[Vector2i(0, 2), Vector2i(0, 1), Vector2i(0, 0)],
+		],
+	},
+	"G-2": {
+		"desc": "search elite: 0 loop(s), 7 stops, 11 cells (beat thesis +8.8)",
+		"score": 1357.70,
+		"routes": [
+			[Vector2i(0, 6), Vector2i(0, 5), Vector2i(0, 4), Vector2i(0, 3), Vector2i(0, 2)],
+			[Vector2i(0, 0), Vector2i(0, 1), Vector2i(0, 2)],
+			[Vector2i(0, 8), Vector2i(0, 7), Vector2i(0, 6)],
+		],
+	},
+	"G-3": {
+		"desc": "search elite: 2 loop(s), 12 stops, 35 cells (beat thesis -1.1)",
+		"score": 1352.40,
+		"routes": [
+			[Vector2i(0, 2), Vector2i(0, 3), Vector2i(0, 4), Vector2i(0, 5), Vector2i(0, 6), Vector2i(1, 6), Vector2i(1, 5), Vector2i(1, 4), Vector2i(1, 3), Vector2i(1, 2), Vector2i(1, 1), Vector2i(1, 0), Vector2i(0, 0)],
+			{"closed": true, "cells": [Vector2i(2, 0), Vector2i(2, 1), Vector2i(2, 2), Vector2i(2, 3), Vector2i(2, 4), Vector2i(2, 5), Vector2i(2, 6), Vector2i(1, 6), Vector2i(1, 5), Vector2i(1, 4), Vector2i(1, 3), Vector2i(1, 2), Vector2i(1, 1), Vector2i(1, 0)]},
+			{"closed": true, "cells": [Vector2i(2, 0), Vector2i(1, 0), Vector2i(0, 0), Vector2i(0, 1), Vector2i(0, 2), Vector2i(1, 2), Vector2i(2, 2), Vector2i(2, 1)]},
+		],
+	},
+	"G-4": {
+		"desc": "search elite: 0 loop(s), 8 stops, 17 cells (beat thesis -2.7)",
+		"score": 1370.60,
+		"routes": [
+			[Vector2i(2, 0), Vector2i(1, 0), Vector2i(0, 0), Vector2i(0, 1), Vector2i(0, 2)],
+			[Vector2i(2, 0), Vector2i(2, 1), Vector2i(2, 2), Vector2i(2, 3), Vector2i(2, 4), Vector2i(2, 5), Vector2i(2, 6)],
+			[Vector2i(2, 0), Vector2i(3, 0), Vector2i(4, 0), Vector2i(4, 1), Vector2i(4, 2)],
+		],
+	},
+	"G-5": {
+		"desc": "search elite: 0 loop(s), 8 stops, 14 cells (beat thesis -0.6)",
+		"score": 1374.10,
+		"routes": [
+			[Vector2i(1, 7), Vector2i(1, 6), Vector2i(1, 5), Vector2i(1, 4), Vector2i(1, 3), Vector2i(1, 2), Vector2i(1, 1), Vector2i(1, 0)],
+			[Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0)],
+			[Vector2i(0, 7), Vector2i(1, 7), Vector2i(2, 7)],
+		],
+	},
+	"G-6": {
+		"desc": "search elite: 1 loop(s), 8 stops, 24 cells (beat thesis -0.3)",
+		"score": 1368.10,
+		"routes": [
+			[Vector2i(0, 2), Vector2i(0, 3), Vector2i(0, 4), Vector2i(1, 4), Vector2i(1, 3), Vector2i(1, 2), Vector2i(1, 1), Vector2i(1, 0), Vector2i(0, 0)],
+			{"closed": true, "cells": [Vector2i(4, 0), Vector2i(4, 1), Vector2i(4, 2), Vector2i(4, 3), Vector2i(4, 4), Vector2i(3, 4), Vector2i(3, 3), Vector2i(3, 2), Vector2i(3, 1), Vector2i(3, 0)]},
+			[Vector2i(2, 4), Vector2i(2, 3), Vector2i(2, 2), Vector2i(2, 1), Vector2i(2, 0)],
+		],
+	},
+	"G-7": {
+		"desc": "search elite: 3 loop(s), 13 stops, 46 cells (beat thesis -3.6)",
+		"score": 1362.40,
+		"routes": [
+			{"closed": true, "cells": [Vector2i(0, 2), Vector2i(0, 3), Vector2i(0, 4), Vector2i(1, 4), Vector2i(1, 3), Vector2i(1, 2), Vector2i(1, 1), Vector2i(1, 0), Vector2i(0, 0), Vector2i(0, 1)]},
+			{"closed": true, "cells": [Vector2i(0, 6), Vector2i(0, 7), Vector2i(0, 8), Vector2i(1, 8), Vector2i(1, 7), Vector2i(1, 6), Vector2i(1, 5), Vector2i(1, 4), Vector2i(1, 3), Vector2i(1, 2), Vector2i(1, 1), Vector2i(1, 0), Vector2i(0, 0), Vector2i(0, 1), Vector2i(0, 2), Vector2i(0, 3), Vector2i(0, 4), Vector2i(0, 5)]},
+			{"closed": true, "cells": [Vector2i(0, 4), Vector2i(0, 3), Vector2i(0, 2), Vector2i(0, 1), Vector2i(0, 0), Vector2i(1, 0), Vector2i(1, 1), Vector2i(1, 2), Vector2i(1, 3), Vector2i(1, 4), Vector2i(1, 5), Vector2i(1, 6), Vector2i(1, 7), Vector2i(1, 8), Vector2i(0, 8), Vector2i(0, 7), Vector2i(0, 6), Vector2i(0, 5)]},
+		],
+	},
 	"L1": {
 		"desc": "search elite: 0 loop(s), 12 stops, 57 cells (beat thesis +3.2)",
 		"score": 1288.60,

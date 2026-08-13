@@ -87,13 +87,28 @@ func run_random(budget: int, checkpoints: Array) -> Dictionary:
 	var st := _new_state(checkpoints)
 	var tried := 0
 	var undecodable := 0
+	var stall := 0
 	while sim.runs - st.start < budget:
 		tried += 1
+		var before: int = sim.runs
 		var g := RG.random_genome(rng, rooms, n_cards)
 		if g.is_empty():
 			undecodable += 1
-			continue
-		_offer(st, g, evaluate(g))
+		else:
+			_offer(st, g, evaluate(g))
+		# The decodable genome space can be SMALLER than the budget: a tiny level
+		# (e.g. a 3-room tutorial) has only a handful of distinct decodable route-
+		# sets, so once they are all scored every fresh sample is either
+		# undecodable or an already-evaluated (cached) genome — neither of which
+		# spends budget. `sim.runs` then plateaus below `budget` and the loop
+		# would spin forever. Bail when the space is visibly exhausted, mirroring
+		# run_ea's `stale` guard. A healthy level resets `stall` every draw.
+		if sim.runs == before:
+			stall += 1
+			if stall >= 20000:
+				break
+		else:
+			stall = 0
 	var out := _finish(st)
 	out["diag"] = {"proposed": tried, "undecodable": undecodable}
 	return out
