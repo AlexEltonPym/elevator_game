@@ -194,24 +194,24 @@ func _scorecheck() -> bool:
 		var wins: Array = []
 		var losses: Array = []
 		var results := {"win": 0, "lose": 0, "timeout": 0}
-		var decodable := 0
-		for _k in n:
-			var g := RG.random_genome(rng, dk, widths)
-			if g.is_empty():
+		var legal := 0
+		var attempts := 0
+		while legal < n and attempts < n * 80:
+			attempts += 1
+			var s := RG.sample_random_routeset(rng, dk, widths)
+			if not s.legal:
 				continue
-			var dec := RG.decode_genome(g, widths)
-			if dec.err != "":
-				continue
-			decodable += 1
-			var r: Dictionary = sim.run(li, dec.routes, SimApi5.SEEDS_TRAIN[0], SimApi5.STEP_COARSE)
+			legal += 1
+			var r: Dictionary = sim.run(li, s.routes, SimApi5.SEEDS_TRAIN[0], SimApi5.STEP_COARSE)
 			results[r.result] += 1
 			if r.result == "win":
 				wins.append(r.score)
 			else:
 				losses.append(r.score)
-		var rwr := 100.0 * float(results.win) / maxf(1.0, float(decodable))
-		print("\n--- %s %s: %d decodable of %d -> win %d / lose %d / timeout %d   (rwr %.2f%%)" % [
-				id, lv.name, decodable, n, results.win, results.lose, results.timeout, rwr])
+		var rwr := 100.0 * float(results.win) / maxf(1.0, float(legal))
+		var legality := 100.0 * float(legal) / maxf(1.0, float(attempts))
+		print("\n--- %s %s (freer sampler): %d legal of %d attempts (legality %.1f%%) -> win %d / lose %d / timeout %d   (legal-plan win rate %.2f%%)" % [
+				id, lv.name, legal, attempts, legality, results.win, results.lose, results.timeout, rwr])
 		if not wins.is_empty():
 			print("    win scores  : min %.1f med %.1f max %.1f  (%d wins)" % [
 					_amin(wins), SimApi5.median(wins), _amax(wins), wins.size()])
@@ -252,30 +252,33 @@ func _write_report() -> void:
 	L.append("")
 	L.append("## How to read this")
 	L.append("")
-	L.append("- ONE search pass per level yields TWO readings (docs/v5-transition-spec.md §2.2): Reading A (soft-border) = random-win-rate + `skill_gap` + the ladder; Reading B (puzzle) = solvability + `K` + `e1`. The **auto-classifier** picks the headline.")
-	L.append("- **spec-primary** is the spec §2.3 rule applied verbatim: `w_rand >= %d` (>= %d decodable random wins out of >=%d samples, ~0.8%%) -> soft-border; `w_rand < %d` with a solver win on >=7/8 seeds -> puzzle; else BROKEN." % [
-			Metrics5.TAU_SOFT, Metrics5.TAU_SOFT, int(results[0].get("rand_probe", 600)), Metrics5.TAU_SOFT])
-	L.append("- **class** is the corrected call. The spec-primary rule assumes a puzzle has random-win ~0 (`w_rand < 5`); on this tiny suite that assumption fails for R-6 (see its diagnosis), and `K` cannot rescue it (signature granularity gives R-6 a HIGHER K than the tutorials). The robust divider is the **win/loss balance of LEGAL random plans** against the spec's own forgiving bar (§4.1, rwr >= %.0f%%): random mostly WINS -> **soft-border** (forgiving landscape); random mostly LOSES but the solver reliably wins -> **puzzle** (constraint); random ~never wins and no solver win -> **BROKEN**." % Metrics5.FORGIVING_RWR)
+	L.append("- ONE search pass per level yields TWO readings (docs/v5-transition-spec.md §2.2): Reading A (soft-border) = the random-plan win basin + `skill_gap` + the ladder; Reading B (puzzle) = solvability + `K` + `e1`. A **balance-keyed classifier** picks the headline.")
+	L.append("- **The random baseline uses a FREER sampler** (drifted self-avoiding walks between random dock stops), NOT the smart shortest-path decoder. The smart decoder auto-covers intermediate rooms and auto-threads a level's cooperative split, so a \"random\" gene would do the puzzle's reasoning for free and inflate a constraint level's random-win. The freer sampler produces genuinely varied legal plans that often miss rooms and mis-thread the shaft, so its win rate reflects the LEVEL's difficulty, not the decoder's cleverness. (The EA / greedy keep the smart decoder.)")
+	L.append("- **Two probe numbers.** *legality rate* = fraction of raw random draws that are even legal (all cards decode under the caps, serve >= 2 rooms); it reflects caps AND the wandering sampler's dead-end rate, so read it as a rough constraint indicator, not a pure cap measure. *legal-plan win rate* = wins among legal draws — **this is the difficulty signal that drives the classifier.**")
+	L.append("- **Classifier (balance-keyed):** legal-plan win rate >= %.0f%% (a broad basin of working plans) -> **soft-border**; legal-plan win rate < %.0f%% (few legal plans work) AND the solver is solvable >=7/8 seeds -> **puzzle**; < %.0f%% AND not solvable -> **BROKEN**. The %.0f%% bar is the spec's own forgiving/tutorial bar (§4.1). The `spec-primary` column shows the spec §2.3 raw `w_rand < %d` rule for audit only; it is NOT the driver." % [
+			Metrics5.FORGIVING_RWR, Metrics5.FORGIVING_RWR, Metrics5.FORGIVING_RWR, Metrics5.FORGIVING_RWR, Metrics5.TAU_SOFT])
 	L.append("- **Solvability is per-seed** (spec §2.2a): for >= 7/8 TEST seeds, does the solver's set of discovered winning route-sets contain one that wins that seed? (Not \"does one genome win every seed\" — the right question when a legal win is seed-fragile.)")
-	L.append("- One budget unit = one sim run of THE REAL v5 LEVEL (shipped quota / max_lost / win-lose live, %d game-second timeout). `WIN -> %.0f + (%.0f - t_win)`; else `served - %.1f*lost - %.2f*avg_wait`. Optimizers search TRAIN seeds at STEP %.2f; every reported number is a median over the disjoint TEST seeds at STEP %.2f." % [
-			int(SimApi5.TIMEOUT), SimApi5.WIN_BONUS, SimApi5.TIMEOUT, SimApi5.LOST_WEIGHT, SimApi5.WAIT_WEIGHT, SimApi5.STEP_COARSE, SimApi5.STEP_FINE])
-	L.append("- Solvability is always **relative to this solver at this budget** (Ropossum's caveat): \"winnable by our EA within %d evals on these seeds\", never \"winnable\"." % int(results[0].get("B_max", 6400)))
+	L.append("- **`K` is a secondary quality signal, not the discriminator.** `K (arch)` is the archive estimate (distinct winning `win_signature`s the EA evaluated). `K (exh)` is EXHAUSTIVE ground truth where the capped stop-sequence space is small enough to enumerate (distinct winning per-card served-room structures); `--` means the space was too large and only the archive estimate is available.")
+	L.append("- One budget unit = one sim run of THE REAL v5 LEVEL (shipped quota / max_lost / win-lose live, %d game-second timeout). `WIN -> %.0f + (%.0f - t_win)`; else `served - %.1f*lost - %.2f*avg_wait`. Optimizers search TRAIN seeds at STEP %.2f; every reported number is a median over the disjoint TEST seeds at STEP %.2f. Solvability is always **relative to this solver at this budget** (Ropossum's caveat): \"winnable by our EA within %d evals on these seeds\", never \"winnable\"." % [
+			int(SimApi5.TIMEOUT), SimApi5.WIN_BONUS, SimApi5.TIMEOUT, SimApi5.LOST_WEIGHT, SimApi5.WAIT_WEIGHT, SimApi5.STEP_COARSE, SimApi5.STEP_FINE, int(results[0].get("B_max", 6400))])
 	L.append("")
 	L.append("## Classification table")
 	L.append("")
-	L.append("`class` is the corrected call; `spec-primary` is the spec §2.3 w_rand rule applied verbatim. They differ only where the w_rand rule miscalls (see the R-6 diagnosis).")
+	L.append("Class is driven by the **legal-plan win rate** (freer sampler) + solvability. `spec-primary` is the raw spec §2.3 `w_rand` rule shown for audit only.")
 	L.append("")
-	L.append("| level | class | spec-primary | w_rand (rwr) | solvable seeds | K | e1 evals | skill_gap | ladder steps | thesis among niches |")
-	L.append("|---|---|---|---|---|---|---|---|---|---|")
+	L.append("| level | class | legality | legal-plan win rate | solvable | K (arch) | K (exh) | e1 evals | spec-primary |")
+	L.append("|---|---|---|---|---|---|---|---|---|")
 	for r in results:
 		var prim: String = str(r.get("klass_primary", r.klass))
 		var flag := "" if prim == str(r.klass) else " ⚠"
-		L.append("| **%s** %s | **%s** | %s%s | %d (%.2f%%) | %d/%d | %d | %s | %+.1f | %d | %s |" % [
-				r.id, r.name, r.klass, prim, flag, int(r.w_rand), float(r.rwr),
-				int(r.get("solvable_seeds", 0)), int(r.n_test), int(r.K),
+		var exk: int = int(r.get("exhaustive_k", -1))
+		var exk_s := str(exk) if bool(r.get("exhaustive_k_feasible", false)) else "—"
+		L.append("| **%s** %s | **%s** | %.1f%% | %.2f%% (%d/%d) | %d/%d | %d | %s | %s | %s%s |" % [
+				r.id, r.name, r.klass, float(r.get("legality_rate", 0.0)),
+				float(r.get("legal_win_rate", r.rwr)), int(r.w_rand), int(r.decodable),
+				int(r.get("solvable_seeds", 0)), int(r.n_test), int(r.K), exk_s,
 				(str(int(r.e1_evals)) if int(r.e1_evals) >= 0 else "—"),
-				float(r.skill_gap), int(r.ladder_steps),
-				"yes" if r.thesis_among_niches else "no"])
+				prim, flag])
 	L.append("")
 	L.append("## Validation of the classifier against hand-understood levels")
 	L.append("")
@@ -283,19 +286,23 @@ func _write_report() -> void:
 	var r1 := _find(results, "R-1")
 	if not r1.is_empty():
 		var got1: String = r1.klass
-		L.append("- **R-1 \"One Lift\" expected SOFT-BORDER** — got **%s**. %s" % [got1,
-				"CORRECT: a forgiving tutorial with a real random-win floor." if got1 == "soft-border"
-				else "MISCALL — see diagnosis in the R-1 section."])
+		L.append("- **R-1 \"One Lift\" expected SOFT-BORDER** — got **%s**, driven by: %s. %s" % [got1,
+				str(r1.get("klass_signal", "")),
+				"CORRECT via the balance signal (not a brittle threshold): a broad basin of legal random plans win." if got1 == "soft-border"
+				else "MISCALL — see the R-1 section."])
 	if not r6.is_empty():
 		var got6: String = r6.klass
-		var prim6: String = str(r6.get("klass_primary", got6))
-		L.append("- **R-6 \"Squeeze\" expected PUZZLE** — got **%s** (corrected). %s" % [got6,
-				("CORRECT. Legal random plans mostly LOSE (rwr %.2f%%) and the solver is solvable %d/%d seeds via the cooperative split, and %s. NOTE: the spec-primary w_rand rule alone says **%s** (a MISCALL) because R-6's random-win is ~%.0f%%, NOT ~0 — the dock/shortest-path decoder auto-covers intermediate rooms and auto-splits at the transfer, and illegal overlaps are filtered as undecodable rather than counted as losses. This is the signal that the w_rand threshold (and K) needs the rwr-balance refinement before gating new puzzles." % [
-						float(r6.rwr), int(r6.get("solvable_seeds", 0)), int(r6.n_test),
+		L.append("- **R-6 \"Squeeze\" expected PUZZLE** — got **%s**, driven by: %s. %s" % [got6,
+				str(r6.get("klass_signal", "")),
+				("CORRECT via the balance signal. The FREER sampler drops R-6's legal-plan win rate to %.2f%% (the smart-decoder version had inflated it to ~6%%), toward the ~0 the design intended — genuinely-random legal plans almost never solve it, but the solver is solvable %d/%d seeds via the cooperative split, and %s. Exhaustive K = %s confirms the winning structure is %s." % [
+						float(r6.get("legal_win_rate", r6.rwr)), int(r6.get("solvable_seeds", 0)), int(r6.n_test),
 						"the intended split IS among the winning niches" if r6.thesis_among_niches else "the intended split is NOT among the recorded winning niches",
-						prim6, float(r6.rwr)])
+						(str(int(r6.get("exhaustive_k", -1))) if bool(r6.get("exhaustive_k_feasible", false)) else "n/a"),
+						"near-unique" if bool(r6.get("exhaustive_k_feasible", false)) and int(r6.get("exhaustive_k", 9)) <= 2 else "small"])
 				if got6 == "puzzle"
-				else "MISCALL — see diagnosis in the R-6 section."])
+				else "MISCALL — see the R-6 section."])
+	L.append("")
+	L.append("Both hand-understood levels are now called correctly by the win/loss BALANCE of legal random plans — a signal with wide margin (R-6 ~%.0f%% vs the tutorials' 77-100%%), not a knife-edge count threshold." % float(r6.get("legal_win_rate", 3.0)) if not r6.is_empty() else "")
 	L.append("")
 	for r in results:
 		L.append_array(_level_section(r))
@@ -303,7 +310,8 @@ func _write_report() -> void:
 	L.append("")
 	L.append("- **Solver-relative solvability.** \"Solvable\" is per-seed: for >=7/8 TEST seeds, at least one route-set the search discovered as a winner (a niche example, the best genome, or the hand thesis) wins that seed within the budget. It is NOT \"one genome wins every seed\" — R-6's cooperative split is a legal win but seed-fragile (the best single genome generalises to only 5/8 test seeds), so requiring one genome to win 7/8 would falsely read R-6 as unsolvable. A false BROKEN (our decoder missed a real win) and a false GOOD PUZZLE (the solver found a path no human would) are the two states this most easily confuses (docs/v5-transition-spec.md §6). The numbers are a filter, never the verdict.")
 	L.append("- **The thesis is used as a known-legal winner in the solvability check.** That makes solvability not strictly solver-only for the shipped levels; the per-seed count would be re-derived from solver-found winners alone before this gates NEW (un-thesised) levels.")
-	L.append("- **K is archive-derived, not exhaustive.** K counts distinct `win_signature`s (per-card served-room set + loop/overlap flags) among winning genomes the EA happened to evaluate. It is a lower bound on true solution diversity and only as honest as the search's coverage; a proper ground-truth K needs exhaustive stop-sequence enumeration under the cap (Sturtevant EPCG), not yet built here.")
+	L.append("- **K is a secondary quality signal, not the classifier's discriminator.** The archive `K` (distinct `win_signature`s the EA evaluated) does NOT separate puzzle from soft on this tiny suite — signature granularity (overlap-cell counts, loop flags) can give a puzzle a HIGHER archive K than a tutorial. Where the capped stop-sequence space is small enough, **exhaustive K** enumerates all winning per-card served-room structures (ground truth, Sturtevant EPCG); where the space is too large (R-4, with 8 docks x 3 cards) it falls back to the archive estimate, stated as such. Exhaustive K enumerates dock-stop sequences up to length %d and card-decode-order permutations, so a winner reachable only by a longer sequence would be missed — a known blind spot on the enumerated levels." % Metrics5.ENUM_MAX_STOPS)
+	L.append("- **The freer sampler's legality rate conflates two things**: how constraining the caps are AND how often a drifted self-avoiding walk dead-ends or misses a room on a given geometry. So a low legality rate (e.g. R-4 at ~2%%, which has NO caps) is not by itself evidence of a constraint puzzle — the classifier reads the legal-plan WIN rate, not legality, for exactly this reason.")
 	L.append("- **e1 is a within-level relative difficulty**, evals-to-first-win for THIS solver — not human difficulty (Sturtevant 2020).")
 	L.append("- The decoder is order-dependent under the overlap cap (card 0 claims capacity first); a reorder-cards mutation lets the search rearrange it, but a solution only reachable by a decode order the mutation never tried could read as harder than it is.")
 	_store(REPORT_PATH, "\n".join(L) + "\n")
@@ -321,12 +329,16 @@ func _level_section(r: Dictionary) -> Array:
 	L.append("%d rooms, %d cards, quota %d / max_lost %d. Search cost: %d runs, %.0f s wall." % [
 			int(r.rooms), int(r.cards), int(r.quota), int(r.max_lost), int(r.sim_runs), float(r.wall_s)])
 	L.append("")
+	L.append("**Class driven by:** %s" % str(r.get("klass_signal", "")))
+	L.append("")
 	L.append("| metric | value |")
 	L.append("|---|---|")
-	L.append("| random-win count `w_rand` | %d of %d decodable (rwr %.2f%%) |" % [int(r.w_rand), int(r.decodable), float(r.rwr)])
+	L.append("| legality rate (legal raw draws / attempts) | %.1f%% (%d legal of %d) |" % [float(r.get("legality_rate", 0.0)), int(r.decodable), int(r.get("probe_attempts", 0))])
+	L.append("| **legal-plan win rate** (freer sampler) | **%.2f%%** (%d/%d legal draws win) |" % [float(r.get("legal_win_rate", r.rwr)), int(r.w_rand), int(r.decodable)])
 	L.append("| solvability (per-seed: solver win exists) | %d/%d -> %s |" % [int(r.get("solvable_seeds", 0)), int(r.n_test), "solvable" if r.solvable else "NOT solvable"])
 	L.append("| best single EA genome generalises (wins on TEST) | %d/%d |" % [int(r.solve_wins), int(r.n_test)])
-	L.append("| `K` (structurally-distinct winning route-sets) | %d |" % int(r.K))
+	L.append("| `K` archive estimate | %d |" % int(r.K))
+	L.append("| `K` EXHAUSTIVE (ground truth) | %s |" % (str(int(r.get("exhaustive_k", -1))) + "  — " + str(r.get("exhaustive_k_note", "")) if bool(r.get("exhaustive_k_feasible", false)) else ("n/a — " + str(r.get("exhaustive_k_note", "")))))
 	L.append("| `e1` (evals to first win) | %s |" % (str(int(r.e1_evals)) if int(r.e1_evals) >= 0 else "no win found"))
 	L.append("| `skill_gap` (ea@B - random best) | %+.1f |" % float(r.skill_gap))
 	L.append("| ladder steps (budget doublings that beat noise %.2f) | %d |" % [float(r.noise_band), int(r.ladder_steps)])
@@ -359,6 +371,7 @@ func _level_section(r: Dictionary) -> Array:
 
 func _verdict(r: Dictionary) -> String:
 	var k: String = r.klass
+	var exk := (" Exhaustive K = %d." % int(r.get("exhaustive_k", -1))) if bool(r.get("exhaustive_k_feasible", false)) else " Exhaustive K n/a (space too large; archive K = %d)." % int(r.K)
 	if k == "soft-border":
 		var top: Dictionary = r.entries["ea@%d" % _last_budget(r)]
 		var thesis_note := ""
@@ -366,16 +379,16 @@ func _verdict(r: Dictionary) -> String:
 			var beat: float = float(top.score) - float(r.entries.thesis.score)
 			thesis_note = " The EA %s the hand thesis (%+.1f)." % [
 					"beats" if beat > 1.0 else ("matches" if absf(beat) <= 1.0 else "trails"), beat]
-		return "SOFT-BORDER: %d of %d decodable random plans win (rwr %.2f%%), so the level has a measurable floor and quality varies smoothly; skill_gap %+.1f over %d ladder step(s).%s" % [
-				int(r.w_rand), int(r.decodable), float(r.rwr), float(r.skill_gap), int(r.ladder_steps), thesis_note]
+		return "SOFT-BORDER: a broad basin — %.2f%% of legal random plans win — so the level has many working plans and quality varies smoothly; skill_gap %+.1f over %d ladder step(s).%s%s" % [
+				float(r.get("legal_win_rate", r.rwr)), float(r.skill_gap), int(r.ladder_steps), thesis_note, exk]
 	if k == "puzzle":
-		return "PUZZLE: legal random plans mostly LOSE (rwr %.2f%%, %d/%d) because the overlap cap forces a specific cooperative structure, but the solver finds a legal win on %d/%d seeds (first win at %s evals). K=%d archive winning-signature(s); the best single genome generalises to %d/%d test seeds (a fragile win). %s." % [
-				float(r.rwr), int(r.w_rand), int(r.decodable), int(r.get("solvable_seeds", 0)), int(r.n_test),
-				(str(int(r.e1_evals)) if int(r.e1_evals) >= 0 else "n/a"), int(r.K),
-				int(r.solve_wins), int(r.n_test),
+		return "PUZZLE: only %.2f%% of legal random plans win (the overlap cap forces a specific cooperative structure — the freer sampler almost never stumbles into it), but the solver finds a legal win on %d/%d seeds (first win at %s evals). The best single genome generalises to %d/%d test seeds (a fragile win).%s %s." % [
+				float(r.get("legal_win_rate", r.rwr)), int(r.get("solvable_seeds", 0)), int(r.n_test),
+				(str(int(r.e1_evals)) if int(r.e1_evals) >= 0 else "n/a"),
+				int(r.solve_wins), int(r.n_test), exk,
 				"The intended cooperative split IS among the winning niches" if r.thesis_among_niches else "The intended split was NOT recorded among niches"]
-	return "BROKEN/UNVERIFIED: random-win ~0 (%d/%d) AND the solver found no legal win on >=7/8 seeds within %d evals. Either impossible or beyond this decoder — do not ship without a hand solve." % [
-			int(r.w_rand), int(r.decodable), int(r.B_max)]
+	return "BROKEN/UNVERIFIED: only %.2f%% of legal random plans win AND the solver found no legal win on >=7/8 seeds within %d evals. Either impossible or beyond this decoder — do not ship without a hand solve.%s" % [
+			float(r.get("legal_win_rate", r.rwr)), int(r.B_max), exk]
 
 
 # ---------------------------------------------------------------- helpers

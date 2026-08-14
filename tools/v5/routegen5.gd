@@ -450,6 +450,107 @@ static func random_genome(rng: RandomNumberGenerator, all_docks: Array, widths: 
 	return []
 
 
+# ---------------------------------------------------------------- freer sampler
+
+## The DRIFTED-SELF-AVOIDING-WALK sampler for the uniform-random difficulty probe
+## ONLY (docs/v5-transition-spec.md §2; coordinator refinement 1). The gene decoder
+## above lays SHORTEST paths between docks, which auto-cover intermediate rooms and
+## auto-thread a level's cooperative split — so a "random" gene does the puzzle's
+## reasoning for free and inflates a constraint level's random-win. This sampler
+## instead connects random dock stops with a walk that only DRIFTS toward each
+## target (prob DRIFT) and otherwise steps to a random legal neighbour, never
+## revisiting a cell. The result is a genuinely varied legal route that frequently
+## misses rooms and mis-threads the shaft — so on a real puzzle a random legal
+## plan rarely wins, and the probe measures the level's difficulty, not the
+## decoder's cleverness. The EA / greedy keep the smart decoder.
+const DRIFT := 0.6
+
+
+## One drifted self-avoiding walk from a to b (cap/corridor/passability legal, no
+## revisits). [] if it dead-ends or fails to arrive within max_steps.
+static func _drifted_walk(a: Vector2i, b: Vector2i, used: Dictionary,
+		cap_left: Dictionary, width: int, rng: RandomNumberGenerator, max_steps: int) -> Array:
+	if a == b:
+		return [a]
+	var path: Array = [a]
+	var local := used.duplicate()
+	local[a] = true
+	var cur := a
+	var steps := 0
+	while steps < max_steps:
+		steps += 1
+		var cands: Array = []
+		for d in NEIGHBORS:
+			var v: Vector2i = cur + d
+			if local.has(v) or not Grid5.passable(v):
+				continue
+			if not _cell_open_for(v, cap_left, width):
+				continue
+			cands.append(v)
+		if cands.is_empty():
+			return [] # stuck
+		var pick: Vector2i
+		if rng.randf() < DRIFT:
+			pick = cands[0]
+			var bd := Grid5.manhattan(cands[0], b)
+			for v in cands:
+				var dd := Grid5.manhattan(v, b)
+				if dd < bd:
+					bd = dd
+					pick = v
+		else:
+			pick = cands[rng.randi_range(0, cands.size() - 1)]
+		cur = pick
+		path.append(cur)
+		local[cur] = true
+		if cur == b:
+			return path
+	return []
+
+
+## ONE raw attempt at a random legal route-set via drifted walks (the probe's
+## unit). Returns {"routes", "legal"}: legal is false when any card dead-ends, is
+## cap-blocked, or serves < 2 rooms (the RUN gate would refuse it) — so the probe
+## can report the LEGALITY RATE (how constraining the caps + geometry are) and,
+## among legal draws, the LEGAL-PLAN WIN RATE.
+static func sample_random_routeset(rng: RandomNumberGenerator, all_docks: Array,
+		widths: Array) -> Dictionary:
+	var cap_left := _cap_map()
+	var routes: Array = []
+	var max_steps := Grid5.COLS * Grid5.ROWS * 3
+	for ci in widths.size():
+		var w: int = widths[ci]
+		var k := rng.randi_range(2, mini(4, all_docks.size()))
+		var pool := all_docks.duplicate()
+		var stops: Array = []
+		for _i in k:
+			stops.append(pool.pop_at(rng.randi_range(0, pool.size() - 1)))
+		if not _cell_open_for(stops[0], cap_left, w):
+			return {"routes": [], "legal": false}
+		var cells: Array = [stops[0]]
+		var used := {stops[0]: true}
+		var ok := true
+		for si in range(1, stops.size()):
+			var leg := _drifted_walk(cells[cells.size() - 1], stops[si], used, cap_left, w, rng, max_steps)
+			if leg.is_empty():
+				ok = false
+				break
+			for i in range(1, leg.size()):
+				cells.append(leg[i])
+				used[leg[i]] = true
+		if not ok:
+			return {"routes": [], "legal": false}
+		if Route5.validate(cells, false) != "":
+			return {"routes": [], "legal": false}
+		if served_rooms_of_cells(cells).size() < 2:
+			return {"routes": [], "legal": false}
+		for c in cells:
+			if cap_left.has(c):
+				cap_left[c] = int(cap_left[c]) - w
+		routes.append({"cells": cells, "closed": false})
+	return {"routes": routes, "legal": true}
+
+
 ## One mutation from the operator set, retried until it changes the genome.
 static func mutate(rng: RandomNumberGenerator, genome: Array, all_docks: Array,
 		tries := 8) -> Array:

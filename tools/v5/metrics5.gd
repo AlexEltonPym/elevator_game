@@ -63,8 +63,8 @@ static func run_level(sim, level_index: int, cfg: Dictionary) -> Dictionary:
 	#         whether the ladder is computable near zero).
 	var probe := _random_probe(sim, level_index, lv, all_docks, widths, cfg.rand_probe,
 			cfg.search_seed)
-	print("    random-probe: %d/%d decodable, %d WIN (rwr %.2f%%)" % [
-			probe.decodable, cfg.rand_probe, probe.w_rand, probe.rwr])
+	print("    random-probe (freer sampler): %d legal of %d attempts (legality %.1f%%), %d WIN -> legal-plan win rate %.2f%%" % [
+			probe.decodable, probe.attempts, probe.legality_rate, probe.w_rand, probe.legal_win_rate])
 
 	# ---- Phase 1: search (TRAIN seeds, coarse step)
 	var opt = Opt.new()
@@ -91,7 +91,8 @@ static func run_level(sim, level_index: int, cfg: Dictionary) -> Dictionary:
 		"quota": int(lv.quota), "max_lost": int(lv.max_lost),
 		"seeds_train": cfg.seeds_train, "seeds_test": cfg.seeds_test,
 		"rand_probe": cfg.rand_probe, "w_rand": probe.w_rand, "rwr": probe.rwr,
-		"decodable": probe.decodable,
+		"decodable": probe.decodable, "probe_attempts": probe.attempts,
+		"legality_rate": probe.legality_rate, "legal_win_rate": probe.legal_win_rate,
 		"budgets": {"random": r_random.runs_used, "greedy": r_greedy.runs_used, "ea": r_ea.runs_used},
 		"diag_ea": ed, "diag_random": r_random.diag,
 		"entries": {}, "ladder": [], "notes": [],
@@ -128,6 +129,13 @@ static func run_level(sim, level_index: int, cfg: Dictionary) -> Dictionary:
 	out.K = niches.k
 	out.win_signatures = niches.signatures
 	out.e1_evals = e1_evals
+	# EXHAUSTIVE K (coordinator refinement 3): where the legal stop-sequence space
+	# under the cap is small enough, ground-truth the count of distinct winning
+	# route-sets by enumeration; else fall back to the archive estimate.
+	var exk := _exhaustive_k(sim, level_index, widths, all_docks, cfg)
+	out.exhaustive_k = exk.k
+	out.exhaustive_k_feasible = exk.feasible
+	out.exhaustive_k_note = exk.note
 	var n_test: int = cfg.seeds_test.size()
 	out.n_test = n_test
 	out.B_max = cfg.budget_ea
@@ -166,6 +174,7 @@ static func run_level(sim, level_index: int, cfg: Dictionary) -> Dictionary:
 	out.klass = cls.klass
 	out.klass_primary = cls.primary
 	out.klass_reason = cls.reason
+	out.klass_signal = cls.signal
 
 	# seed_fragility, shapes, best route-set
 	if not best_entry.routes.is_empty():
@@ -193,27 +202,26 @@ static func run_level(sim, level_index: int, cfg: Dictionary) -> Dictionary:
 
 # ---------------------------------------------------------------- classifier
 
-## Returns {"primary", "klass", "reason"}. `primary` is the spec §2.3 rule applied
-## VERBATIM (exact thresholds). `klass` is the corrected call for this suite; they
-## differ only where the spec's rule miscalls, and `reason` says so plainly.
+## BALANCE-KEYED classifier (coordinator refinement 2). The call is driven by the
+## win/loss balance of LEGAL random plans — the signal that actually separates
+## these levels — not the fragile w_rand<5 raw-count threshold:
 ##
-## Why they can differ: the spec's primary rule assumes a constraint puzzle has
-## random-win ~0 (w_rand < 5), so w_rand < 5 => puzzle. On this suite that
-## assumption is VIOLATED by R-6: its dock-sequence genes + shortest-path decoder
-## auto-cover intermediate rooms and auto-split at the transfer, and illegal
-## overlaps are filtered as undecodable rather than counted as losses, so R-6's
-## random-win is ~5% (w_rand ~33 at 600 samples), not ~0 — and w_rand alone reads
-## it as soft-border. K does not rescue it either (signature granularity gives R-6
-## a HIGHER K than the tutorials). The robust discriminator that DOES separate the
-## two is the win/loss balance of LEGAL random plans, i.e. rwr against the spec's
-## own forgiving bar (§4.1, 40%): a level random play mostly WINS is a forgiving
-## soft-border; one random play mostly LOSES yet a solver reliably wins is a
-## constraint puzzle; one random ~never wins and no solver win is BROKEN.
+##   soft-border : a meaningful share of LEGAL random plans WIN (broad basin of
+##                 working plans): legal_win_rate >= SOFT_BAR.
+##   puzzle      : legal random plans mostly LOSE (legal_win_rate < SOFT_BAR) BUT
+##                 the solver reliably WINS (>= 7/8 seeds within budget).
+##   BROKEN      : legal random plans mostly lose AND the solver finds no win.
+##
+## SOFT_BAR is the spec's own forgiving bar (§4.1, 40%): well above every
+## tutorial's legal-win-rate here and far above the constraint level's, so the
+## call has wide margin and does not rest on a knife-edge threshold. Returns
+## {"primary" (the spec §2.3 w_rand rule, kept for reference/audit), "klass",
+## "reason", "signal" (which quantity drove the call)}.
 static func _classify(o: Dictionary) -> Dictionary:
 	var w: int = o.w_rand
 	var solvable: bool = o.solvable
-	var rwr: float = o.rwr
-	# --- spec §2.3 primary rule, verbatim ---
+	var lwr: float = o.legal_win_rate
+	# spec §2.3 w_rand rule kept verbatim, for audit / comparison only.
 	var primary: String
 	if w >= TAU_SOFT:
 		primary = "soft-border"
@@ -221,57 +229,194 @@ static func _classify(o: Dictionary) -> Dictionary:
 		primary = "puzzle"
 	else:
 		primary = "BROKEN"
-	# --- corrected call (rwr-balance divider) ---
 	var klass: String
 	var reason: String
-	if not solvable and w < TAU_SOFT:
-		klass = "BROKEN"
-		reason = "random ~never wins (w_rand=%d<%d) AND the solver found no legal win on >=7/8 seeds within %d evals — impossible/unverified." % [w, TAU_SOFT, o.B_max]
-	elif solvable and rwr < FORGIVING_RWR:
-		klass = "puzzle"
-		reason = "legal random plans mostly LOSE (rwr=%.2f%%, %d/%d wins) but the solver reliably WINS (solvable on %d/%d seeds, first win at %s evals) — a constraint puzzle whose win requires structure. Spec's w_rand rule would say '%s' (w_rand=%d>=%d), a MISCALL here: the dock/shortest-path decoder inflates R-6's random-win above ~0, so w_rand cannot see the puzzle; the rwr win/loss balance (spec §4.1 forgiving bar 40%%) does." % [
-				rwr, w, o.decodable, o.solvable_seeds, o.n_test,
-				(str(int(o.e1_evals)) if int(o.e1_evals) >= 0 else "n/a"), primary, w, TAU_SOFT]
+	var driver: String
+	if lwr >= FORGIVING_RWR:
+		klass = "soft-border"
+		driver = "legal-plan win rate %.2f%% >= %.0f%% (broad basin)" % [lwr, FORGIVING_RWR]
+		reason = "legal random plans mostly WIN (legal-plan win rate %.2f%%, %d/%d legal draws; legality %.1f%%) — a forgiving optimization landscape with a broad basin of working plans; the solver also wins %d/%d seeds." % [
+				lwr, w, o.decodable, o.legality_rate, o.solve_wins, o.n_test]
 	elif solvable:
-		klass = "soft-border"
-		reason = "legal random plans mostly WIN (rwr=%.2f%%, w_rand=%d>=%d) — a forgiving optimization landscape with a real floor; the solver also wins %d/%d." % [
-				rwr, w, TAU_SOFT, o.solve_wins, o.n_test]
+		klass = "puzzle"
+		driver = "legal-plan win rate %.2f%% < %.0f%% (few work) AND solvable %d/%d" % [lwr, FORGIVING_RWR, o.solvable_seeds, o.n_test]
+		reason = "legal random plans mostly LOSE (legal-plan win rate %.2f%%, %d/%d legal draws; legality %.1f%% of raw draws are even legal under the caps) but the solver reliably WINS (solvable on %d/%d seeds, first win at %s evals) — a constraint puzzle whose win requires a specific cooperative structure. (For reference, the spec's raw w_rand rule would say '%s'.)" % [
+				lwr, w, o.decodable, o.legality_rate, o.solvable_seeds, o.n_test,
+				(str(int(o.e1_evals)) if int(o.e1_evals) >= 0 else "n/a"), primary]
 	else:
-		# solver failed to generalise but random has a floor: unusual, treat as
-		# soft with a flag rather than pretend it's broken.
-		klass = "soft-border"
-		reason = "random has a floor (w_rand=%d>=%d, rwr=%.2f%%) but the best EA genome did not win >=7/8 test seeds — soft-border with a fragility flag (see seed_fragility)." % [w, TAU_SOFT, rwr]
-	return {"primary": primary, "klass": klass, "reason": reason}
+		klass = "BROKEN"
+		driver = "legal-plan win rate %.2f%% < %.0f%% AND NOT solvable" % [lwr, FORGIVING_RWR]
+		reason = "legal random plans mostly LOSE (legal-plan win rate %.2f%%) AND the solver found no legal win on >=7/8 seeds within %d evals — impossible or beyond this decoder; do not ship without a hand solve." % [lwr, o.B_max]
+	return {"primary": primary, "klass": klass, "reason": reason, "signal": driver}
+
+
+# ---------------------------------------------------------------- exhaustive K
+
+const ENUM_GENOME_CAP := 60000    # max (per-card gene count)^n_cards to enumerate
+const ENUM_MAX_STOPS := 3         # winning routes rarely need > 3 dock stops
+const EXK_SEEDS := 8              # seeds a structure is checked on (all TEST seeds)
+
+## Ground-truth K by ENUMERATION where the legal stop-sequence space under the cap
+## is small: enumerate all ordered dock-stop sequences (length 2..ENUM_MAX_STOPS)
+## per card and all card-order permutations, decode each with the smart cap-threaded
+## decoder, dedup DECODABLE route-sets by their per-card SERVED-ROOM structure (a
+## cleaner key than the archive's overlap-cell/loop signature), then evaluate one
+## representative of each distinct structure on EXK_SEEDS seeds. A structure is a
+## winner if it wins >= EXK_WIN_NEED of them; exhaustive K = # distinct winning
+## structures. Returns {"feasible", "k", "note"}.
+static func _exhaustive_k(sim, li: int, widths: Array, all_docks: Array, cfg: Dictionary) -> Dictionary:
+	var n_cards := widths.size()
+	# per-card ordered stop sequences of length 2..ENUM_MAX_STOPS
+	var genes := _ordered_stop_seqs(all_docks, ENUM_MAX_STOPS)
+	var total := int(pow(float(genes.size()), float(n_cards)))
+	if total > ENUM_GENOME_CAP:
+		return {"feasible": false, "k": -1,
+				"note": "space too large (%d^%d = %d genomes > cap %d); archive estimate used instead" % [
+						genes.size(), n_cards, total, ENUM_GENOME_CAP]}
+	# enumerate all genome combos (product of per-card genes)
+	var structures := {} # served-room-structure key -> representative routes
+	var idx: Array = []
+	for _c in n_cards:
+		idx.append(0)
+	var perms := _card_perms(n_cards)
+	var done := false
+	while not done:
+		var genome: Array = []
+		for c in n_cards:
+			genome.append(genes[idx[c]])
+		# try every card-decode order (cap threading is order-dependent)
+		for perm in perms:
+			var g2: Array = []
+			for p in perm:
+				g2.append(genome[p])
+			var dec := RG.decode_genome(g2, widths)
+			if dec.err == "":
+				# restore original card order for the structure key
+				var routes_in_order: Array = []
+				routes_in_order.resize(n_cards)
+				for i in perm.size():
+					routes_in_order[perm[i]] = dec.routes[i]
+				var key := _served_structure(routes_in_order)
+				if not structures.has(key):
+					structures[key] = routes_in_order
+		# increment mixed-radix index
+		var c2 := 0
+		while c2 < n_cards:
+			idx[c2] += 1
+			if idx[c2] < genes.size():
+				break
+			idx[c2] = 0
+			c2 += 1
+		if c2 >= n_cards:
+			done = true
+	# evaluate each distinct structure; a structure is a WINNER if it wins >= 40% of
+	# the sampled seeds. The gap is wide: a real solution structure wins ~50-100% of
+	# seeds (R-6's split is seed-fragile at ~65%, still well above the bar), while a
+	# non-solution (missing a room, or disjoint with no transfer) wins ~0% — so 40%
+	# separates them robustly without demanding a fragile win be perfect.
+	var winners := 0
+	var seeds: Array = cfg.seeds_test.slice(0, mini(EXK_SEEDS, cfg.seeds_test.size()))
+	var need := maxi(1, int(ceil(seeds.size() * 0.4)))
+	for key in structures:
+		var wins := 0
+		for sd in seeds:
+			if sim.run(li, structures[key], sd, SimApi5.STEP_FINE).result == "win":
+				wins += 1
+		if wins >= need:
+			winners += 1
+	return {"feasible": true, "k": winners,
+			"note": "%d genomes enumerated (stops<=%d), %d distinct served-room structures, %d winning (>=%d/%d seeds)" % [
+					total, ENUM_MAX_STOPS, structures.size(), winners, need, seeds.size()]}
+
+
+## All ordered sequences of DISTINCT docks, length 2..max_len.
+static func _ordered_stop_seqs(all_docks: Array, max_len: int) -> Array:
+	var out: Array = []
+	for L in range(2, max_len + 1):
+		_perm_helper(all_docks, [], L, out)
+	return out
+
+
+static func _perm_helper(pool: Array, cur: Array, L: int, out: Array) -> void:
+	if cur.size() == L:
+		out.append({"stops": cur.duplicate(), "closed": false})
+		return
+	for i in pool.size():
+		var d = pool[i]
+		if cur.has(d):
+			continue
+		cur.append(d)
+		_perm_helper(pool, cur, L, out)
+		cur.pop_back()
+
+
+## All permutations of [0..n-1] (card decode orders); n is tiny (<=3 for feasible).
+static func _card_perms(n: int) -> Array:
+	if n <= 1:
+		return [[0]] if n == 1 else [[]]
+	var out: Array = []
+	var base := range(n)
+	_permute(Array(base), 0, out)
+	return out
+
+
+static func _permute(a: Array, k: int, out: Array) -> void:
+	if k == a.size() - 1:
+		out.append(a.duplicate())
+		return
+	for i in range(k, a.size()):
+		var t = a[k]; a[k] = a[i]; a[i] = t
+		_permute(a, k + 1, out)
+		t = a[k]; a[k] = a[i]; a[i] = t
+
+
+## Per-card sorted served-room-letter set, sorted across cards (a clean structural
+## key that ignores overlap-cell counts and loop flags).
+static func _served_structure(routes: Array) -> String:
+	var parts: Array = []
+	for r in routes:
+		var letters: Array = []
+		for rid in RG.served_rooms_of_cells(r.cells):
+			letters.append(Grid5.room_letter(rid))
+		letters.sort()
+		parts.append("".join(letters))
+	parts.sort()
+	return "|".join(parts)
 
 
 # ---------------------------------------------------------------- probe
 
-## Sample until we have `n` DECODABLE route-sets (the spec wants >=600 decodable,
-## not >=600 attempts), each scored on ONE seed. Bounded by n*40 attempts so a
-## pathological maze can't spin forever.
+## The FREER uniform-random difficulty probe (coordinator refinement 1). Draws raw
+## random route-sets with the drifted-walk sampler (which does NOT auto-solve),
+## until `n` LEGAL draws are collected, each scored on ONE seed. Reports:
+##   legality_rate  = legal draws / total attempts (how constraining caps+geometry
+##                    are on a genuinely-random plan)
+##   legal_win_rate = wins among legal draws / legal draws (the difficulty signal:
+##                    do varied legal plans work?)  -> this drives the classifier.
+##   w_rand         = the legal-plan win COUNT (kept for the spec's exact rule).
+## Bounded by n*80 attempts so a pathological maze can't spin forever.
 static func _random_probe(sim, li: int, lv: Dictionary, all_docks: Array, widths: Array,
 		n: int, seed_v: int) -> Dictionary:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 4242 + li
-	var decodable := 0
+	var legal := 0
 	var wins := 0
 	var attempts := 0
-	var max_attempts := n * 40
+	var max_attempts := n * 80
 	var seed0: int = SimApi5.SEEDS_TRAIN[0]
-	while decodable < n and attempts < max_attempts:
+	while legal < n and attempts < max_attempts:
 		attempts += 1
-		var g := RG.random_genome(rng, all_docks, widths)
-		if g.is_empty():
+		var s := RG.sample_random_routeset(rng, all_docks, widths)
+		if not s.legal:
 			continue
-		var dec := RG.decode_genome(g, widths)
-		if dec.err != "":
-			continue
-		decodable += 1
-		var r: Dictionary = sim.run(li, dec.routes, seed0, SimApi5.STEP_COARSE)
+		legal += 1
+		var r: Dictionary = sim.run(li, s.routes, seed0, SimApi5.STEP_COARSE)
 		if r.result == "win":
 			wins += 1
-	var rwr := 100.0 * float(wins) / maxf(1.0, float(decodable))
-	return {"decodable": decodable, "w_rand": wins, "rwr": rwr, "attempts": attempts}
+	var lwr := 100.0 * float(wins) / maxf(1.0, float(legal))
+	var legality := 100.0 * float(legal) / maxf(1.0, float(attempts))
+	return {"decodable": legal, "w_rand": wins, "rwr": lwr,
+			"legal_win_rate": lwr, "legality_rate": legality, "attempts": attempts}
 
 
 # ---------------------------------------------------------------- scoring
