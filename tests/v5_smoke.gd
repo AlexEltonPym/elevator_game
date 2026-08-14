@@ -136,9 +136,12 @@ func _overlap_test() -> bool:
 
 ## An INJECTED fixture (never added to Levels5.LEVELS, so the shipped fingerprints
 ## stay identical): a delivery bay A and a rooftop cafe B on one shaft column x=2.
-## BOTH a width-3 CARGO lift and a width-2 LOCAL run that column and serve both
-## rooms — so the ONLY reason a width-3 delivery man rides CARGO and never LOCAL is
-## the boarding width rule, enforced in BOTH the planner and the sim.
+## BOTH a width-3 CARGO lift and a width-2 LOCAL run that column and serve both rooms.
+## The single trip is a ROUND TRIP (A -> B, return A): a delivery man spawns LOADED at
+## width 3 (only CARGO fits him) and rides up to the cafe, DROPS OFF, then becomes a
+## width-1 EMPTY person and returns to A — now takeable by either lift, so the faster
+## LOCAL carries the empty leg. The fixture thus exercises the whole load/deliver/
+## return-empty itinerary and the w3->w1 transition on a controlled 2-room shaft.
 func _delivery_level() -> Dictionary:
 	return {
 		"id": "DLV", "world": "MECHANICS", "name": "Delivery Fixture",
@@ -159,17 +162,21 @@ func _delivery_level() -> Dictionary:
 		"spawn": {"interval_start": 2.0, "interval_end": 1.6, "ramp": 30.0,
 				"burst_min": 2, "burst_max": 3, "gap": 0.5},
 		"mix": {"delivery": 1.0},
+		# ROUND TRIP: one loaded bay->cafe delivery whose `return` sends the emptied man
+		# back to the bay A. Outbound = w3 loaded (CARGO only); return = w1 empty (any
+		# lift — the faster LOCAL takes it).
 		"trips": [
-			{"w": 0.5, "from": "A", "to": "B"},
-			{"w": 0.5, "from": "B", "to": "A"},
+			{"w": 1.0, "from": "A", "to": "B", "type": "delivery", "return": "A"},
 		],
 	}
 
 
-## The DELIVERY MAN (width-3, slow) type: he plans + rides ONLY the width-3 CARGO
-## lift (rejected by the width-2 LOCAL) in BOTH planner and sim, his walk time is
-## the slower value, and the crowd packs him width-aware (no overlap). Uses the
-## injected fixture so the 10 shipped levels' fingerprints are untouched.
+## The DELIVERY MAN (width-3, slow) type: LOADED he plans + rides ONLY the width-3
+## CARGO lift (rejected by the width-2 LOCAL) in BOTH planner and sim, his LOADED walk
+## time is the slower value, and the crowd packs him width-aware (no overlap); then he
+## DROPS OFF and returns as a WIDTH-1 EMPTY person that any lift (here the faster LOCAL)
+## will take — the full round trip + w3->w1 transition. Uses the injected fixture so the
+## 10 shipped levels' fingerprints are untouched.
 func _delivery_test() -> bool:
 	Levels5.injected = _delivery_level()
 	Levels5.current = 0
@@ -190,7 +197,7 @@ func _delivery_test() -> bool:
 	var cargo = node.cars[0]
 	var local = node.cars[1]
 	# PLANNER parity 1: a width-3 party plans A->B, and every leg is on CARGO.
-	var p3 = Pathfind5.find_path(0, 1, node.cars, -1.0, 3, 1.7)
+	var p3 = Pathfind5.find_path(0, 1, node.cars, -1.0, 3, 2.0)
 	if p3 == null or (p3 is Array and p3.is_empty()):
 		ok = false
 		print("  delivery: width-3 has no plan (should ride CARGO) **FAIL**")
@@ -201,7 +208,7 @@ func _delivery_test() -> bool:
 				print("  delivery: width-3 planned onto a non-cargo lift **FAIL**")
 	# PLANNER parity 2: with only the width-2 LOCAL available, a width-3 party has
 	# NO plan (Pathfind must never route it through a lift it can't fit).
-	if Pathfind5.find_path(0, 1, [local], -1.0, 3, 1.7) != null:
+	if Pathfind5.find_path(0, 1, [local], -1.0, 3, 2.0) != null:
 		ok = false
 		print("  delivery: width-3 planned onto the width-2 lift **FAIL**")
 	# PLANNER parity 3: the priced plan for the SLOW delivery man costs more than the
@@ -210,8 +217,10 @@ func _delivery_test() -> bool:
 	node.start_run()
 	var t := 0.0
 	var saw_delivery := false
-	var rode_cargo := false
-	var rode_local := false
+	var loaded_on_cargo := false # a WIDTH-3 loaded man rode CARGO
+	var loaded_on_local := false # a WIDTH-3 loaded man rode LOCAL (must NEVER happen)
+	var saw_return := false      # a WIDTH-1 empty returner existed (the w3->w1 transition)
+	var empty_on_local := false  # a returning w1 man rode LOCAL (any lift, empty)
 	var walk_checked := false
 	var walk_slow_ok := true
 	var saw_pack := false
@@ -223,24 +232,38 @@ func _delivery_test() -> bool:
 			if p.ptype != "delivery":
 				continue
 			saw_delivery = true
-			if p.riding == cargo:
-				rode_cargo = true
-			elif p.riding == local:
-				rode_local = true
-			# SIM walk parity: the mill walk uses WALK_PER_TILE * walk_mult, so a
-			# delivery man's leg is ~1.7x a width-1's over the same tiles (slower).
-			if not walk_checked and p.walk_kind == Passenger5.Walk.MILL \
-					and p.walk_left > 0.0 and p.walk_total > 0.0:
-				var dist := Grid5.manhattan(p.spawn_cell, p.queue_cell)
-				if dist > 0:
-					walk_checked = true
-					var base: float = float(dist) * Grid5.WALK_PER_TILE
-					var expect: float = base * p.walk_mult
-					if p.walk_mult < 1.6 or absf(p.walk_total - expect) > 1e-4 \
-							or p.walk_total <= base + 1e-4:
-						walk_slow_ok = false
-						print("  delivery: walk not slowed (mult=%.3f total=%.3f base=%.3f) **FAIL**"
-								% [p.walk_mult, p.walk_total, base])
+			if p.returning:
+				# The RETURN leg: he has dropped the cart and is now a width-1 empty
+				# person heading home — takeable by ANY lift, drawn without a cart.
+				saw_return = true
+				if p.width != 1:
+					print("  delivery: returner still width %d (should be 1) **FAIL**" % p.width)
+					ok = false
+				if p.riding == local:
+					empty_on_local = true
+			else:
+				# The OUTBOUND leg: loaded at width 3, CARGO-only while loaded.
+				if p.width != 3:
+					print("  delivery: loaded man width %d (should be 3) **FAIL**" % p.width)
+					ok = false
+				if p.riding == cargo:
+					loaded_on_cargo = true
+				elif p.riding == local:
+					loaded_on_local = true
+				# SIM walk parity (LOADED leg only): the mill walk uses WALK_PER_TILE *
+				# walk_mult, so a loaded delivery man's leg is 2x a width-1's (slower).
+				if not walk_checked and p.walk_kind == Passenger5.Walk.MILL \
+						and p.walk_left > 0.0 and p.walk_total > 0.0:
+					var dist := Grid5.manhattan(p.spawn_cell, p.queue_cell)
+					if dist > 0:
+						walk_checked = true
+						var base: float = float(dist) * Grid5.WALK_PER_TILE
+						var expect: float = base * p.walk_mult
+						if p.walk_mult < 1.9 or absf(p.walk_total - expect) > 1e-4 \
+								or p.walk_total <= base + 1e-4:
+							walk_slow_ok = false
+							print("  delivery: walk not slowed (mult=%.3f total=%.3f base=%.3f) **FAIL**"
+									% [p.walk_mult, p.walk_total, base])
 		# WIDTH-AWARE packing: consecutive queued figures are spaced by their averaged
 		# width (a width-3 delivery man reserves a 3-wide gap), so none overlap.
 		for rid in [0, 1]:
@@ -259,15 +282,21 @@ func _delivery_test() -> bool:
 	if not saw_delivery:
 		ok = false
 		print("  delivery: no delivery man ever spawned **FAIL**")
-	if not rode_cargo:
+	if not loaded_on_cargo:
 		ok = false
-		print("  delivery: delivery man never rode the CARGO lift **FAIL**")
-	if rode_local:
+		print("  delivery: loaded delivery man never rode the CARGO lift **FAIL**")
+	if loaded_on_local:
 		ok = false
-		print("  delivery: delivery man boarded the width-2 LOCAL **FAIL**")
+		print("  delivery: LOADED (w3) delivery man boarded the width-2 LOCAL **FAIL**")
+	if not saw_return:
+		ok = false
+		print("  delivery: no w3->w1 empty return ever observed **FAIL**")
+	if not empty_on_local:
+		ok = false
+		print("  delivery: empty (w1) returner never used the LOCAL (any-lift) **FAIL**")
 	if not walk_checked or not walk_slow_ok:
 		ok = false
-		print("  delivery: slower walk not observed **FAIL**")
+		print("  delivery: slower LOADED walk not observed **FAIL**")
 	if not saw_pack or not pack_ok:
 		ok = false
 		print("  delivery: width-aware packing not verified **FAIL**")
@@ -275,8 +304,9 @@ func _delivery_test() -> bool:
 		ok = false
 		print("  delivery: fixture did not WIN (state=%s served=%d) **FAIL**"
 				% [st, node.served])
-	print("  delivery: state=%s served=%d rode_cargo=%s rode_local=%s walk_slow=%s pack=%s" % [
-			st, node.served, rode_cargo, rode_local,
+	print("  delivery: state=%s served=%d loaded->CARGO=%s loaded->LOCAL=%s w3->w1=%s empty->LOCAL=%s walk_slow=%s pack=%s" % [
+			st, node.served, "Y" if loaded_on_cargo else "N", "Y" if loaded_on_local else "N",
+			"Y" if saw_return else "N", "Y" if empty_on_local else "N",
 			"Y" if walk_slow_ok else "N", "Y" if pack_ok else "N"])
 	node.free()
 	Levels5.injected = null # CRITICAL: leave the shipped table untouched afterward
@@ -374,13 +404,18 @@ func _run_once(lv: Dictionary, i: int, seed: int) -> Dictionary:
 	var saw_walk := false
 	var corridor_ok := true
 	var sig := ""
-	# R-8 EXACT-FICTION observation (per-trip type binding): delivery men must appear
-	# ONLY on the supply run (a trip that touches the delivery BAY A = room 0) and must
-	# ride ONLY the CARGO lift (cars[0]); commuters (everyone else) must NEVER touch the
-	# bay. cargo = cars[0], the CARGO card is first in R-8's roster.
+	# R-8 EXACT-FICTION + ROUND-TRIP observation. A delivery man runs a LOAD -> DELIVER
+	# -> RETURN-EMPTY itinerary: an OUTBOUND leg (width-3, loaded, bay A=0 -> cafe B=1,
+	# CARGO-only) then, after dropping off, a RETURN leg (width-1, empty, cafe B=1 ->
+	# lobby C=2, ANY lift). We verify: loaded men are w3 and ride ONLY the CARGO lift
+	# (cargo-only-while-loaded); the SAME figures reappear as w1 empty returners (the
+	# w3->w1 transition); commuters NEVER touch the bay. cargo = cars[0], first in the
+	# roster.
 	var r8: bool = lv.id == "R-8"
 	var r8_saw_delivery := false
 	var r8_delivery_on_cargo := false
+	var r8_loaded_seen := false # a width-3 loaded outbound man was observed
+	var r8_return_seen := false # a width-1 empty returner was observed (w3->w1 done)
 	var r8_fiction_ok := true
 	while t < CAP and node.state == node.State.PLAYING:
 		node.advance(STEP)
@@ -395,14 +430,21 @@ func _run_once(lv: Dictionary, i: int, seed: int) -> Dictionary:
 				var touches_bay: bool = p.origin_room == 0 or p.dest_room == 0
 				if p.ptype == "delivery":
 					r8_saw_delivery = true
-					# supply run only: both ends in {A=0, B=1} AND it involves the bay A.
-					if not (touches_bay and p.origin_room <= 1 and p.dest_room <= 1):
-						r8_fiction_ok = false
-					if p.riding != null:
-						if p.riding == node.cars[0]:
-							r8_delivery_on_cargo = true
-						else:
-							r8_fiction_ok = false # a delivery man on a non-CARGO lift
+					if not p.returning:
+						# OUTBOUND loaded leg: WIDTH-3, bay A=0 -> cafe B=1, CARGO-only.
+						r8_loaded_seen = true
+						if p.width != 3 or not (p.origin_room == 0 and p.dest_room == 1):
+							r8_fiction_ok = false # loaded man off the supply run / not w3
+						if p.riding != null:
+							if p.riding == node.cars[0]:
+								r8_delivery_on_cargo = true
+							else:
+								r8_fiction_ok = false # loaded man on a non-CARGO lift
+					else:
+						# RETURN empty leg: WIDTH-1, cafe B=1 -> lobby C=2, any lift, no cart.
+						r8_return_seen = true
+						if p.width != 1 or not (p.origin_room == 1 and p.dest_room == 2):
+							r8_fiction_ok = false # empty returner off its bound leg / not w1
 				elif touches_bay:
 					r8_fiction_ok = false # a commuter on a supply (bay) trip
 		max_riding = maxi(max_riding, riding)
@@ -443,6 +485,7 @@ func _run_once(lv: Dictionary, i: int, seed: int) -> Dictionary:
 		"corridor_ok": corridor_ok, "contended": contended, "transits": transits,
 		"reactivations": node.reactivations,
 		"r8_saw_delivery": r8_saw_delivery, "r8_delivery_on_cargo": r8_delivery_on_cargo,
+		"r8_loaded_seen": r8_loaded_seen, "r8_return_seen": r8_return_seen,
 		"r8_fiction_ok": r8_fiction_ok,
 		"sig": sig,
 	}
@@ -514,8 +557,10 @@ func _process(_delta: float) -> bool:
 		if not a.contended:
 			ok = false
 			notes.append("no-contention")
-	# R-8 EXACT FICTION: delivery men appear ONLY on the supply run and ride ONLY the
-	# CARGO lift; commuters only on people trips (per-trip type binding).
+	# R-8 EXACT FICTION + ROUND TRIP: delivery men run a LOAD -> DELIVER -> RETURN-EMPTY
+	# itinerary. Loaded outbound men are WIDTH-3 and ride ONLY the CARGO lift (cargo-only
+	# while loaded); the SAME figures reappear as WIDTH-1 empty returners (the w3->w1
+	# transition); commuters never touch the bay (per-trip type binding).
 	if lv.id == "R-8":
 		if not a.r8_saw_delivery:
 			ok = false
@@ -523,6 +568,12 @@ func _process(_delta: float) -> bool:
 		if not a.r8_delivery_on_cargo:
 			ok = false
 			notes.append("delivery-off-cargo")
+		if not a.r8_loaded_seen:
+			ok = false
+			notes.append("no-loaded-w3")
+		if not a.r8_return_seen:
+			ok = false
+			notes.append("no-w3->w1-return")
 		if not a.r8_fiction_ok:
 			ok = false
 			notes.append("fiction-violated")
@@ -547,8 +598,9 @@ func _process(_delta: float) -> bool:
 			"  ".join(a.serve_desc),
 			"OK" if ok else "**FAIL**", " ".join(notes)])
 	if lv.id == "R-8":
-		print("     R-8 fiction: delivery men seen=%s, rode CARGO=%s, bay/commuter binding clean=%s" % [
-				"Y" if a.r8_saw_delivery else "N", "Y" if a.r8_delivery_on_cargo else "N",
+		print("     R-8 round trip: loaded-w3 on CARGO=%s, empty-w1 return (w3->w1)=%s, binding clean=%s" % [
+				"Y" if (a.r8_loaded_seen and a.r8_delivery_on_cargo) else "N",
+				"Y" if a.r8_return_seen else "N",
 				"Y" if a.r8_fiction_ok else "N"])
 	_i += 1
 	return false

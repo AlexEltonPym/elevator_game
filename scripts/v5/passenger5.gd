@@ -34,9 +34,13 @@ const PTYPES := {
 	"shopper": {"width": 1, "patience": 95.0, "color": Color(0.9, 0.6, 0.35)},
 	# DELIVERY MAN (v5): a WIDE, SLOW freight figure. width 3 = himself + a 2-box
 	# cart, so he needs 3 slots in the car and only fits a width-3 CARGO lift.
-	# walk_mult 1.7 = he pushes a heavy cart, so every walk leg takes ~1.7x as long
-	# (priced the same in Pathfind5). Patience generous — freight isn't in a rush.
-	"delivery": {"width": 3, "patience": 130.0, "walk_mult": 1.7,
+	# walk_mult 2.0 = he pushes a HEAVY cart, so every LOADED walk leg takes 2x as long
+	# (priced the same in Pathfind5) AND a visual quadratic ease-in ramps him up from
+	# rest (see _process) — the loaded man is even slower and starts slowly. Once he
+	# DROPS OFF he becomes a width-1, walk_mult-1.0 empty person (become_empty_return),
+	# so the 2.0 mult and the ramp only ever apply to the loaded outbound leg. Patience
+	# generous — freight isn't in a rush.
+	"delivery": {"width": 3, "patience": 130.0, "walk_mult": 2.0,
 			"color": Color(0.74, 0.53, 0.30)},
 }
 
@@ -75,6 +79,14 @@ var wait_time := 0.0
 var rides := 0
 var salt := 0.0
 var trip := 0 # trip index (seeds activation / reactivation)
+# ITINERARY (round-trip delivery man). return_room >= 0 means "after this trip is
+# served, run one deterministic RETURN leg toward return_room, then vanish" — set at
+# spawn from a typed trip's `return` letter (main5). `returning` is true once he has
+# DROPPED OFF and become the width-1 empty person on that return leg (drawn without a
+# cart, normal speed, boardable by any lift). Un-set for every non-itinerary figure,
+# so their lifecycle (and every non-R-8 fingerprint) is untouched.
+var return_room := -1
+var returning := false
 
 # Phase.
 var activated := false # past the spawn dwell => patience running
@@ -304,6 +316,19 @@ func begin_between() -> void:
 
 
 
+## ITINERARY TRANSITION: a delivery man who has just DROPPED OFF his cargo sheds the
+## cart and becomes a WIDTH-1, empty-handed, NORMAL-speed person for the return leg —
+## no cart (the _draw cart is gated on width >= 3), boardable by ANY lift, and priced
+## by Pathfind5 as w1/normal because width and walk_mult now read 1 (both feed the sim
+## walk time and the planner's per-leg cost). Called once, in main5.resolve_between,
+## immediately before reactivate() sends him toward return_room. The loaded 2.0 mult +
+## the heavy visual ramp (see _process) therefore only ever apply to the OUTBOUND leg.
+func become_empty_return() -> void:
+	width = 1
+	walk_mult = 1.0
+	returning = true
+
+
 ## Reset for a fresh trip to `new_dest` from the current room.
 func reactivate(new_dest: int) -> void:
 	trip += 1
@@ -332,6 +357,15 @@ func _process(delta: float) -> void:
 		position = riding.slot_position(self)
 	elif walk_left > 0.0 and walk_total > 0.0:
 		var f := clampf(1.0 - walk_left / walk_total, 0.0, 1.0)
+		# HEAVY EASE-IN (visual only): a LOADED delivery man (width >= 3, pushing the
+		# cart) accelerates up from REST — a quadratic f is exactly a constant-
+		# acceleration ramp, so he starts slow and builds speed into the dock. The
+		# LOGICAL walk time (walk_left / walk_total, driven by WALK_PER_TILE * walk_mult)
+		# is untouched, so Pathfind5's priced total still matches the sim to the tick and
+		# determinism holds — this only reshapes WHERE he is drawn along the leg, never
+		# WHEN it completes. An empty (w1) figure walks linearly, at normal speed.
+		if width >= 3:
+			f = f * f
 		position = _ortho_point(walk_from, walk_to, f)
 	else:
 		# Standing: ease toward the stable target (a smooth step when it changes).

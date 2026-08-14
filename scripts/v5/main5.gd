@@ -62,6 +62,11 @@ var stroke_closed := false
 # (Vector2i(-1,-1) = "use the committed cells[0]", the default for fresh strokes).
 var stroke_reversed := false
 var stroke_spawn := Vector2i(-1, -1)
+# LOOP-EDIT smart end: true between grabbing a committed LOOP and its first drag move,
+# during which the drag DIRECTION decides which loop end the player controls (see
+# _resolve_loop_grab). Open (non-loop) grabs never set this — they resolve their
+# head/tail choice immediately in _try_grab_end, exactly as before.
+var stroke_loop_pending := false
 
 var reject_msg := ""
 var reject_card := -1
@@ -178,6 +183,7 @@ func to_plan() -> void:
 	stroke_closed = false
 	stroke_reversed = false
 	stroke_spawn = Vector2i(-1, -1)
+	stroke_loop_pending = false
 	served = 0
 	lost = 0
 	elapsed = 0.0
@@ -288,6 +294,7 @@ func select_card(i: int) -> void:
 	stroke_closed = false
 	stroke_reversed = false
 	stroke_spawn = Vector2i(-1, -1)
+	stroke_loop_pending = false
 	reject_until_ms = 0
 	hud.refresh_cards()
 
@@ -310,6 +317,7 @@ func _begin_stroke(pos: Vector2) -> void:
 	stroke_closed = false
 	stroke_reversed = false
 	stroke_spawn = Vector2i(-1, -1)
+	stroke_loop_pending = false
 
 
 ## The head cell of a committed route: the last cell of an open polyline, or the
@@ -349,11 +357,47 @@ func _try_grab_end(cell: Vector2i) -> bool:
 	stroke = r.cells.duplicate()
 	stroke_closed = r.closed
 	stroke_spawn = r.cells[r.spawn_index()]
-	# Reverse only when grabbing an OPEN route's tail (head preferred when both hit).
-	stroke_reversed = grab_tail and not grab_head and not r.closed
+	stroke_loop_pending = false
+	if r.closed:
+		# LOOP: which end the magnet drives is decided by the DRAG DIRECTION on the
+		# first move (_resolve_loop_grab), not now — a loop's two ends sit adjacent, so
+		# the touch cell alone can't say which the player means. Seed head-first for the
+		# meantime; the pending flag defers the reverse-or-not choice to the first drag.
+		stroke_loop_pending = true
+		stroke_reversed = false
+		return true
+	# OPEN route: reverse only when grabbing the tail (head preferred when both hit).
+	stroke_reversed = grab_tail and not grab_head
 	if stroke_reversed:
 		stroke.reverse()
 	return true
+
+
+## First drag move on a grabbed LOOP: pick which end the magnet drives from the drag
+## DIRECTION. `cell` is the finger's first target. A drag that heads toward an end's
+## interior neighbour is a legal retract/undo of THAT end. If exactly one end can
+## legally retract in this direction, control it; if both or neither (ambiguous), fall
+## back to the HEAD (cells[0]) — the user-approved default. Controlling the back end
+## (cells.back()) leaves the stroke as-is; controlling the front/head end reverses it
+## so that end becomes the magnet head (stroke.back()), restored to original loop
+## orientation on commit. Open routes never reach here.
+func _resolve_loop_grab(cell: Vector2i) -> void:
+	stroke_loop_pending = false
+	var n := stroke.size()
+	if not stroke_closed or n < 4:
+		return
+	var end_back: Vector2i = stroke[n - 1]
+	var in_back: Vector2i = stroke[n - 2]
+	var end_front: Vector2i = stroke[0]
+	var in_front: Vector2i = stroke[1]
+	var retract_back: bool = _md(cell, in_back) < _md(cell, end_back)
+	var retract_front: bool = _md(cell, in_front) < _md(cell, end_front)
+	if retract_back and not retract_front:
+		stroke_reversed = false # control the back end: magnet head stays cells.back()
+	else:
+		# Front end explicitly, OR ambiguous -> the head (cells[0]): reverse so it heads.
+		stroke.reverse()
+		stroke_reversed = true
 
 
 func _extend_stroke(pos: Vector2) -> void:
@@ -362,6 +406,8 @@ func _extend_stroke(pos: Vector2) -> void:
 	var cell := Grid5.cell_at(pos)
 	if cell.x < 0:
 		return
+	if stroke_loop_pending:
+		_resolve_loop_grab(cell)
 	stroke_try_extend(cell)
 
 
@@ -446,6 +492,7 @@ func _end_stroke() -> void:
 	stroke_closed = false
 	stroke_reversed = false
 	stroke_spawn = Vector2i(-1, -1)
+	stroke_loop_pending = false
 
 
 ## True when the selected card may draw through `cell`: an open, routable cell
@@ -582,12 +629,20 @@ func _spawn_random() -> void:
 	var d := Levels5.room_id_of_letter(level, str(picked.to))
 	if o < 0 or d < 0 or o == d:
 		return
-	spawn_passenger(t, o, d)
+	# ITINERARY (round trip): an OPTIONAL `return` letter on the trip means the figure,
+	# after being served at `to`, runs one deterministic RETURN leg toward that room
+	# (the bay/lobby area — never a random room) as an EMPTY width-1 person. Adds no rng
+	# draw, so an untyped/return-less level's spawn stream is byte-identical as before.
+	var ret := -1
+	if picked.has("return"):
+		ret = Levels5.room_id_of_letter(level, str(picked.get("return")))
+	spawn_passenger(t, o, d, ret)
 
 
-func spawn_passenger(ptype: String, origin: int, dest: int) -> Passenger5:
+func spawn_passenger(ptype: String, origin: int, dest: int, return_room := -1) -> Passenger5:
 	var p := Passenger5.new()
 	p.setup(self, ptype, origin, dest)
+	p.return_room = return_room
 	p.salt = rng.randf()
 	passengers_node.add_child(p)
 	active_passengers.append(p)
@@ -637,6 +692,26 @@ func on_served(p) -> void:
 ## VANISHES. Deterministic: keyed off the passenger's salt + trip, so it never
 ## perturbs the spawn rng stream and repeated runs are bit-identical.
 func resolve_between(p) -> void:
+	# ITINERARY (deterministic round trip) takes priority over the probabilistic
+	# reactivate. A LOADED delivery man (return_room set, not yet returning) has just
+	# dropped his cargo off: he sheds the cart (become_empty_return -> width 1, normal
+	# speed), then reactivates toward his bound return room (the bay/lobby) as a plain
+	# w1 person — any lift, normal pace, priced w1/normal by Pathfind5. This ALWAYS
+	# happens (not seeded by probability), so every loaded delivery man makes the round
+	# trip exactly once; when that return leg is served he falls through here again with
+	# `returning` true and simply VANISHES (itinerary complete, no further wandering).
+	if p.return_room >= 0:
+		if not p.returning:
+			p.become_empty_return()
+			p.reactivate(p.return_room)
+			_compute_path_for(p)
+			waiting[p.cur_room].append(p)
+			reactivations += 1
+			return
+		p.active = false
+		_passengers_dirty = true
+		p.queue_free()
+		return
 	var prob: float = float(level.get("reactivate", 0.25))
 	if _seed01(p.salt, p.trip * 3 + 1) < prob:
 		var dest := _pick_reactivate_dest(p)

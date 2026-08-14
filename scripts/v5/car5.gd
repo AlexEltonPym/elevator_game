@@ -562,19 +562,36 @@ func _release_boarders() -> void:
 	_assign_timer = 0.0
 
 
-## Where a rider stands inside the car (width-units per row).
+## Where a rider stands inside the car. WIDTH/CART-AWARE: riders fill the car floor
+## left-to-right in ROWS that are `per_row` slot-units wide; a rider that does not fit
+## the remaining slots of a row starts a fresh row ABOVE it. Each rider CENTRES in its
+## own slot-span, so a width-3 delivery man fills a whole cargo row (his cart, drawn to
+## his right, is pulled inside the cabin by CART_LEAN so the body+cart footprint sits
+## centred) and a second one stacks cleanly ONE ROW UP instead of being shoved up-and-
+## right. per_row = max(car width, 2), so width-1 riders reduce EXACTLY to the old
+## two-per-row packing in every car (pods and width-2 cars alike) — width-1 unchanged.
 func slot_position(p) -> Vector2:
-	var i := 0
+	const SLOT_PX := 22.0
+	const ROW_PX := 14.0
+	const CART_LEAN := 13.0 # loaded (width>=3) riders sit left so the cart stays centred
+	var per_row := maxi(width, 2)
+	var row := 0
+	var col_used := 0
+	var slot := 0
 	for r in riders:
+		if col_used + r.width > per_row:
+			row += 1
+			col_used = 0
 		if r == p:
+			slot = col_used
 			break
-		i += r.width
-	# Riders stand 2 per row (two columns), tight vertical spacing, on the car floor.
-	var cols := 2
-	var col := i % cols
-	var row := int(i / float(cols))
+		col_used += r.width
+	var span_center: float = float(slot) + float(p.width) * 0.5
+	var x: float = (span_center - float(per_row) * 0.5) * SLOT_PX
+	if int(p.width) >= 3:
+		x -= CART_LEAN
 	var base_y := BODY / 2.0 - 4.0 - 12.0
-	return position + Vector2((col - (cols - 1) / 2.0) * 22.0, base_y - row * 14.0)
+	return position + Vector2(x, base_y - row * ROW_PX)
 
 
 # ---------------------------------------------------------------- visuals
