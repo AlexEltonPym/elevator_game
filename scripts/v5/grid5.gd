@@ -68,6 +68,8 @@ var game = null # main5.gd
 # gitignored art packs aren't present → _draw_room falls back to the flat-tint look, so a
 # clean clone still runs). texture_filter is forced NEAREST on this node in _ready.
 var _furn_tex := {}
+var _door_shut: Texture2D = null   # PixelSpaces landing door (dock), closed / open
+var _door_open: Texture2D = null
 var _tex_ready := false
 
 ## THE VISUAL LANGUAGE (docs: art-direction). Each room TYPE has a unique background
@@ -76,7 +78,7 @@ var _tex_ready := false
 ## shape is characteristic but may vary; furniture reinforces.
 const ROOM_STYLE := {
 	"lobby":     {"bg": Color(0.83, 0.75, 0.56), "line": Color(0.60, 0.48, 0.26), "furn": "Furniture/Door_opened.png"},
-	"office":    {"bg": Color(0.56, 0.67, 0.81), "line": Color(0.30, 0.42, 0.60), "furn": "Furniture/Bedroom/Cabinet_1.png"},
+	"office":    {"bg": Color(0.56, 0.67, 0.81), "line": Color(0.30, 0.42, 0.60), "furn": "Furniture/Living Room/Bookshelf_1.png"},
 	"apartment": {"bg": Color(0.60, 0.77, 0.57), "line": Color(0.32, 0.52, 0.32), "furn": "Furniture/Bedroom/Bed_red.png"},
 	"cafe":      {"bg": Color(0.86, 0.63, 0.46), "line": Color(0.64, 0.38, 0.22), "furn": "Furniture/Kitchen/Refrigerator_large_white.png"},
 	"store":     {"bg": Color(0.75, 0.61, 0.42), "line": Color(0.50, 0.36, 0.20), "furn": "Furniture/Living Room/Bookshelf_1.png"},
@@ -429,6 +431,18 @@ func _ensure_tex() -> void:
 		var p: String = _PS + ROOM_STYLE[t].furn
 		if ResourceLoader.exists(p):
 			_furn_tex[t] = load(p)
+	if ResourceLoader.exists(_PS + "Furniture/Elevator_closed.png"):
+		_door_shut = load(_PS + "Furniture/Elevator_closed.png")
+		_door_open = load(_PS + "Furniture/Elevator_opened.png")
+
+
+## Draw a sprite centred in `rect`, at `frac` of the cell, aspect-preserved & nearest.
+func _draw_centered(tex: Texture2D, rect: Rect2, frac: float) -> void:
+	if tex == null:
+		return
+	var s := (CELL * frac) / float(maxi(tex.get_width(), tex.get_height()))
+	var sz := Vector2(tex.get_width(), tex.get_height()) * s
+	draw_texture_rect(tex, Rect2(rect.get_center() - sz * 0.5, sz), false)
 
 
 ## Draw a PixelSpaces sprite bottom-aligned inside `rect`, at ~`frac` of the cell height,
@@ -483,8 +497,14 @@ func _draw() -> void:
 				if not covered.has(cell):
 					covered[cell] = []
 				covered[cell].append(game.CARDS[i].color)
+	# Dock cells where a car is currently stopped with its doors open — the landing door
+	# opens IN SYNC with the car (IRL). game.cars are Car5 nodes.
+	var open_docks := {}
+	for car in game.cars:
+		if car.on_grid() and car.door_frac() > 0.2:
+			open_docks[car.current_cell()] = true
 	for mark in Grid5._dock_marks:
-		_draw_dock(mark, covered.get(mark.dock, []))
+		_draw_dock(mark, covered.get(mark.dock, []), open_docks.has(mark.dock))
 	# Committed routes (nudged so overlaps stay readable).
 	for i in game.routes.size():
 		var route = game.routes[i]
@@ -558,22 +578,28 @@ func _draw_room(id: int) -> void:
 ## into its dock cell. The dock cell gets a dashed outline so the player can see
 ## where a lift must reach; when a route covers it, the outline fills in the
 ## covering car's colour(s).
-func _draw_dock(mark: Dictionary, cover: Array) -> void:
+func _draw_dock(mark: Dictionary, cover: Array, is_open := false) -> void:
 	var rc := cell_rect(mark.cell)
 	var dir: Vector2i = mark.dir
 	var door_col := Color(0.95, 0.85, 0.45, 0.9)
-	# Door strip on the facing edge.
-	var t := 8.0
+	# A thin exit notch on the ROOM's drop edge (so you see where the room connects out).
+	var t := 6.0
 	var strip: Rect2
 	if dir == Vector2i(1, 0):
-		strip = Rect2(rc.end.x - t, rc.position.y + 14.0, t, rc.size.y - 28.0)
+		strip = Rect2(rc.end.x - t, rc.position.y + 16.0, t, rc.size.y - 32.0)
 	elif dir == Vector2i(-1, 0):
-		strip = Rect2(rc.position.x, rc.position.y + 14.0, t, rc.size.y - 28.0)
-	elif dir == Vector2i(0, 1): # room-space up = screen up
-		strip = Rect2(rc.position.x + 14.0, rc.position.y, rc.size.x - 28.0, t)
+		strip = Rect2(rc.position.x, rc.position.y + 16.0, t, rc.size.y - 32.0)
+	elif dir == Vector2i(0, 1):
+		strip = Rect2(rc.position.x + 16.0, rc.position.y, rc.size.x - 32.0, t)
 	else:
-		strip = Rect2(rc.position.x + 14.0, rc.end.y - t, rc.size.x - 28.0, t)
-	draw_rect(strip, door_col)
+		strip = Rect2(rc.position.x + 16.0, rc.end.y - t, rc.size.x - 32.0, t)
+	draw_rect(strip, Color(door_col, 0.5))
+	# LANDING DOOR: a PixelSpaces elevator door in the DOCK cell (the open cell the car
+	# reaches), opening IN SYNC with a parked car. It never covers the room; the car (a
+	# Node2D child) draws over it when present. Falls back to just the notch without art.
+	var door_tex: Texture2D = _door_open if is_open else _door_shut
+	if door_tex != null:
+		_draw_centered(door_tex, cell_rect(mark.dock), 0.82)
 	# Dock cell outline.
 	var dock := cell_rect(mark.dock).grow(-6.0)
 	if cover.is_empty():
