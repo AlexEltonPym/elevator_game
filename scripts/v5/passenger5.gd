@@ -23,10 +23,21 @@ extends Node2D
 ##   (dock->BACK) -> served (dest) or transfer (re-join the queue). On serving, a
 ##   BETWEEN dwell then a seeded vanish / reactivate. All seeded off `salt`.
 
+## Per-type data. `walk_mult` scales WALK_PER_TILE for THIS type in BOTH the sim
+## walk time and Pathfind5's priced legs, so a slow type stays honest in planning.
+## Un-listed => 1.0 (normal pace). `width` is the boarding rule: a party only fits
+## a car with car.width >= width (Car5.fits), so a width-3 party ONLY boards the
+## width-3 cargo car — the legible reason a level needs the freight lift.
 const PTYPES := {
 	"visitor": {"width": 1, "patience": 90.0, "color": Color(0.35, 0.85, 0.45)},
 	"patient": {"width": 1, "patience": 78.0, "color": Color(0.35, 0.6, 0.95)},
 	"shopper": {"width": 1, "patience": 95.0, "color": Color(0.9, 0.6, 0.35)},
+	# DELIVERY MAN (v5): a WIDE, SLOW freight figure. width 3 = himself + a 2-box
+	# cart, so he needs 3 slots in the car and only fits a width-3 CARGO lift.
+	# walk_mult 1.7 = he pushes a heavy cart, so every walk leg takes ~1.7x as long
+	# (priced the same in Pathfind5). Patience generous — freight isn't in a rush.
+	"delivery": {"width": 3, "patience": 130.0, "walk_mult": 1.7,
+			"color": Color(0.74, 0.53, 0.30)},
 }
 
 enum Walk { NONE, MILL, BOARD, ALIGHT, TRANSFER }
@@ -51,6 +62,7 @@ var origin_room := 0
 var dest_room := 0
 var cur_room := 0 # room currently in (or last alighted at)
 var width := 1
+var walk_mult := 1.0 # per-type WALK_PER_TILE multiplier (delivery man walks slower)
 var patience_max := 90.0
 var patience := 90.0
 var legs: Array = [] # remaining legs; legs[0] is current
@@ -95,6 +107,7 @@ func setup(g, t: String, o: int, d: int) -> void:
 	cur_room = o
 	var info: Dictionary = PTYPES.get(t, PTYPES.visitor)
 	width = int(info.width)
+	walk_mult = float(info.get("walk_mult", 1.0))
 	patience_max = info.patience
 	if game.level is Dictionary and game.level.has("patience"):
 		patience_max = game.level.patience.get(t, patience_max)
@@ -197,7 +210,7 @@ func _activate() -> void:
 	activated = true
 	game.queue_join(self)
 	walk_kind = Walk.MILL
-	walk_total = Grid5.manhattan(spawn_cell, queue_cell) * Grid5.WALK_PER_TILE
+	walk_total = Grid5.manhattan(spawn_cell, queue_cell) * Grid5.WALK_PER_TILE * walk_mult
 	walk_left = walk_total
 	walk_from = position
 	walk_to = stand_pos
@@ -216,7 +229,7 @@ func start_board_walk() -> void:
 		walk_left = 0.0
 		return
 	var board: Vector2i = legs[0].board_cell
-	walk_total = Grid5.manhattan(queue_cell, board) * Grid5.WALK_PER_TILE
+	walk_total = Grid5.manhattan(queue_cell, board) * Grid5.WALK_PER_TILE * walk_mult
 	walk_left = walk_total
 	walk_from = position
 	walk_to = Vector2(Grid5.cell_center(board).x, Grid5.cell_rect(board).end.y - FLOOR_OFF)
@@ -238,7 +251,7 @@ func start_transfer_walk(alight_cell: Vector2i) -> void:
 	queue_cell = Grid5.room_queue(cur_room)
 	game.queue_join(self) # sets queue_slot + stand_pos
 	walk_kind = Walk.TRANSFER
-	walk_total = Grid5.manhattan(alight_cell, queue_cell) * Grid5.WALK_PER_TILE
+	walk_total = Grid5.manhattan(alight_cell, queue_cell) * Grid5.WALK_PER_TILE * walk_mult
 	walk_left = walk_total
 	walk_from = position
 	walk_to = stand_pos
@@ -256,7 +269,7 @@ func start_alight_walk(alight_cell: Vector2i, room: int) -> void:
 	queue_cell = Grid5.room_queue(room)
 	back_pos = _pick_back()
 	walk_kind = Walk.ALIGHT
-	walk_total = Grid5.manhattan(alight_cell, queue_cell) * Grid5.WALK_PER_TILE
+	walk_total = Grid5.manhattan(alight_cell, queue_cell) * Grid5.WALK_PER_TILE * walk_mult
 	walk_left = walk_total
 	walk_from = position
 	walk_to = back_pos
@@ -349,10 +362,18 @@ func _draw() -> void:
 	# ~14 x 24, on the floor. Normal colour always (no recolour); the impatience bar
 	# shows only while patience is running.
 	var col: Color = PTYPES.get(ptype, PTYPES.visitor).color
-	var body := Rect2(-7.0, -12.0, 14.0, 24.0)
+	# A wide freight figure (width >= 3) reads as a stockier person pushing a little
+	# 2-box cart; everyone else is the standard ~14x24 upright. Same floor line. The
+	# cart draws first so the person's body overlaps its handle (he pushes it).
+	var wide := width >= 3
+	if wide:
+		_draw_cart(col)
+	var bw := 18.0 if wide else 14.0
+	var body := Rect2(-bw / 2.0, -12.0, bw, 24.0)
 	draw_rect(body, col)
 	draw_rect(body, Color(0, 0, 0, 0.45), false, 2.0)
-	draw_rect(Rect2(Vector2(-6.0, -9.0), Vector2(12.0, 13.0)), Color(1, 1, 1, 0.85))
+	draw_rect(Rect2(Vector2(-bw / 2.0 + 1.0, -9.0), Vector2(bw - 2.0, 13.0)),
+			Color(1, 1, 1, 0.85))
 	draw_string(ThemeDB.fallback_font, Vector2(-5.0, 2.0),
 			Grid5.room_letter(dest_room),
 			HORIZONTAL_ALIGNMENT_CENTER, -1.0, 12, Color(0.1, 0.1, 0.1))
@@ -368,3 +389,23 @@ func _draw() -> void:
 		draw_circle(Vector2(0, by), 9.0, Color(1, 1, 1, 0.92))
 		draw_string(ThemeDB.fallback_font, Vector2(-4.0, by + 5.0), "?",
 				HORIZONTAL_ALIGNMENT_CENTER, -1.0, 15, Color(0.1, 0.1, 0.1))
+
+
+## The delivery man's hand-cart: a low wheeled bed carrying 2 taped boxes, drawn to
+## his right on the same floor line (the reason he takes 3 slots). Programmer-art in
+## the type colour; render-only, no sim meaning.
+func _draw_cart(col: Color) -> void:
+	var cart_col := Color(col.darkened(0.2), 0.95)
+	var box_col := Color(0.82, 0.72, 0.52) # cardboard tan
+	# Handle from the man's hands to the cart bed (drawn first, under the boxes).
+	draw_line(Vector2(6.0, -4.0), Vector2(13.0, 3.0), cart_col, 3.0)
+	# Cart bed + two wheels.
+	draw_rect(Rect2(11.0, 6.0, 26.0, 5.0), cart_col)
+	draw_circle(Vector2(16.0, 13.0), 3.0, Color(0.1, 0.1, 0.12))
+	draw_circle(Vector2(32.0, 13.0), 3.0, Color(0.1, 0.1, 0.12))
+	# Two stacked boxes with tape, sitting on the bed.
+	for b in [Rect2(12.0, -8.0, 13.0, 14.0), Rect2(25.0, -2.0, 10.0, 8.0)]:
+		draw_rect(b, box_col)
+		draw_rect(b, Color(0.45, 0.35, 0.2, 0.9), false, 1.5)
+		draw_line(Vector2(b.position.x, b.get_center().y),
+				Vector2(b.end.x, b.get_center().y), Color(0.5, 0.4, 0.25, 0.85), 1.5)

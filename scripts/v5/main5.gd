@@ -528,7 +528,7 @@ func replan_all() -> void:
 
 
 func _compute_path_for(p) -> void:
-	var path = Pathfind5.find_path(p.cur_room, p.dest_room, cars, p.salt, p.width)
+	var path = Pathfind5.find_path(p.cur_room, p.dest_room, cars, p.salt, p.width, p.walk_mult)
 	if path == null:
 		p.legs = []
 		p.no_path = true
@@ -647,7 +647,7 @@ func _pick_reactivate_dest(p) -> int:
 	for r in Grid5.room_count():
 		if r == from:
 			continue
-		if Pathfind5.find_path(from, r, cars, -1.0, p.width) != null:
+		if Pathfind5.find_path(from, r, cars, -1.0, p.width, p.walk_mult) != null:
 			reach.append(r)
 	if reach.is_empty():
 		return -1
@@ -704,7 +704,11 @@ func queue_leave(p) -> void:
 
 
 ## World position of queue slot `idx` in a room: a straight line on the floor from
-## the queue tile (slot 0, at the dock) extending back into the room.
+## the queue tile (slot 0, at the dock) extending back into the room. WIDTH-AWARE:
+## each waiting figure reserves width * SPACING of linear space, so a width-3
+## delivery man occupies a 3-wide gap and never overlaps his neighbours; a figure
+## sits CENTRED in its own reserved span. An all-width-1 queue reduces EXACTLY to
+## idx * SPACING (the shipped levels are unchanged).
 func _queue_slot_pos(rid: int, idx: int) -> Vector2:
 	const SPACING := 22.0
 	const FLOOR_OFFSET := 31.0 # cell bottom - 31 = the one floor line (car front-row height)
@@ -713,7 +717,13 @@ func _queue_slot_pos(rid: int, idx: int) -> Vector2:
 	var toward := Grid5.cell_center(qcell + Grid5.room_queue_dir(rid)) - qc
 	var tx := signf(toward.x) if absf(toward.x) > 0.01 else 1.0
 	var floor_y := Grid5.cell_rect(qcell).end.y - FLOOR_OFFSET
-	return Vector2(qc.x - tx * (idx * SPACING), floor_y)
+	var arr: Array = queues.get(rid, [])
+	var units := 0.0
+	for j in mini(idx, arr.size()):
+		units += float(arr[j].width)
+	var self_w := float(arr[idx].width) if idx >= 0 and idx < arr.size() else 1.0
+	units += (self_w - 1.0) * 0.5
+	return Vector2(qc.x - tx * units * SPACING, floor_y)
 
 
 # ---------------------------------------------------------------- corridors

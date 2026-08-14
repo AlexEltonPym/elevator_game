@@ -29,9 +29,11 @@ const INF_T := 1.0e18
 ## Returns an Array of legs, or null if no path. `salt` (0..1) adds a
 ## deterministic sub-second per-car jitter so near-equal plans split load;
 ## negative salt = exact costs. `width` is the boarding rule (a party only ever
-## plans onto cars it can fit through).
+## plans onto cars it can fit through — so a width-3 delivery man never plans onto
+## a width-2 lift). `walk_mult` scales the priced board+alight walk to MATCH the
+## sim's per-passenger pace (a slow delivery man is priced slow in planning too).
 static func find_path(start_room: int, dest_room: int, cars: Array,
-		salt: float = -1.0, width: int = 1) -> Variant:
+		salt: float = -1.0, width: int = 1, walk_mult: float = 1.0) -> Variant:
 	if start_room == dest_room:
 		return []
 	# Build the room adjacency fresh (tiny graphs; no caching needed here).
@@ -57,7 +59,7 @@ static func find_path(start_room: int, dest_room: int, cars: Array,
 				# the SAME per-leg delay the sim imposes (the spawn dwell/mill is
 				# route-independent, so it is NOT priced here).
 				var walk: float = float(Grid5.manhattan(Grid5.room_queue(a), ca) \
-						+ Grid5.manhattan(cb, Grid5.room_queue(b))) * Grid5.WALK_PER_TILE
+						+ Grid5.manhattan(cb, Grid5.room_queue(b))) * Grid5.WALK_PER_TILE * walk_mult
 				var cost: float = route.ride_dist(ca, cb) / car.speed \
 						+ route.stops_between(ca, cb) * pen + LEG_WAIT + walk + eps
 				if not edges.has(a):

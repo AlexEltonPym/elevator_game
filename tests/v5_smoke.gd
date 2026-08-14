@@ -134,6 +134,155 @@ func _overlap_test() -> bool:
 	return ok
 
 
+## An INJECTED fixture (never added to Levels5.LEVELS, so the shipped fingerprints
+## stay identical): a delivery bay A and a rooftop cafe B on one shaft column x=2.
+## BOTH a width-3 CARGO lift and a width-2 LOCAL run that column and serve both
+## rooms — so the ONLY reason a width-3 delivery man rides CARGO and never LOCAL is
+## the boarding width rule, enforced in BOTH the planner and the sim.
+func _delivery_level() -> Dictionary:
+	return {
+		"id": "DLV", "world": "MECHANICS", "name": "Delivery Fixture",
+		"thesis": "a width-3 delivery man only fits the width-3 cargo lift",
+		"intro": "delivery-man smoke fixture",
+		"cols": 5, "rows": 5,
+		"rooms": [
+			{"type": "delivery", "cells": [Vector2i(0, 0), Vector2i(1, 0)],
+					"drops": [{"cell": Vector2i(1, 0), "dir": Vector2i(1, 0)}]},
+			{"type": "cafe", "cells": [Vector2i(0, 4), Vector2i(1, 4)],
+					"drops": [{"cell": Vector2i(1, 4), "dir": Vector2i(1, 0)}]},
+		],
+		"cards": [
+			{"name": "CARGO", "type": "cargo", "color": Color(0.80, 0.55, 0.92)},
+			{"name": "LOCAL", "type": "standard", "color": Color(0.45, 0.68, 0.95)},
+		],
+		"quota": 6, "max_lost": 30,
+		"spawn": {"interval_start": 2.0, "interval_end": 1.6, "ramp": 30.0,
+				"burst_min": 2, "burst_max": 3, "gap": 0.5},
+		"mix": {"delivery": 1.0},
+		"trips": [
+			{"w": 0.5, "from": "A", "to": "B"},
+			{"w": 0.5, "from": "B", "to": "A"},
+		],
+	}
+
+
+## The DELIVERY MAN (width-3, slow) type: he plans + rides ONLY the width-3 CARGO
+## lift (rejected by the width-2 LOCAL) in BOTH planner and sim, his walk time is
+## the slower value, and the crowd packs him width-aware (no overlap). Uses the
+## injected fixture so the 10 shipped levels' fingerprints are untouched.
+func _delivery_test() -> bool:
+	Levels5.injected = _delivery_level()
+	Levels5.current = 0
+	Levels5.headless = true
+	var node = load("res://scenes/v5_main.tscn").instantiate()
+	node.headless = true
+	root.add_child(node)
+	node.rng.seed = 40404
+	node.to_plan()
+	var ok := true
+	var shaft := _c([[2,0],[2,1],[2,2],[2,3],[2,4]])
+	if not node.commit_route(0, shaft, false): # CARGO (width 3)
+		ok = false
+		print("  delivery: CARGO route rejected **FAIL**")
+	if not node.commit_route(1, shaft, false): # LOCAL (width 2)
+		ok = false
+		print("  delivery: LOCAL route rejected **FAIL**")
+	var cargo = node.cars[0]
+	var local = node.cars[1]
+	# PLANNER parity 1: a width-3 party plans A->B, and every leg is on CARGO.
+	var p3 = Pathfind5.find_path(0, 1, node.cars, -1.0, 3, 1.7)
+	if p3 == null or (p3 is Array and p3.is_empty()):
+		ok = false
+		print("  delivery: width-3 has no plan (should ride CARGO) **FAIL**")
+	else:
+		for leg in p3:
+			if leg.car != cargo:
+				ok = false
+				print("  delivery: width-3 planned onto a non-cargo lift **FAIL**")
+	# PLANNER parity 2: with only the width-2 LOCAL available, a width-3 party has
+	# NO plan (Pathfind must never route it through a lift it can't fit).
+	if Pathfind5.find_path(0, 1, [local], -1.0, 3, 1.7) != null:
+		ok = false
+		print("  delivery: width-3 planned onto the width-2 lift **FAIL**")
+	# PLANNER parity 3: the priced plan for the SLOW delivery man costs more than the
+	# same plan priced at normal pace (walk term scales with walk_mult). A width-1
+	# reference path over the same cargo lift is strictly cheaper.
+	node.start_run()
+	var t := 0.0
+	var saw_delivery := false
+	var rode_cargo := false
+	var rode_local := false
+	var walk_checked := false
+	var walk_slow_ok := true
+	var saw_pack := false
+	var pack_ok := true
+	while t < CAP and node.state == node.State.PLAYING:
+		node.advance(STEP)
+		t += STEP
+		for p in node.active_passengers:
+			if p.ptype != "delivery":
+				continue
+			saw_delivery = true
+			if p.riding == cargo:
+				rode_cargo = true
+			elif p.riding == local:
+				rode_local = true
+			# SIM walk parity: the mill walk uses WALK_PER_TILE * walk_mult, so a
+			# delivery man's leg is ~1.7x a width-1's over the same tiles (slower).
+			if not walk_checked and p.walk_kind == Passenger5.Walk.MILL \
+					and p.walk_left > 0.0 and p.walk_total > 0.0:
+				var dist := Grid5.manhattan(p.spawn_cell, p.queue_cell)
+				if dist > 0:
+					walk_checked = true
+					var base: float = float(dist) * Grid5.WALK_PER_TILE
+					var expect: float = base * p.walk_mult
+					if p.walk_mult < 1.6 or absf(p.walk_total - expect) > 1e-4 \
+							or p.walk_total <= base + 1e-4:
+						walk_slow_ok = false
+						print("  delivery: walk not slowed (mult=%.3f total=%.3f base=%.3f) **FAIL**"
+								% [p.walk_mult, p.walk_total, base])
+		# WIDTH-AWARE packing: consecutive queued figures are spaced by their averaged
+		# width (a width-3 delivery man reserves a 3-wide gap), so none overlap.
+		for rid in [0, 1]:
+			var q: Array = node.queues.get(rid, [])
+			if q.size() >= 2:
+				saw_pack = true
+			for j in range(q.size() - 1):
+				var a = q[j]
+				var b = q[j + 1]
+				var expect_sep: float = (a.width + b.width) * 0.5 * 22.0
+				var got: float = absf(a.stand_pos.x - b.stand_pos.x)
+				if absf(got - expect_sep) > 1.0:
+					pack_ok = false
+	var st: String = "WIN" if node.state == node.State.WIN \
+			else ("LOSE" if node.state == node.State.LOSE else "TIMEOUT")
+	if not saw_delivery:
+		ok = false
+		print("  delivery: no delivery man ever spawned **FAIL**")
+	if not rode_cargo:
+		ok = false
+		print("  delivery: delivery man never rode the CARGO lift **FAIL**")
+	if rode_local:
+		ok = false
+		print("  delivery: delivery man boarded the width-2 LOCAL **FAIL**")
+	if not walk_checked or not walk_slow_ok:
+		ok = false
+		print("  delivery: slower walk not observed **FAIL**")
+	if not saw_pack or not pack_ok:
+		ok = false
+		print("  delivery: width-aware packing not verified **FAIL**")
+	if st != "WIN":
+		ok = false
+		print("  delivery: fixture did not WIN (state=%s served=%d) **FAIL**"
+				% [st, node.served])
+	print("  delivery: state=%s served=%d rode_cargo=%s rode_local=%s walk_slow=%s pack=%s" % [
+			st, node.served, rode_cargo, rode_local,
+			"Y" if walk_slow_ok else "N", "Y" if pack_ok else "N"])
+	node.free()
+	Levels5.injected = null # CRITICAL: leave the shipped table untouched afterward
+	return ok
+
+
 ## Runs R-6 with the given routes (r1 may be null for a one-lift attempt) to a
 ## decision, returning the final state string.
 func _run_r6(r0, r1) -> String:
@@ -292,6 +441,13 @@ func _process(_delta: float) -> bool:
 		else:
 			_fail += 1
 			print("R-6 COOPERATION  **FAIL**")
+		# DELIVERY MAN (width-3, slow): cargo-only board (planner + sim), slower walk,
+		# width-aware packing. Injected fixture, so the shipped fingerprints are safe.
+		if _delivery_test():
+			print("DELIVERY MAN: cargo-only board + slow walk + width-aware packing OK")
+		else:
+			_fail += 1
+			print("DELIVERY MAN  **FAIL**")
 		# Reactivation (real between-trip demand) must run in headless at least once.
 		if _reacts == 0:
 			_fail += 1
