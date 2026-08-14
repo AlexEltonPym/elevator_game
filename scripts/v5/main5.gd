@@ -1,8 +1,11 @@
 extends Node2D
 ## Game controller for the v5 "Rooms" feel-prototype. Adapted from
-## scripts/v3/main3.gd: the phase machine (BRIEFING -> PLAN -> PLAYING ->
-## WIN/LOSE), the pulse spawner and the MAGNETIC route-drawing verb are reused
-## essentially verbatim (that verb is the thing the prototype must keep).
+## scripts/v3/main3.gd: the phase machine (PLAN -> PLAYING -> WIN/LOSE), the pulse
+## spawner and the MAGNETIC route-drawing verb are reused essentially verbatim
+## (that verb is the thing the prototype must keep). The BRIEFING phase was CUT:
+## picking a level lands straight in PLAN (the roster reads off the card chips and
+## demand is learned by playing). The narrative fields (thesis/intro) stay in the
+## level data so a light briefing can return later.
 ##
 ## What is different from v4:
 ##   * Rooms are multi-cell areas with authored dropoffs; routes serve a room by
@@ -14,7 +17,7 @@ extends Node2D
 ##     no "every one of three cards must be drawn" assumption.
 ##   * No recall/redeploy, no gates, no home cells (prototype scope).
 
-enum State { BRIEFING, PLAN, PLAYING, WIN, LOSE }
+enum State { PLAN, PLAYING, WIN, LOSE }
 
 const MAX_STROKE_WALK := 256
 
@@ -23,7 +26,7 @@ var CARDS: Array = []
 var QUOTA := 12
 var MAX_LOST := 8
 
-var state: int = State.BRIEFING
+var state: int = State.PLAN
 var time_scale := 1.0
 var served := 0
 var lost := 0
@@ -107,8 +110,9 @@ func _ready() -> void:
 		cars_node.add_child(c)
 		cars.append(c)
 	rng.randomize()
-	hud.show_briefing()
-	hud.refresh_cards()
+	# No BRIEFING phase: land straight in PLAN so picking a level is immediately
+	# playable. to_plan() hides any overlay and refreshes the card chips (the roster).
+	to_plan()
 
 
 func _process(delta: float) -> void:
@@ -527,7 +531,7 @@ func _overlap_used(cell: Vector2i, except_i: int) -> int:
 ## start tile through here so it survives reshaping either end of the route.
 func commit_route(i: int, cells: Array, closed := false,
 		spawn := Vector2i(-1, -1)) -> bool:
-	if state != State.PLAN and state != State.BRIEFING:
+	if state != State.PLAN:
 		push_error("commit_route(%d) refused: routes are locked outside PLAN" % i)
 		return false
 	var r: Route5 = null

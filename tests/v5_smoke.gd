@@ -365,6 +365,10 @@ func _run_once(lv: Dictionary, i: int, seed: int) -> Dictionary:
 	var node = scene.instantiate()
 	node.headless = true
 	root.add_child(node)
+	# NO BRIEFING: picking a level (main5._ready) must land straight in PLAN, not a
+	# briefing screen. Captured before the explicit to_plan() below so it proves _ready
+	# itself did it.
+	var landed_plan: bool = node.state == node.State.PLAN
 	node.rng.seed = seed
 	node.to_plan()
 	var sol := _solution(lv.id)
@@ -477,7 +481,7 @@ func _run_once(lv: Dictionary, i: int, seed: int) -> Dictionary:
 	var st: String = "WIN" if node.state == node.State.WIN \
 			else ("LOSE" if node.state == node.State.LOSE else "TIMEOUT")
 	var res := {
-		"committed": committed, "ready": ready, "state": st,
+		"committed": committed, "ready": ready, "state": st, "landed_plan": landed_plan,
 		"served": node.served, "lost": node.lost, "t": t,
 		"ride_peak": max_riding, "transfers": transfers,
 		"serve_desc": serve_desc, "serve_sizes": serve_sizes,
@@ -537,6 +541,10 @@ func _process(_delta: float) -> bool:
 
 	var notes: Array = []
 	var ok: bool = a.committed and a.ready and a.served > 0 and a.ride_peak > 0
+	# No-briefing flow: _ready landed straight in PLAN on both runs.
+	if not (a.landed_plan and b.landed_plan):
+		ok = false
+		notes.append("no-plan-on-ready")
 	if not deterministic:
 		ok = false
 		notes.append("NONDET")

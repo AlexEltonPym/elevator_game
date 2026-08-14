@@ -2,8 +2,10 @@ extends Control
 ## v5 "Rooms" level select. The project's MAIN SCENE and the only level select
 ## (v4 is gone). Levels are grouped into WORLDS (Levels5.WORLDS): LEARN, MECHANICS,
 ## GENERIC. One world shows at a time; the arrows page between worlds. Picking a
-## level sets Levels5.current and loads the v5 game scene. Reopens on the world of
-## the level you last played (Levels5.current), so returning lands you where you were.
+## level sets Levels5.current and loads the v5 game scene, which lands DIRECTLY in
+## PLAN — there is no briefing screen between the select and playing. Reopens on the
+## world of the level you last played (Levels5.current), so returning lands you where
+## you were.
 
 const WORLD_BLURB := {
 	"LEARN": "One new idea per level. Forgiving - you can't really lose by trying.",

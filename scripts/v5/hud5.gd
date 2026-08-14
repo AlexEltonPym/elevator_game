@@ -2,7 +2,8 @@ extends CanvasLayer
 ## Minimal v5 HUD, built in code, driven by main5's phase machine. Adapted from
 ## scripts/v3/hud3.gd but pared to the prototype: a variable roster of card
 ## chips (1..3), CLEAR, one big RUN/ABORT button, a hint line, and the
-## BRIEFING / WIN / LOSE overlays. RUN gates on the level's ACTUAL roster.
+## WIN / LOSE overlays. There is no BRIEFING screen — picking a level lands
+## straight in PLAN. RUN gates on the level's ACTUAL roster.
 
 var game = null # main5.gd
 
@@ -266,15 +267,6 @@ func _refresh_hint() -> void:
 
 
 # ---------------------------------------------------------------- overlays
-
-func show_briefing() -> void:
-	if headless:
-		return
-	var lv: Dictionary = game.level
-	_show_overlay("%s  %s" % [lv.id, str(lv.name).to_upper()],
-			Levels5.briefing_body(lv),
-			[{"text": "PLAN", "cb": func(): game.to_plan()}], 18)
-
 
 func show_win(served: int, lost: int) -> void:
 	if headless:

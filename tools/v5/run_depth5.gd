@@ -123,8 +123,12 @@ func _selftest() -> bool:
 	# 2. A/B/A no state leak across levels.
 	var r6 := index_of("R-6")
 	SimApi5.load_maze(Levels5.LEVELS[r6])
-	var r6split := [{"cells": _c([[2,0],[2,1],[2,2],[2,3],[2,4],[2,5]]), "closed": false},
-			{"cells": _c([[2,5],[2,6],[2,7],[2,8],[2,9],[2,10]]), "closed": false}]
+	# R-6 is a STEPPED cap-2 shaft (cols 6, rows 9 after the shorten pass): column 2
+	# up to the cap-4 atrium at (2,4), then it steps right to column 3. The cooperative
+	# split is LIFT 1 lower-left (A,B,atrium C) + LIFT 2 upper-right (C,D,E), meeting only
+	# at (2,4). This is the smoke/fingerprint hand solution — valid in-bounds cells.
+	var r6split := [{"cells": _c([[2,0],[2,1],[2,2],[2,3],[2,4]]), "closed": false},
+			{"cells": _c([[2,4],[3,4],[3,5],[3,6],[3,7],[3,8]]), "closed": false}]
 	var s1: Dictionary = sim.run(r6, r6split, 7101, SimApi5.STEP_COARSE)
 	SimApi5.load_maze(Levels5.LEVELS[r1])
 	sim.run(r1, thesis1, 7101, SimApi5.STEP_COARSE)
@@ -136,7 +140,11 @@ func _selftest() -> bool:
 	# 3. The R-6 cooperative SPLIT is legal and WINS; the full-shaft double is invalid.
 	print("    R-6 split: %s served %d lost %d score %.2f" % [s1.result, s1.served, s1.lost, s1.score])
 	ok = _p("R-6 cooperative split WINS", s1.result == "win", s1.result) and ok
-	var bad := [{"cells": _c([[2,0],[2,1],[2,2],[2,3],[2,4],[2,5],[2,6],[2,7],[2,8],[2,9],[2,10]]), "closed": false},
+	# One lift running the WHOLE stepped shaft (column 2 up to the atrium, then column 3
+	# to the top) plus a second that re-enters the cap-2 lower column: the second pushes
+	# (2,0)/(2,1)/(2,2) to width 4 over their cap-2, so the set is rejected by the overlap
+	# cap — the check under test. In-bounds on the shortened R-6.
+	var bad := [{"cells": _c([[2,0],[2,1],[2,2],[2,3],[2,4],[3,4],[3,5],[3,6],[3,7],[3,8]]), "closed": false},
 			{"cells": _c([[2,0],[2,1],[2,2]]), "closed": false}]
 	var rbad: Dictionary = sim.run(r6, bad, 7101, SimApi5.STEP_COARSE)
 	ok = _p("R-6 full-shaft + overlapping second is rejected (overlap cap)",

@@ -72,6 +72,21 @@ const ROOM_TINT := {
 	"cafe": Color(0.34, 0.28, 0.30),
 }
 
+## Flow-Free pairing palette (draw-only). A store and the cafe it supplies share a
+## `pair` id in the level data; both rooms get this colour + the pair number so the
+## matching endpoints read at a glance ("connect the 1s, connect the 2s"). Indexed
+## by pair id; id 1 -> PAIR_COLS[0]. Distinct, high-chroma, readable on the tints.
+const PAIR_COLS := [
+	Color(0.96, 0.42, 0.42), # 1 red
+	Color(0.45, 0.82, 0.96), # 2 cyan
+	Color(0.98, 0.78, 0.30), # 3 amber
+	Color(0.62, 0.85, 0.45), # 4 green
+	Color(0.82, 0.58, 0.96), # 5 violet
+	Color(0.96, 0.60, 0.32), # 6 orange (spare)
+	Color(0.55, 0.72, 0.98), # 7 blue (spare)
+	Color(0.94, 0.52, 0.78), # 8 pink (spare)
+]
+
 
 ## Install a level (Levels5 entry). Builds bounds, the room / dock maps and the
 ## display fit transform. Cells stay CELL px in LOGICAL space; a grid larger
@@ -134,7 +149,9 @@ static func load_level(level: Dictionary) -> void:
 			"drops": drops, "center": ctr, "rect": _cells_rect(cells),
 			"anchor": _closest_cell(cells, ctr),
 			"queue": qcell,
-			"queue_dir": door_cells.get(qcell, Vector2i(1, 0))})
+			"queue_dir": door_cells.get(qcell, Vector2i(1, 0)),
+			# Optional draw-only Flow-Free pairing tag (see _draw_room). 0 = no pair.
+			"pair": int(rm.get("pair", 0))})
 
 
 ## The room's QUEUE cell: the boardable waiting tile NEAR the dock — a room DOOR
@@ -434,26 +451,49 @@ func _draw() -> void:
 func _draw_room(id: int) -> void:
 	var rm: Dictionary = Grid5._rooms[id]
 	var tint: Color = ROOM_TINT.get(rm.type, Color(0.26, 0.30, 0.36))
+	# FLOW-FREE PAIRING (draw-only): a room with a `pair` id shares a vivid colour +
+	# number with the ONE other room it pairs with, so "connect the matching pairs"
+	# reads at a glance. The whole room outline takes the pair colour; a numbered badge
+	# sits in the corner. No pair (id 0) keeps the plain blue outline.
+	var pair: int = int(rm.get("pair", 0))
+	var has_pair: bool = pair > 0 and pair <= PAIR_COLS.size()
+	var pair_col: Color = PAIR_COLS[pair - 1] if has_pair else Color(0.6, 0.72, 0.9)
 	for c in rm.cells:
 		var rect := cell_rect(c).grow(-1.0)
 		draw_rect(rect, tint)
-	# One outline around the whole room footprint (cell edges on the boundary).
+		if has_pair:
+			# Faint wash of the pair colour so the room body itself reads as "pair N".
+			draw_rect(rect, Color(pair_col, 0.12))
+	# One outline around the whole room footprint (cell edges on the boundary). A
+	# paired room draws it in the pair colour, thicker, so the two rooms visibly match.
+	var ow := 4.0 if has_pair else 3.0
+	var ocol: Color = Color(pair_col, 0.95) if has_pair else Color(0.6, 0.72, 0.9, 0.5)
 	for c in rm.cells:
 		var rect := cell_rect(c)
-		for e in [[Vector2i(0, 1), Rect2(rect.position, Vector2(rect.size.x, 3.0))],
-				[Vector2i(0, -1), Rect2(Vector2(rect.position.x, rect.end.y - 3.0),
-						Vector2(rect.size.x, 3.0))],
-				[Vector2i(-1, 0), Rect2(rect.position, Vector2(3.0, rect.size.y))],
-				[Vector2i(1, 0), Rect2(Vector2(rect.end.x - 3.0, rect.position.y),
-						Vector2(3.0, rect.size.y))]]:
+		for e in [[Vector2i(0, 1), Rect2(rect.position, Vector2(rect.size.x, ow))],
+				[Vector2i(0, -1), Rect2(Vector2(rect.position.x, rect.end.y - ow),
+						Vector2(rect.size.x, ow))],
+				[Vector2i(-1, 0), Rect2(rect.position, Vector2(ow, rect.size.y))],
+				[Vector2i(1, 0), Rect2(Vector2(rect.end.x - ow, rect.position.y),
+						Vector2(ow, rect.size.y))]]:
 			if Grid5.room_id_at(c + e[0]) != id:
-				draw_rect(e[1], Color(0.6, 0.72, 0.9, 0.5))
+				draw_rect(e[1], ocol)
 	# Letter + type label at the room centre.
 	var ctr: Vector2 = rm.center
 	draw_string(ThemeDB.fallback_font, ctr + Vector2(-26.0, -2.0), rm.letter,
 			HORIZONTAL_ALIGNMENT_LEFT, -1.0, 34, Color(0.85, 0.93, 1.0, 0.92))
 	draw_string(ThemeDB.fallback_font, ctr + Vector2(2.0, 6.0), str(rm.type),
 			HORIZONTAL_ALIGNMENT_LEFT, -1.0, 15, Color(0.8, 0.88, 0.98, 0.6))
+	# Pair badge: a filled disc in the pair colour with the pair NUMBER, in the room's
+	# top-left corner (away from the door mark) — the "endpoint marker" both rooms share.
+	if has_pair:
+		var rrect: Rect2 = rm.rect
+		var bc := rrect.position + Vector2(20.0, 20.0)
+		draw_circle(bc, 15.0, Color(0.08, 0.08, 0.10, 0.9))
+		draw_circle(bc, 13.0, pair_col)
+		var num := str(pair)
+		draw_string(ThemeDB.fallback_font, bc + Vector2(-6.0, 7.0), num,
+				HORIZONTAL_ALIGNMENT_LEFT, -1.0, 22, Color(0.10, 0.10, 0.12))
 
 
 ## A dropoff: a door notch on the room cell's facing edge + a chevron pointing
@@ -603,12 +643,16 @@ func _draw_route(cells: Array, col: Color, index: int, selected: bool, warn: boo
 		for e in [cells[0], cells[cells.size() - 1]]:
 			var p: Vector2 = cell_center(e) + off
 			draw_rect(Rect2(p - Vector2(7, 7), Vector2(14, 14)), Color(col, alpha))
-	# Grabbable-end affordance (v5 UX): a faint, gentle pulse on BOTH ends of every
-	# committed route, in the card's colour, so the player can see either end can
-	# still be dragged to extend or trim it. Draw-only; never touches the sim.
+	# Grabbable-end affordance (v5 UX): a faint, gentle pulse ON the route's grabbable
+	# END CELLS, in the card's colour, so the player sees where to drag to extend/trim.
+	# The rings must sit EXACTLY on the endpoints (same points as the polyline ends,
+	# nudged by `off`): an OPEN route pulses its head cell (cells.back()) and tail cell
+	# (cells[0]); a LOOP has a single grabbable loop point (cells[0], where it closes),
+	# so it pulses there once — not two rings floating along the ring. Draw-only.
 	if cells.size() >= 2:
 		var pulse := 0.5 + 0.5 * sin(Time.get_ticks_msec() / 260.0)
-		for e in [cells[0], cells[cells.size() - 1]]:
+		var ends: Array = [cells[0]] if closed else [cells[0], cells[cells.size() - 1]]
+		for e in ends:
 			var gp: Vector2 = cell_center(e) + off
 			draw_arc(gp, 15.0 + 3.0 * pulse, 0.0, TAU, 24,
 					Color(col, 0.10 + 0.16 * pulse), 3.0)
