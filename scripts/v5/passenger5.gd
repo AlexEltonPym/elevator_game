@@ -29,7 +29,7 @@ const PTYPES := {
 	"shopper": {"width": 1, "patience": 95.0, "color": Color(0.9, 0.6, 0.35)},
 }
 
-enum Walk { NONE, MILL, BOARD, ALIGHT }
+enum Walk { NONE, MILL, BOARD, ALIGHT, TRANSFER }
 
 ## Seeded activation dwell (spawn -> becomes active) and post-arrival between dwell.
 const ACT_DWELL_MIN := 0.8
@@ -39,6 +39,11 @@ const BETWEEN_MAX := 2.0
 ## Standing figures ease toward their target at this speed (px/s) — a single smooth
 ## step when the queue advances, no per-frame jitter.
 const STAND_EASE := 130.0
+## The single FLOOR LINE of a room: cell_bottom - FLOOR_OFF puts a figure's centre
+## at cell_centre + 14 = the docked car's front-row rider height (Car5.slot_position
+## base_y), so ALL standing figures share one grounded floor and boarding is a
+## horizontal step into the car (no vertical pop). = CELL - (CELL/2 + car base_y).
+const FLOOR_OFF := 31.0
 
 var game = null # main5.gd
 var ptype := "visitor"
@@ -131,19 +136,20 @@ func _pick_far() -> Vector2i:
 	return opts[int(_r(1.0) * opts.size()) % opts.size()]
 
 
-## A loose standing spot in the BACK of the room (away from the dock), salt-spread.
-## Clipping allowed — it is not re-sorted.
+## A loose standing spot in the BACK of the room (away from the dock), salt-spread
+## along X only — everyone stands GROUNDED on the one floor line (no vertical
+## variation). Clipping allowed; it is not re-sorted.
 func _pick_back() -> Vector2:
 	var rect: Rect2 = Grid5.room_rect(cur_room)
 	var qcell: Vector2i = Grid5.room_queue(cur_room)
-	var floor_y: float = Grid5.cell_rect(qcell).end.y - 16.0
+	var floor_y: float = Grid5.cell_rect(qcell).end.y - FLOOR_OFF
 	var qc: Vector2 = Grid5.cell_center(qcell)
 	var toward: Vector2 = Grid5.cell_center(qcell + Grid5.room_queue_dir(cur_room)) - qc
 	var tx: float = signf(toward.x) if absf(toward.x) > 0.01 else 1.0
-	# Far-from-dock edge, spread loosely across the back third and up a little.
+	# Far-from-dock edge, spread loosely across the back third — on the floor.
 	var far_x: float = rect.position.x + 22.0 if tx > 0.0 else rect.end.x - 22.0
 	var x := far_x + tx * _r(1.5) * (rect.size.x * 0.45)
-	return Vector2(x, floor_y - _r(2.0) * 26.0)
+	return Vector2(x, floor_y)
 
 
 ## Waiting in the queue (reached it), boardable.
@@ -201,17 +207,41 @@ func _activate() -> void:
 
 
 ## Board walk (called by the assigning car): leave the queue line (so those behind
-## step forward) and walk from the slot to the boarding dock.
+## step forward) and walk from the slot to the dock — targeting the dock's FLOOR
+## line (car front-row height), so it is a horizontal step INTO the car, not a pop.
 func start_board_walk() -> void:
 	game.queue_leave(self)
 	walk_kind = Walk.BOARD
 	if legs.is_empty():
 		walk_left = 0.0
 		return
-	walk_total = Grid5.manhattan(queue_cell, legs[0].board_cell) * Grid5.WALK_PER_TILE
+	var board: Vector2i = legs[0].board_cell
+	walk_total = Grid5.manhattan(queue_cell, board) * Grid5.WALK_PER_TILE
 	walk_left = walk_total
 	walk_from = position
-	walk_to = Grid5.cell_center(legs[0].board_cell)
+	walk_to = Vector2(Grid5.cell_center(board).x, Grid5.cell_rect(board).end.y - FLOOR_OFF)
+	if walk_left <= 0.0:
+		walk_left = 0.0
+		_on_walk_done()
+
+
+## Snappy transfer re-queue: a MID-JOURNEY rider that alights at a transfer room and
+## needs another lift joins that room's queue AT ONCE — no fresh activation dwell,
+## no BETWEEN wander. It walks straight (on the floor) from the dock to its queue
+## slot and is boardable on arrival. main5.on_alight has already re-planned.
+func start_transfer_walk(alight_cell: Vector2i) -> void:
+	riding = null
+	boarding_car = null
+	activated = true
+	between = false
+	milled = false
+	queue_cell = Grid5.room_queue(cur_room)
+	game.queue_join(self) # sets queue_slot + stand_pos
+	walk_kind = Walk.TRANSFER
+	walk_total = Grid5.manhattan(alight_cell, queue_cell) * Grid5.WALK_PER_TILE
+	walk_left = walk_total
+	walk_from = position
+	walk_to = stand_pos
 	if walk_left <= 0.0:
 		walk_left = 0.0
 		_on_walk_done()
@@ -238,8 +268,8 @@ func start_alight_walk(alight_cell: Vector2i, room: int) -> void:
 
 func _on_walk_done() -> void:
 	match walk_kind:
-		Walk.MILL:
-			milled = true
+		Walk.MILL, Walk.TRANSFER:
+			milled = true # reached the queue slot; boardable
 			walk_kind = Walk.NONE
 		Walk.BOARD:
 			if boarding_car != null:
@@ -259,9 +289,6 @@ func begin_between() -> void:
 	between_left = BETWEEN_MIN + (BETWEEN_MAX - BETWEEN_MIN) * _r(5.0)
 
 
-## A transfer (alighted, not at destination): head to the queue for the next leg.
-func rejoin_for_transfer() -> void:
-	_activate()
 
 
 ## Reset for a fresh trip to `new_dest` from the current room.
@@ -282,7 +309,7 @@ func reactivate(new_dest: int) -> void:
 ## in retargets its walk.
 func set_stand(pos: Vector2) -> void:
 	stand_pos = pos
-	if walk_left > 0.0 and walk_kind == Walk.MILL:
+	if walk_left > 0.0 and (walk_kind == Walk.MILL or walk_kind == Walk.TRANSFER):
 		walk_to = pos
 
 

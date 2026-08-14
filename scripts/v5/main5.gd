@@ -505,25 +505,26 @@ func spawn_passenger(ptype: String, origin: int, dest: int) -> Passenger5:
 	return p
 
 
-## A rider stepped out of a car at dock `alight_cell` beside `room`. The rider
-## now WALKS from that dock to the room's anchor (real game-time); only when the
-## walk finishes (finish_alight) are they served or replanned for a transfer.
+## A rider stepped out of a car at dock `alight_cell` beside `room`. If this is its
+## DESTINATION it walks to the back and is served (finish_alight). Otherwise it is a
+## mid-journey TRANSFER: replan and send it straight to the next lift's queue at
+## once — no back detour, no fresh activation dwell (start_transfer_walk).
 func on_alight(p, alight_cell: Vector2i, room: int) -> void:
 	if not p.legs.is_empty():
 		p.legs.pop_front()
-	p.start_alight_walk(alight_cell, room)
-
-
-## The alight walk finished: at the destination they are served; otherwise this is
-## a transfer room, so replan from here and head to the queue for the next leg.
-func finish_alight(p) -> void:
-	if p.cur_room == p.dest_room:
-		on_served(p)
+	p.cur_room = room
+	if room == p.dest_room:
+		p.start_alight_walk(alight_cell, room)
 	else:
 		_compute_path_for(p)
-		if not waiting[p.cur_room].has(p):
-			waiting[p.cur_room].append(p)
-		p.rejoin_for_transfer()
+		if not waiting[room].has(p):
+			waiting[room].append(p)
+		p.start_transfer_walk(alight_cell)
+
+
+## The (final) alight walk finished: the rider reached its destination room.
+func finish_alight(p) -> void:
+	on_served(p)
 
 
 ## A trip completed at its destination: count it served, log it, and drop the
@@ -627,7 +628,7 @@ func queue_leave(p) -> void:
 ## the queue tile (slot 0, at the dock) extending back into the room.
 func _queue_slot_pos(rid: int, idx: int) -> Vector2:
 	const SPACING := 22.0
-	const FLOOR_OFFSET := 16.0 # cell bottom - half body, so the base sits on the floor
+	const FLOOR_OFFSET := 31.0 # cell bottom - 31 = the one floor line (car front-row height)
 	var qcell := Grid5.room_queue(rid)
 	var qc := Grid5.cell_center(qcell)
 	var toward := Grid5.cell_center(qcell + Grid5.room_queue_dir(rid)) - qc
