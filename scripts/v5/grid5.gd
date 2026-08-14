@@ -603,6 +603,15 @@ func _draw_route(cells: Array, col: Color, index: int, selected: bool, warn: boo
 		for e in [cells[0], cells[cells.size() - 1]]:
 			var p: Vector2 = cell_center(e) + off
 			draw_rect(Rect2(p - Vector2(7, 7), Vector2(14, 14)), Color(col, alpha))
+	# Grabbable-end affordance (v5 UX): a faint, gentle pulse on BOTH ends of every
+	# committed route, in the card's colour, so the player can see either end can
+	# still be dragged to extend or trim it. Draw-only; never touches the sim.
+	if cells.size() >= 2:
+		var pulse := 0.5 + 0.5 * sin(Time.get_ticks_msec() / 260.0)
+		for e in [cells[0], cells[cells.size() - 1]]:
+			var gp: Vector2 = cell_center(e) + off
+			draw_arc(gp, 15.0 + 3.0 * pulse, 0.0, TAU, 24,
+					Color(col, 0.10 + 0.16 * pulse), 3.0)
 	if warn:
 		var wp: Vector2 = cell_center(cells[0]) + off + Vector2(0, -26.0)
 		draw_circle(wp, 12.0, Color(0.9, 0.3, 0.25, 0.9))

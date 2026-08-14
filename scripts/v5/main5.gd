@@ -55,6 +55,13 @@ var selected_card := -1
 var drawing := false
 var stroke: Array = []
 var stroke_closed := false
+# Grab-to-edit session state (interactive PLAN editing only; never touched by the
+# scripted direct-commit path). stroke_reversed = the active stroke is a TAIL grab,
+# held reversed so the magnet works from the start end; restored on commit.
+# stroke_spawn = the tile the car must keep spawning/parking at across edits
+# (Vector2i(-1,-1) = "use the committed cells[0]", the default for fresh strokes).
+var stroke_reversed := false
+var stroke_spawn := Vector2i(-1, -1)
 
 var reject_msg := ""
 var reject_card := -1
@@ -169,6 +176,8 @@ func to_plan() -> void:
 	drawing = false
 	stroke = []
 	stroke_closed = false
+	stroke_reversed = false
+	stroke_spawn = Vector2i(-1, -1)
 	served = 0
 	lost = 0
 	elapsed = 0.0
@@ -277,6 +286,8 @@ func select_card(i: int) -> void:
 	drawing = false
 	stroke = []
 	stroke_closed = false
+	stroke_reversed = false
+	stroke_spawn = Vector2i(-1, -1)
 	reject_until_ms = 0
 	hud.refresh_cards()
 
@@ -285,11 +296,64 @@ func _begin_stroke(pos: Vector2) -> void:
 	if selected_card < 0 or not can_edit():
 		return
 	var cell := Grid5.cell_at(pos)
-	if cell.x < 0 or not _drawable(cell):
+	if cell.x < 0:
+		return
+	# Grab-to-edit (v5 UX): a drag that begins on — or immediately beside — EITHER
+	# end of the selected card's already-committed route resumes that route instead
+	# of starting a fresh stroke that would replace it.
+	if _try_grab_end(cell):
+		return
+	if not _drawable(cell):
 		return
 	drawing = true
 	stroke = [cell]
 	stroke_closed = false
+	stroke_reversed = false
+	stroke_spawn = Vector2i(-1, -1)
+
+
+## The head cell of a committed route: the last cell of an open polyline, or the
+## closing point (cells[0], where the loop closes and the preview pulse sits) of a
+## loop. The magnet always drives from the head.
+func _route_head(r: Route5) -> Vector2i:
+	if r.closed:
+		return r.cells[0]
+	return r.cells[r.cells.size() - 1]
+
+
+## The tail (start-side) grab cell: cells[0] for an open route; for a loop the other
+## joined stroke end (cells.back()), so either point of a loop is grabbable.
+func _route_tail(r: Route5) -> Vector2i:
+	if r.closed:
+		return r.cells[r.cells.size() - 1]
+	return r.cells[0]
+
+
+## If the selected card has a committed route and `cell` is on or orthogonally
+## adjacent to EITHER end, SEED the active stroke with the route's cells and resume
+## magnetic drawing from that end. Grabbing the HEAD resumes as-is; grabbing the
+## TAIL holds the stroke REVERSED so the magnet works from the start end (restored
+## on commit). Either way the ORIGINAL spawn tile is preserved (stroke_spawn) so the
+## lift keeps living where it was. Head wins when both ends are in range (short
+## route). Returns true when it took over the drag; otherwise the caller starts a
+## fresh replace stroke. Loops seed closed and resume under the existing reopen rule.
+func _try_grab_end(cell: Vector2i) -> bool:
+	var r: Route5 = routes[selected_card]
+	if r == null or r.cells.size() < 2:
+		return false
+	var grab_head: bool = _md(cell, _route_head(r)) <= 1
+	var grab_tail: bool = _md(cell, _route_tail(r)) <= 1
+	if not grab_head and not grab_tail:
+		return false
+	drawing = true
+	stroke = r.cells.duplicate()
+	stroke_closed = r.closed
+	stroke_spawn = r.cells[r.spawn_index()]
+	# Reverse only when grabbing an OPEN route's tail (head preferred when both hit).
+	stroke_reversed = grab_tail and not grab_head and not r.closed
+	if stroke_reversed:
+		stroke.reverse()
+	return true
 
 
 func _extend_stroke(pos: Vector2) -> void:
@@ -370,9 +434,18 @@ func _end_stroke() -> void:
 		return
 	drawing = false
 	if selected_card >= 0 and stroke.size() > 1:
-		commit_route(selected_card, stroke, stroke_closed)
+		var cells := stroke.duplicate()
+		if stroke_reversed:
+			cells.reverse() # restore the route's original orientation before commit
+		# Keep the original spawn tile if it survived the edit; else fall back to the
+		# current start end (only happens when a tail edit trims the spawn away).
+		var spawn: Vector2i = stroke_spawn if (stroke_spawn.x >= 0 \
+				and cells.has(stroke_spawn)) else cells[0]
+		commit_route(selected_card, cells, stroke_closed, spawn)
 	stroke = []
 	stroke_closed = false
+	stroke_reversed = false
+	stroke_spawn = Vector2i(-1, -1)
 
 
 ## True when the selected card may draw through `cell`: an open, routable cell
@@ -401,7 +474,12 @@ func _overlap_used(cell: Vector2i, except_i: int) -> int:
 
 # ---------------------------------------------------------------- route edits
 
-func commit_route(i: int, cells: Array, closed := false) -> bool:
+## `spawn` is the tile the car should spawn/park at. Default Vector2i(-1,-1) means
+## "use cells[0]" — the scripted direct-commit path passes nothing, so its behaviour
+## (and the fingerprint) is unchanged. Interactive editing threads the preserved
+## start tile through here so it survives reshaping either end of the route.
+func commit_route(i: int, cells: Array, closed := false,
+		spawn := Vector2i(-1, -1)) -> bool:
 	if state != State.PLAN and state != State.BRIEFING:
 		push_error("commit_route(%d) refused: routes are locked outside PLAN" % i)
 		return false
@@ -427,6 +505,7 @@ func commit_route(i: int, cells: Array, closed := false) -> bool:
 		r = Route5.new()
 		r.cells = cells.duplicate()
 		r.closed = closed and cells.size() >= 4
+		r.spawn_cell = spawn if (spawn.x >= 0 and cells.has(spawn)) else cells[0]
 	routes[i] = r
 	cars[i].set_route(r)
 	replan_all()

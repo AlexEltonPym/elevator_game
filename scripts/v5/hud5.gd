@@ -257,7 +257,10 @@ func _refresh_hint() -> void:
 		hint_label.add_theme_color_override("font_color", Color(1.0, 0.75, 0.4))
 		return
 	if sel >= 0:
-		hint_label.text = "Drag beside the rooms' door marks to serve them; release to commit."
+		if game.routes[sel] != null:
+			hint_label.text = "Drag a route's end to extend or trim it; or draw a new one."
+		else:
+			hint_label.text = "Drag beside the rooms' door marks to serve them; release to commit."
 	else:
 		hint_label.text = "PLAN ready - tap a lift chip to draw, or press RUN."
 

@@ -48,6 +48,7 @@ var color := Color.GRAY
 var route = null # Route5 or null
 var car_state := CarState.UNDEPLOYED
 var idx := 0
+var home_idx := 0 # index of the spawn/park tile (route.spawn_index(); 0 for scripted)
 var seg_t := 0.0
 var dir := 1
 var door_state := DoorState.CLOSED
@@ -140,7 +141,8 @@ func set_route(r) -> void:
 	_boarding.clear()
 	_assign_timer = 0.0
 	route = r
-	idx = 0
+	home_idx = route.spawn_index() if route != null else 0
+	idx = home_idx
 	seg_t = 0.0
 	dir = 1
 	vel = 0.0
@@ -152,7 +154,7 @@ func set_route(r) -> void:
 	car_state = CarState.RUNNING if route != null else CarState.UNDEPLOYED
 	visible = route != null
 	if route != null and route.cells.size() > 0:
-		position = Grid5.cell_center(route.cells[0])
+		position = Grid5.cell_center(route.cells[home_idx])
 		if running():
 			_arrive_center()
 
@@ -341,9 +343,9 @@ func _decide_at_center() -> bool:
 	if _has_work():
 		idle = false
 		return _depart(_pingpong_target())
-	# No work: rest at home (the path end / loop start). Deadhead there, then park
+	# No work: rest at home (the spawn/park tile). Deadhead there, then park
 	# indefinitely — the car does NOT keep cycling empty.
-	if idx == 0:
+	if idx == home_idx:
 		idle = true
 		return false
 	idle = false
@@ -366,7 +368,7 @@ func _has_work() -> bool:
 ## Depart toward home (idx 0): the reversing end of an open line, or forward around
 ## a loop to its start. Acquires the corridor ahead like a normal departure.
 func _depart_home() -> bool:
-	var want := 1 if route.closed else (-1 if idx > 0 else 1)
+	var want := 1 if route.closed else (-1 if idx > home_idx else 1)
 	if want != dir:
 		vel = 0.0
 	dir = want
@@ -383,10 +385,10 @@ func _depart_home() -> bool:
 	return true
 
 
-## Path distance (px) from here to home (idx 0) in the current travel direction,
-## so an idle car brakes to REST at home rather than at every centre.
+## Path distance (px) from here to home (the spawn/park tile) in the current travel
+## direction, so an idle car brakes to REST at home rather than at every centre.
 func _dist_home(need: float) -> float:
-	if idx == 0:
+	if idx == home_idx:
 		return need
 	var n: int = route.cells.size()
 	var d := need
@@ -395,7 +397,7 @@ func _dist_home(need: float) -> float:
 	while guard < n + 2:
 		guard += 1
 		j = _wrap_idx(j + dir)
-		if j == 0:
+		if j == home_idx:
 			return d
 		if not route.closed and (j <= 0 or j >= n - 1):
 			return d

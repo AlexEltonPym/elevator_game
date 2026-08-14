@@ -68,10 +68,10 @@ func _solution(id: String) -> Array:
 			return [_c([[2,0],[2,1],[2,2],[2,3],[2,4],[2,5],[2,6]]),
 					_c([[5,0],[5,1],[5,2],[5,3],[5,4],[5,5],[5,6]])]
 		"R-9":
-			# Two non-overlapping snakes: LIFT 1 the lower docks + delivery + lobby,
-			# LIFT 2 the top store dock + cafe. Disjoint under the cap-2 tiles.
-			return [_c([[4,0],[3,0],[2,0],[2,1],[2,2],[2,3],[3,3],[4,3]]),
-					_c([[2,5],[2,6],[3,6],[4,6]])]
+			# Cross-dock: LIFT 1 weaves the bottom two pairs A>B, C>D; LIFT 2 the top
+			# two E>F, G>H. Disjoint under the cap-2 aisle; the lefts-vs-rights split loses.
+			return [_c([[2,0],[2,1],[2,2],[3,2],[4,2],[4,3],[4,4],[4,5],[4,6],[4,7]]),
+					_c([[2,3],[2,4],[3,4],[3,5],[3,6],[3,7],[3,8],[4,8],[4,9]])]
 		"R-10":
 			# LIFT 1 a horseshoe past all four; LIFT 2 doubles the busy apartment side.
 			return [_c([[2,1],[2,2],[2,3],[2,4],[2,5],[2,6],[3,6],[3,5],[3,4],[3,3],[3,2],[3,1]]),

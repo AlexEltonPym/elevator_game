@@ -12,6 +12,9 @@ extends RefCounted
 
 var cells: Array = [] : set = _set_cells
 var closed := false
+# The tile the car spawns/parks at (the ORIGINAL start, preserved across grab-edits
+# from either end). Vector2i(-1,-1) = unset -> treat cells[0] as the spawn.
+var spawn_cell := Vector2i(-1, -1)
 
 var _served := {} # room_id -> dock cell (first in draw order)
 var _dock_rooms := {} # dock cell on the route -> Array[room_id]
@@ -75,6 +78,17 @@ func is_dropoff(cell: Vector2i) -> bool:
 func index_of(cell: Vector2i) -> int:
 	_ensure()
 	return _index_of.get(cell, -1)
+
+
+## Index into cells of the car's spawn/park tile. 0 when unset or the spawn tile is
+## no longer on the route (e.g. a tail edit trimmed it away), so the car falls back
+## to the current start end. For every scripted route (spawn = cells[0]) this is 0,
+## keeping the sim — and the fingerprint — unchanged.
+func spawn_index() -> int:
+	if spawn_cell.x < 0:
+		return 0
+	var i: int = cells.find(spawn_cell)
+	return i if i >= 0 else 0
 
 
 ## Ride distance in px between two cells of this route (path distance along the
