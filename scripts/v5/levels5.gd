@@ -358,46 +358,74 @@ corridor, on to D.",
 		"id": "R-8",
 		"world": "MECHANICS",
 		"name": "Freight",
-		"thesis": "the cafe needs bulk supplies from the delivery bay - that's the wide cargo lift's run",
-		"intro": "The rooftop CAFE B needs bulk supplies from the DELIVERY BAY A\ndown in the corner. That volume is the CARGO lift's job (wide,\nhigh capacity) - run it up the left side, bay to cafe. The\noffice workers on the right are the LOCAL's: commute to the\nlobby and up to the cafe for lunch. No gates here - read the\nfiction and give each lift the run it's built for.",
-		"cols": 8, "rows": 7,
+		"thesis": "wide delivery men wheel carts to the cafe - only the cargo lift fits them; commuters take the local",
+		"intro": "The delivery BAY A is bottom-left; the rooftop CAFE B, the\nLOBBY C and the office floors D, E stack up the middle.\nDELIVERY MEN wheel wide carts (width 3) - they ONLY fit the\nCARGO lift, so run it up the left past the bay and the doors.\nThe office crowd is width-1: commute lobby<->office and up to\nthe cafe for lunch on the LOCAL up the right. Two lifts, each\nbuilt for its load - the local can't take a cart at all.",
+		"cols": 7, "rows": 7,
+		# GEOMETRY (delivery-man wiring): CARGO (x=2->3 snake) is the ONLY lift that
+		# reaches every room, so a wide width-3 delivery man ALWAYS has a cargo path and
+		# never strands (passenger type and trip are drawn independently by the sim, so
+		# a delivery man can be handed any trip). The delivery BAY A is cargo-only (its
+		# docks (2,0)/(2,1) sit off the LOCAL's shaft); the people rooms C/D/E/B carry
+		# TWO doors — a LEFT door onto the cargo shaft (x=3) and a RIGHT door onto the
+		# LOCAL shaft (x=6) — so commuters ride the faster local while the cargo still
+		# covers them for any stray delivery-man trip.
 		"rooms": [
 			{"type": "delivery", "cells": [
 					Vector2i(0, 0), Vector2i(1, 0), Vector2i(0, 1), Vector2i(1, 1)],
 					"drops": [
 						{"cell": Vector2i(1, 0), "dir": R},
 						{"cell": Vector2i(1, 1), "dir": R}]},
-			{"type": "cafe", "cells": [Vector2i(3, 6), Vector2i(4, 6)],
+			{"type": "cafe", "cells": [Vector2i(4, 6), Vector2i(5, 6)],
 					"drops": [
-						{"cell": Vector2i(3, 6), "dir": L},
-						{"cell": Vector2i(4, 6), "dir": R}]},
-			{"type": "lobby", "cells": [Vector2i(6, 0), Vector2i(7, 0)],
-					"drops": [{"cell": Vector2i(6, 0), "dir": L}]},
-			{"type": "office", "cells": [Vector2i(6, 2), Vector2i(7, 2)],
-					"drops": [{"cell": Vector2i(6, 2), "dir": L}]},
-			{"type": "office", "cells": [Vector2i(6, 4), Vector2i(7, 4)],
-					"drops": [{"cell": Vector2i(6, 4), "dir": L}]},
+						{"cell": Vector2i(4, 6), "dir": L},
+						{"cell": Vector2i(5, 6), "dir": R}]},
+			{"type": "lobby", "cells": [Vector2i(4, 0), Vector2i(5, 0)],
+					"drops": [
+						{"cell": Vector2i(4, 0), "dir": L},
+						{"cell": Vector2i(5, 0), "dir": R}]},
+			{"type": "office", "cells": [Vector2i(4, 2), Vector2i(5, 2)],
+					"drops": [
+						{"cell": Vector2i(4, 2), "dir": L},
+						{"cell": Vector2i(5, 2), "dir": R}]},
+			{"type": "office", "cells": [Vector2i(4, 4), Vector2i(5, 4)],
+					"drops": [
+						{"cell": Vector2i(4, 4), "dir": L},
+						{"cell": Vector2i(5, 4), "dir": R}]},
 		],
 		"cards": [
 			{"name": "CARGO", "type": "cargo", "color": COL_D},
 			{"name": "LOCAL", "type": "standard", "color": COL_A},
 		],
-		"quota": 16, "max_lost": 12,
-		"spawn": {"interval_start": 2.4, "interval_end": 2.0, "ramp": 55.0,
-				"burst_min": 1, "burst_max": 2, "gap": 0.8},
-		"mix": {"visitor": 1.0},
-		# FREIGHT: delivery bay -> cafe supplies (cargo). COMMUTE: offices<->lobby, and
-		# the cafe is the hub - offices and lobby all send trips there for lunch (local).
+		"quota": 15, "max_lost": 8,
+		# Delivery men are cargo-ONLY, so a plan without the CARGO lift strands ALL the
+		# freight. A calm spawn keeps the slow cargo lift comfortably ahead of the two-
+		# lift hand solution (freight served in well under its patience, 0 lost), while a
+		# freight patience below the time a single lift needs to grind out the quota means
+		# that stranded freight EXPIRES first and sinks a cargo-less plan (max_lost 8 <
+		# quota 15) - so CARGO is genuinely needed, yet the many two-lift assignments all
+		# clear the calm load, keeping the level a forgiving soft-border.
+		"patience": {"delivery": 60.0},
+		"spawn": {"interval_start": 3.4, "interval_end": 3.0, "ramp": 55.0,
+				"burst_min": 1, "burst_max": 2, "gap": 1.1},
+		# A minority of the demand is DELIVERY MEN (width 3, slow, cargo-only); the rest
+		# are width-1 commuters. NOTE: the sim draws type and trip INDEPENDENTLY, so a
+		# delivery man can ride any trip — the geometry (cargo serves every room) keeps
+		# him from ever stranding, and the width rule keeps him off the local.
+		"mix": {"visitor": 0.62, "delivery": 0.38},
+		# FREIGHT: delivery bay -> cafe supplies, wheeled by delivery men on the CARGO
+		# lift. COMMUTE: offices<->lobby and offices->cafe (lunch) — width-1 people who
+		# take the faster LOCAL. The cafe B is the shared hub.
 		"trips": [
-			{"w": 0.22, "from": "A", "to": "B"},
-			{"w": 0.12, "from": "B", "to": "A"},
+			{"w": 0.16, "from": "A", "to": "B"},
+			{"w": 0.10, "from": "B", "to": "A"},
 			{"w": 0.12, "from": "D", "to": "C"},
 			{"w": 0.10, "from": "C", "to": "D"},
 			{"w": 0.10, "from": "E", "to": "C"},
 			{"w": 0.08, "from": "C", "to": "E"},
-			{"w": 0.08, "from": "D", "to": "B"},
-			{"w": 0.08, "from": "E", "to": "B"},
-			{"w": 0.10, "from": "C", "to": "B"},
+			{"w": 0.09, "from": "D", "to": "B"},
+			{"w": 0.09, "from": "E", "to": "B"},
+			{"w": 0.08, "from": "C", "to": "B"},
+			{"w": 0.08, "from": "B", "to": "C"},
 		],
 	},
 	# ===================== GENERIC =====================

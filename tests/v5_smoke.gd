@@ -65,8 +65,8 @@ func _solution(id: String) -> Array:
 		"R-8":
 			# CARGO runs the wide freight shaft (delivery A -> cafe B); LOCAL the narrow
 			# people corridor (lobby C, offices D,E, up to cafe B for lunch).
-			return [_c([[2,0],[2,1],[2,2],[2,3],[2,4],[2,5],[2,6]]),
-					_c([[5,0],[5,1],[5,2],[5,3],[5,4],[5,5],[5,6]])]
+			return [_c([[2,1],[2,0],[3,0],[3,1],[3,2],[3,3],[3,4],[3,5],[3,6]]),
+					_c([[6,0],[6,1],[6,2],[6,3],[6,4],[6,5],[6,6]])]
 		"R-9":
 			# Cross-dock: LIFT 1 weaves the bottom two pairs A>B, C>D; LIFT 2 the top
 			# two E>F, G>H. Disjoint under the cap-2 aisle; the lefts-vs-rights split loses.
