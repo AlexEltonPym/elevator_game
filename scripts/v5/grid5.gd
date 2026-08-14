@@ -64,6 +64,29 @@ static var _overlap_cap := {} # Vector2i -> overlap width cap (int)
 
 var game = null # main5.gd
 
+# PixelSpaces furniture textures per room type, loaded lazily & GRACEFULLY (null when the
+# gitignored art packs aren't present → _draw_room falls back to the flat-tint look, so a
+# clean clone still runs). texture_filter is forced NEAREST on this node in _ready.
+var _furn_tex := {}
+var _tex_ready := false
+
+## THE VISUAL LANGUAGE (docs: art-direction). Each room TYPE has a unique background
+## COLOUR (the identity — once you learn it you know the room's behaviour), a matching
+## outline, and a representative PixelSpaces furniture sprite. Colour is authoritative;
+## shape is characteristic but may vary; furniture reinforces.
+const ROOM_STYLE := {
+	"lobby":     {"bg": Color(0.83, 0.75, 0.56), "line": Color(0.60, 0.48, 0.26), "furn": "Furniture/Door_opened.png"},
+	"office":    {"bg": Color(0.56, 0.67, 0.81), "line": Color(0.30, 0.42, 0.60), "furn": "Furniture/Bedroom/Cabinet_1.png"},
+	"apartment": {"bg": Color(0.60, 0.77, 0.57), "line": Color(0.32, 0.52, 0.32), "furn": "Furniture/Bedroom/Bed_red.png"},
+	"cafe":      {"bg": Color(0.86, 0.63, 0.46), "line": Color(0.64, 0.38, 0.22), "furn": "Furniture/Kitchen/Refrigerator_large_white.png"},
+	"store":     {"bg": Color(0.75, 0.61, 0.42), "line": Color(0.50, 0.36, 0.20), "furn": "Furniture/Living Room/Bookshelf_1.png"},
+	"delivery":  {"bg": Color(0.61, 0.63, 0.67), "line": Color(0.38, 0.40, 0.46), "furn": "Objects/Bedroom/Box_blue_large.png"},
+	"atrium":    {"bg": Color(0.73, 0.61, 0.83), "line": Color(0.48, 0.34, 0.60), "furn": "Objects/Living Room/Flora_daisy_4.png"},
+	"penthouse": {"bg": Color(0.89, 0.79, 0.43), "line": Color(0.66, 0.52, 0.20), "furn": "Furniture/Living Room/Couch_large_red.png"},
+}
+const _PS := "res://assets/pixel/pixelspaces/"
+
+# Legacy flat tint (fallback when a type has no ROOM_STYLE entry).
 const ROOM_TINT := {
 	"lobby": Color(0.28, 0.33, 0.40),
 	"office": Color(0.24, 0.30, 0.36),
@@ -392,6 +415,34 @@ static func _cells_rect(cells: Array) -> Rect2:
 
 # ---------------------------------------------------------------- drawing
 
+func _ready() -> void:
+	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	_ensure_tex()
+
+
+## Load the per-type furniture textures once, tolerating a missing art pack (null entries).
+func _ensure_tex() -> void:
+	if _tex_ready:
+		return
+	_tex_ready = true
+	for t in ROOM_STYLE:
+		var p: String = _PS + ROOM_STYLE[t].furn
+		if ResourceLoader.exists(p):
+			_furn_tex[t] = load(p)
+
+
+## Draw a PixelSpaces sprite bottom-aligned inside `rect`, at ~`frac` of the cell height,
+## aspect-preserved and nearest-filtered. No-op when the texture is absent.
+func _draw_furn(tex: Texture2D, rect: Rect2, frac: float) -> void:
+	if tex == null:
+		return
+	var h := CELL * frac
+	var scale := h / float(tex.get_height())
+	var w := tex.get_width() * scale
+	var pos := Vector2(rect.get_center().x - w * 0.5, rect.end.y - 8.0 - h)
+	draw_texture_rect(tex, Rect2(pos, Vector2(w, h)), false)
+
+
 func _process(_delta: float) -> void:
 	queue_redraw()
 
@@ -450,24 +501,33 @@ func _draw() -> void:
 
 func _draw_room(id: int) -> void:
 	var rm: Dictionary = Grid5._rooms[id]
-	var tint: Color = ROOM_TINT.get(rm.type, Color(0.26, 0.30, 0.36))
+	# THE VISUAL LANGUAGE: per-type background colour + outline + theme furniture. Falls
+	# back to the legacy flat tint if the type has no style (or the art pack is absent).
+	var style: Dictionary = ROOM_STYLE.get(rm.type, {})
+	var bg: Color = style.get("bg", ROOM_TINT.get(rm.type, Color(0.26, 0.30, 0.36)))
+	var line: Color = style.get("line", Color(0.6, 0.72, 0.9, 0.5))
 	# FLOW-FREE PAIRING (draw-only): a room with a `pair` id shares a vivid colour +
-	# number with the ONE other room it pairs with, so "connect the matching pairs"
-	# reads at a glance. The whole room outline takes the pair colour; a numbered badge
-	# sits in the corner. No pair (id 0) keeps the plain blue outline.
+	# number with the ONE other room it pairs with, so "connect the matching pairs" reads.
 	var pair: int = int(rm.get("pair", 0))
 	var has_pair: bool = pair > 0 and pair <= PAIR_COLS.size()
-	var pair_col: Color = PAIR_COLS[pair - 1] if has_pair else Color(0.6, 0.72, 0.9)
+	var pair_col: Color = PAIR_COLS[pair - 1] if has_pair else line
+	# Room body: per-type colour + a floor slab at each cell's base (cutaway floor read).
 	for c in rm.cells:
 		var rect := cell_rect(c).grow(-1.0)
-		draw_rect(rect, tint)
+		draw_rect(rect, bg)
+		draw_rect(Rect2(rect.position + Vector2(0, rect.size.y - 6.0),
+				Vector2(rect.size.x, 6.0)), bg.darkened(0.35))
 		if has_pair:
-			# Faint wash of the pair colour so the room body itself reads as "pair N".
 			draw_rect(rect, Color(pair_col, 0.12))
-	# One outline around the whole room footprint (cell edges on the boundary). A
-	# paired room draws it in the pair colour, thicker, so the two rooms visibly match.
+	# Theme furniture, bottom-aligned in the room's lowest (world-bottom) cell.
+	var floor_cell: Vector2i = rm.cells[0]
+	for c in rm.cells:
+		if c.y < floor_cell.y or (c.y == floor_cell.y and c.x < floor_cell.x):
+			floor_cell = c
+	_draw_furn(_furn_tex.get(rm.type), cell_rect(floor_cell), 0.62)
+	# One outline around the whole room footprint (type colour; pair colour if paired).
 	var ow := 4.0 if has_pair else 3.0
-	var ocol: Color = Color(pair_col, 0.95) if has_pair else Color(0.6, 0.72, 0.9, 0.5)
+	var ocol: Color = Color(pair_col, 0.95) if has_pair else Color(line, 0.9)
 	for c in rm.cells:
 		var rect := cell_rect(c)
 		for e in [[Vector2i(0, 1), Rect2(rect.position, Vector2(rect.size.x, ow))],
@@ -478,12 +538,10 @@ func _draw_room(id: int) -> void:
 						Vector2(ow, rect.size.y))]]:
 			if Grid5.room_id_at(c + e[0]) != id:
 				draw_rect(e[1], ocol)
-	# Letter + type label at the room centre.
-	var ctr: Vector2 = rm.center
-	draw_string(ThemeDB.fallback_font, ctr + Vector2(-26.0, -2.0), rm.letter,
-			HORIZONTAL_ALIGNMENT_LEFT, -1.0, 34, Color(0.85, 0.93, 1.0, 0.92))
-	draw_string(ThemeDB.fallback_font, ctr + Vector2(2.0, 6.0), str(rm.type),
-			HORIZONTAL_ALIGNMENT_LEFT, -1.0, 15, Color(0.8, 0.88, 0.98, 0.6))
+	# Room letter, small, top-left corner (type is now read from the colour, not text).
+	var lp: Vector2 = rm.rect.position + Vector2(6.0, 2.0)
+	draw_string(ThemeDB.fallback_font, lp + Vector2(0, 22), rm.letter,
+			HORIZONTAL_ALIGNMENT_LEFT, -1.0, 22, Color(0.12, 0.12, 0.14, 0.75))
 	# Pair badge: a filled disc in the pair colour with the pair NUMBER, in the room's
 	# top-left corner (away from the door mark) — the "endpoint marker" both rooms share.
 	if has_pair:
