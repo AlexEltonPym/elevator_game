@@ -60,6 +60,32 @@ const STAND_EASE := 130.0
 ## horizontal step into the car (no vertical pop). = CELL - (CELL/2 + car base_y).
 const FLOOR_OFF := 31.0
 
+# PixelSpaces side-NPC animation. The pre-made NPC sheet is a 4x3 grid of 16x16 frames;
+# FRONT idle/walk on columns {0,2}, side (RIGHT) walk on {1,3}; LEFT is RIGHT mirrored.
+# Rendered ~34px tall, bottom-aligned to the figure's feet. Loaded once & GRACEFULLY
+# (null => _draw falls back to the placeholder rectangle, so a clean clone still runs).
+const NPC_FRONT := [0, 2]
+const NPC_SIDE := [1, 3]
+const NPC_H := 34.0
+const _NPC_PATH := ["res://assets/pixel/pixelspaces/Pre-made NPCs/Male.png",
+		"res://assets/pixel/pixelspaces/Pre-made NPCs/Female.png"]
+static var _npc_tex: Array = []
+static var _npc_loaded := false
+
+static func _load_npc() -> void:
+	if _npc_loaded:
+		return
+	_npc_loaded = true
+	for p in _NPC_PATH:
+		_npc_tex.append(load(p) if ResourceLoader.exists(p) else null)
+
+var _sheet := 0
+var _anim_i := 0
+var _anim_t := 0.0
+var _facing := 0        # 0 front, 1 right, -1 left
+var _cols: Array = NPC_FRONT
+var _prev_pos := Vector2.ZERO
+
 var game = null # main5.gd
 var ptype := "visitor"
 var origin_room := 0
@@ -111,12 +137,18 @@ var walk_from := Vector2.ZERO
 var walk_to := Vector2.ZERO
 
 
+func _ready() -> void:
+	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	_load_npc()
+
+
 func setup(g, t: String, o: int, d: int) -> void:
 	game = g
 	ptype = t
 	origin_room = o
 	dest_room = d
 	cur_room = o
+	_sheet = (o + d) % _NPC_PATH.size()   # deterministic male/female variety
 	var info: Dictionary = PTYPES.get(t, PTYPES.visitor)
 	width = int(info.width)
 	walk_mult = float(info.get("walk_mult", 1.0))
@@ -370,9 +402,31 @@ func _process(delta: float) -> void:
 	else:
 		# Standing: ease toward the stable target (a smooth step when it changes).
 		position = position.move_toward(stand_pos, STAND_EASE * delta)
-	# Depth sort: figures lower on screen (larger y) draw in front, so the back
-	# row of a car stack (smaller y) sits behind the front, and room crowds layer
-	# right. Render-only.
+	# Facing + walk animation from actual velocity (render-only). Riding = stand front;
+	# moving horizontally = side walk facing travel; moving vertically = front walk.
+	if riding != null:
+		_facing = 0
+		_cols = NPC_FRONT
+		_anim_i = 0
+	else:
+		var vel := position - _prev_pos
+		if vel.length() > 0.4:
+			_anim_t += delta
+			if _anim_t > 0.13:
+				_anim_t = 0.0
+				_anim_i = (_anim_i + 1) % 2
+			if absf(vel.x) >= absf(vel.y):
+				_facing = 1 if vel.x >= 0.0 else -1
+				_cols = NPC_SIDE
+			else:
+				_facing = 0
+				_cols = NPC_FRONT
+		else:
+			_anim_i = 0
+			_facing = 0
+			_cols = NPC_FRONT
+	_prev_pos = position
+	# Depth sort: figures lower on screen (larger y) draw in front. Render-only.
 	z_index = clampi(int(position.y), -4096, 4096)
 	queue_redraw()
 
@@ -396,19 +450,36 @@ func _draw() -> void:
 	# ~14 x 24, on the floor. Normal colour always (no recolour); the impatience bar
 	# shows only while patience is running.
 	var col: Color = PTYPES.get(ptype, PTYPES.visitor).color
-	# A wide freight figure (width >= 3) reads as a stockier person pushing a little
-	# 2-box cart; everyone else is the standard ~14x24 upright. Same floor line. The
-	# cart draws first so the person's body overlaps its handle (he pushes it).
-	var wide := width >= 3
-	if wide:
+	# The delivery man (width >= 3) still pushes his programmer-art 2-box cart (drawn
+	# first, under the body). Everyone renders as a PixelSpaces side-NPC; the type is
+	# read from the destination BADGE colour (the sprite is one shared character).
+	if width >= 3:
 		_draw_cart(col)
-	var bw := 18.0 if wide else 14.0
-	var body := Rect2(-bw / 2.0, -12.0, bw, 24.0)
-	draw_rect(body, col)
-	draw_rect(body, Color(0, 0, 0, 0.45), false, 2.0)
-	draw_rect(Rect2(Vector2(-bw / 2.0 + 1.0, -9.0), Vector2(bw - 2.0, 13.0)),
-			Color(1, 1, 1, 0.85))
-	draw_string(ThemeDB.fallback_font, Vector2(-5.0, 2.0),
+	var tex: Texture2D = _npc_tex[_sheet] if _sheet < _npc_tex.size() else null
+	if tex != null:
+		var scale := NPC_H / 16.0
+		var w := 16.0 * scale
+		var dest := Rect2(-w / 2.0, 12.0 - NPC_H, w, NPC_H)  # feet on the floor line
+		var src := Rect2(_cols[_anim_i] * 16, 0, 16, 16)
+		if _facing < 0:
+			draw_set_transform(Vector2.ZERO, 0.0, Vector2(-1, 1))
+			draw_texture_rect_region(tex, dest, src)
+			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		else:
+			draw_texture_rect_region(tex, dest, src)
+	else:
+		# Fallback placeholder person (no art pack).
+		var bw := 18.0 if width >= 3 else 14.0
+		var body := Rect2(-bw / 2.0, -12.0, bw, 24.0)
+		draw_rect(body, col)
+		draw_rect(body, Color(0, 0, 0, 0.45), false, 2.0)
+		draw_rect(Rect2(Vector2(-bw / 2.0 + 1.0, -9.0), Vector2(bw - 2.0, 13.0)),
+				Color(1, 1, 1, 0.85))
+	# Destination badge above the head: a type-coloured disc with the dest room letter.
+	var badge_y := -30.0
+	draw_circle(Vector2(0, badge_y), 8.5, Color(0.08, 0.08, 0.10, 0.85))
+	draw_circle(Vector2(0, badge_y), 7.0, col)
+	draw_string(ThemeDB.fallback_font, Vector2(-4.0, badge_y + 4.5),
 			Grid5.room_letter(dest_room),
 			HORIZONTAL_ALIGNMENT_CENTER, -1.0, 12, Color(0.1, 0.1, 0.1))
 	if _patience_running():
