@@ -70,6 +70,11 @@ var stroke_spawn := Vector2i(-1, -1)
 # _resolve_loop_grab). Open (non-loop) grabs never set this — they resolve their
 # head/tail choice immediately in _try_grab_end, exactly as before.
 var stroke_loop_pending := false
+# Which loop end the finger actually landed ON at grab time: 0 = the front end
+# (stroke[0]), 1 = the back end (stroke.back()), -1 = between/ambiguous. Used as the
+# TIEBREAKER in _resolve_loop_grab so tapping directly on one end controls THAT end,
+# instead of always defaulting to the head when the first drag is directionless.
+var stroke_loop_end_hint := -1
 
 var reject_msg := ""
 var reject_card := -1
@@ -188,6 +193,7 @@ func to_plan() -> void:
 	stroke_reversed = false
 	stroke_spawn = Vector2i(-1, -1)
 	stroke_loop_pending = false
+	stroke_loop_end_hint = -1
 	served = 0
 	lost = 0
 	elapsed = 0.0
@@ -362,11 +368,19 @@ func _try_grab_end(cell: Vector2i) -> bool:
 	stroke_closed = r.closed
 	stroke_spawn = r.cells[r.spawn_index()]
 	stroke_loop_pending = false
+	stroke_loop_end_hint = -1
 	if r.closed:
 		# LOOP: which end the magnet drives is decided by the DRAG DIRECTION on the
 		# first move (_resolve_loop_grab), not now — a loop's two ends sit adjacent, so
-		# the touch cell alone can't say which the player means. Seed head-first for the
-		# meantime; the pending flag defers the reverse-or-not choice to the first drag.
+		# direction disambiguates which the player means. But remember which end TILE the
+		# finger is actually on (front=stroke[0], back=stroke.back()) as a tiebreaker: a
+		# tap right on one end must control THAT end, not silently jump to the other.
+		var d_front: int = _md(cell, r.cells[0])
+		var d_back: int = _md(cell, r.cells[r.cells.size() - 1])
+		if d_front < d_back:
+			stroke_loop_end_hint = 0
+		elif d_back < d_front:
+			stroke_loop_end_hint = 1
 		stroke_loop_pending = true
 		stroke_reversed = false
 		return true
@@ -396,11 +410,21 @@ func _resolve_loop_grab(cell: Vector2i) -> void:
 	var in_front: Vector2i = stroke[1]
 	var retract_back: bool = _md(cell, in_back) < _md(cell, end_back)
 	var retract_front: bool = _md(cell, in_front) < _md(cell, end_front)
-	if retract_back and not retract_front:
-		stroke_reversed = false # control the back end: magnet head stays cells.back()
+	var control_back: bool
+	if retract_back != retract_front:
+		# Exactly one end can legally retract in this drag direction: control that end.
+		control_back = retract_back
+	elif stroke_loop_end_hint != -1:
+		# Direction is ambiguous (both or neither retract). Honour the end the FINGER
+		# landed on so a tap right on one end controls THAT end (the reported bug: a tap
+		# on the tail was jumping to the head because the head was the blanket default).
+		control_back = stroke_loop_end_hint == 1
 	else:
-		# Front end explicitly, OR ambiguous -> the head (cells[0]): reverse so it heads.
-		stroke.reverse()
+		control_back = false # truly between the ends: default to the head, as before.
+	if control_back:
+		stroke_reversed = false # magnet head stays stroke.back()
+	else:
+		stroke.reverse() # front end becomes the magnet head
 		stroke_reversed = true
 
 

@@ -624,7 +624,7 @@ func _draw_overlap_caps() -> void:
 			draw_rect(pr, Color(0.86, 0.72, 0.34, 0.7), false, 1.0)
 
 
-func _draw_route(cells: Array, col: Color, index: int, selected: bool, warn: bool,
+func _draw_route(cells: Array, col: Color, index: int, selected: bool, _warn: bool,
 		closed := false) -> void:
 	var off := Vector2((index - 1) * 8.0, (index - 1) * 8.0)
 	var alpha := 0.92 if selected else 0.6
@@ -656,11 +656,8 @@ func _draw_route(cells: Array, col: Color, index: int, selected: bool, warn: boo
 			var gp: Vector2 = cell_center(e) + off
 			draw_arc(gp, 15.0 + 3.0 * pulse, 0.0, TAU, 24,
 					Color(col, 0.10 + 0.16 * pulse), 3.0)
-	if warn:
-		var wp: Vector2 = cell_center(cells[0]) + off + Vector2(0, -26.0)
-		draw_circle(wp, 12.0, Color(0.9, 0.3, 0.25, 0.9))
-		draw_string(ThemeDB.fallback_font, wp + Vector2(-4.0, 7.0), "!",
-				HORIZONTAL_ALIGNMENT_CENTER, -1.0, 19, Color.WHITE)
+	# An incomplete route (serves <2 rooms) SILENTLY fails: no exclaim, no scold. The
+	# greyed-out RUN button is the only quiet signal; the neutral hint line guides.
 
 
 func _draw_stroke_preview(cells: Array, col: Color, closed := false) -> void:

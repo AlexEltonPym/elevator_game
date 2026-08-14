@@ -247,16 +247,10 @@ func _refresh_hint() -> void:
 		hint_label.text = game.reject_msg
 		hint_label.add_theme_color_override("font_color", Color(1.0, 0.6, 0.5))
 		return
+	# Incomplete routes (serve <2 rooms) fail SILENTLY - no red/amber scold. RUN just
+	# stays greyed until every lift is valid; the neutral guidance below tells the
+	# player what to draw. (reject_msg above is different: an illegal action just tried.)
 	var sel: int = game.selected_card
-	if sel >= 0 and game.route_warning(sel):
-		hint_label.text = "Route needs to serve 2 rooms - reach a dock beside another room."
-		hint_label.add_theme_color_override("font_color", Color(1.0, 0.55, 0.4))
-		return
-	var missing: Array = game.cards_not_ready()
-	if not missing.is_empty():
-		hint_label.text = "PLAN - RUN needs a 2-room route for: %s" % ", ".join(missing)
-		hint_label.add_theme_color_override("font_color", Color(1.0, 0.75, 0.4))
-		return
 	if sel >= 0:
 		if game.routes[sel] != null:
 			hint_label.text = "Drag a route's end to extend or trim it; or draw a new one."
