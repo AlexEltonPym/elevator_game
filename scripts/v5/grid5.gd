@@ -436,6 +436,15 @@ func _ensure_tex() -> void:
 		_door_open = load(_PS + "Furniture/Elevator_opened.png")
 
 
+## A drawn full-cell window (glass + frame + mullions) — for blocked/facade cells.
+func _draw_window(rect: Rect2) -> void:
+	var g := rect.grow(-6.0)
+	draw_rect(g, Color(0.20, 0.22, 0.27))
+	draw_rect(g.grow(-2.0), Color(0.54, 0.71, 0.82))
+	draw_rect(Rect2(g.get_center().x - 1.5, g.position.y, 3.0, g.size.y), Color(0.72, 0.82, 0.88))
+	draw_rect(Rect2(g.position.x, g.get_center().y - 1.5, g.size.x, 3.0), Color(0.72, 0.82, 0.88))
+
+
 ## Draw a sprite centred in `rect`, at `frac` of the cell, aspect-preserved & nearest.
 func _draw_centered(tex: Texture2D, rect: Rect2, frac: float) -> void:
 	if tex == null:
@@ -475,10 +484,21 @@ func _draw() -> void:
 			if Grid5.is_corridor(c):
 				_draw_corridor(rect, c)
 			elif not Grid5.passable(c):
-				draw_rect(rect, Color(0.10, 0.10, 0.12))
-				draw_rect(rect, Color(0, 0, 0, 0.22), false, 1.0)
+				# BLOCKED = solid wall structure. A deterministic subset shows a window so
+				# the walls read as a building facade rather than dead space.
+				draw_rect(rect, Color(0.30, 0.27, 0.29))
+				if (c.x + c.y) % 2 == 0:
+					_draw_window(rect)
+				else:
+					for k in 2:
+						draw_rect(Rect2(rect.position.x, rect.position.y
+								+ (k + 1) * rect.size.y / 3.0, rect.size.x, 2.0),
+								Color(0, 0, 0, 0.16))
+				draw_rect(rect, Color(0, 0, 0, 0.28), false, 1.5)
 			else:
-				draw_rect(rect, Color(0.175, 0.175, 0.21))
+				# OPEN = the shaft / routing space a lift snakes through: a recessed channel.
+				draw_rect(rect, Color(0.155, 0.165, 0.20))
+				draw_rect(rect.grow(-5.0), Color(0.115, 0.125, 0.16))
 				draw_rect(rect, Color(0, 0, 0, 0.18), false, 1.0)
 			if Grid5.is_overlap_capped(c):
 				draw_rect(rect, Color(0.86, 0.72, 0.34, 0.5), false, 2.0)
