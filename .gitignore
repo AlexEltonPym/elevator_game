@@ -17,8 +17,8 @@ export_presets.cfg
 *.dmg
 *.zip
 
-# Depth-tool run artifacts. The COMMITTED outputs are docs/depth-report.md
-# and scripts/v3/discovered3.gd; the per-shard JSON and logs are scratch.
+# Depth-tool run artifacts. The COMMITTED output is docs/depth-report5.md;
+# the per-level JSON, run caches and logs under tools/out/ are scratch.
 tools/out/
 
 # OS cruft

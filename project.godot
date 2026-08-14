@@ -6,8 +6,8 @@ config_version=5
 
 [application]
 
-config/name="Elevator Prototype v3 - Path Drawing"
-run/main_scene="res://scenes/v3_select.tscn"
+config/name="Elevators - Rooms"
+run/main_scene="res://scenes/v5_select.tscn"
 config/features=PackedStringArray("4.2")
 
 [display]
