@@ -5,6 +5,31 @@ into a TIGHTER, more DIVERSE, more PURPOSEFUL set. Prioritise fun + geometry var
 classifier (tools/v5/run_depth5.gd) is triage only. Renumber per-world so IDs read sequentially
 (the R-1,R-2,R-7,R-8 gaps in LEARN were confusing — global IDs shuffled across worlds).
 
+## Design principle: room TYPES encode the demand (legibility via theme)
+The deepest note: a player must be able to read the layout and GUESS the demand + the right lift,
+from what the rooms ARE — not from abstract "A->D" trips. Theme the demand to the fiction:
+- **lobby** = ground entrance everyone passes through → the natural TRANSFER hub.
+- **offices / apartments** = commuter demand (people; normal/local lifts).
+- **store / delivery bay + cafe / kitchen / restaurant** = SUPPLY demand (freight; cargo lift) —
+  a cafe needs milk/coffee from the downstairs store, so store→cafe is the obvious cargo run.
+- **penthouse / clinic / exec floor** = a fast/express destination.
+Concrete role x room demand patterns (a DRIVING principle for every level):
+- **exec**: lobby -> penthouse (+ back), impatient — the fast/express destination.
+- **office worker**: lobby <-> office (commute) AND office <-> cafe (lunch/coffee) — an office
+  generates BOTH a lobby link and a cafe link.
+- **cafe = near-universal hub**: draws trips from most room types (offices for lunch, store for
+  supplies) — a natural transfer magnet.
+- **store / delivery bay -> cafe** = freight/supplies (the cargo run).
+- clinic/ward -> patients.
+Author these into the trip tables using EXISTING passenger types + per-level patience overrides
+(no new type ids yet — roles are expressed by WHERE trips go + patience; a semantic demand model
+with real passenger ROLES is a later sim pass). Trips follow the fiction. R-12 done right: CARGO carries supplies UP a WIDE freight shaft from the
+store/delivery bay to the CAFE (its obvious job — not barred from the top); the width-2 COMMUTER
+local carries people offices↔lobby through the narrow people-corridor. The width constraint then
+reads straight off the theme (wide freight lift = wide supply route; narrow commuter = narrow
+people route) with no tutorial popup. This is the fix for R-12's "how was I supposed to know"
+legibility failure.
+
 ## Cross-cutting
 - **GEOMETRY DIVERSITY is the #1 note.** Too many levels are vertical single-shafts (docks face
   left/right, so shafts go vertical). Vary layouts: horizontal runs, L-shapes, branching,

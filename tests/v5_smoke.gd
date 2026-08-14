@@ -35,49 +35,47 @@ func _c(pairs: Array) -> Array:
 func _solution(id: String) -> Array:
 	match id:
 		"R-1":
-			return [_c([[2,0],[2,1],[2,2],[2,3],[2,4],[2,5],[2,6]])]
-		"R-2":
+			# One route: A at the bottom, then the top cell (2,4) serves BOTH offices.
 			return [_c([[2,0],[2,1],[2,2],[2,3],[2,4]])]
-		"R-3":
-			return [_c([[2,0],[2,1],[2,2],[2,3]]),
-					_c([[5,3],[5,4],[5,5],[4,5],[4,6]])]
-		"R-4":
-			return [_c([[3,2],[3,1],[4,1],[4,0]]),
-					_c([[4,0],[4,1],[4,2],[4,3],[4,4],[4,5],[3,5],[2,5],[2,6],[2,7]]),
-					_c([[7,0],[7,1],[7,2],[7,3],[7,4],[6,4],[5,4],[5,5]])]
-		"R-5":
-			return [_c([[2,0],[2,1],[2,2],[2,3],[2,4],[2,5],[2,6]]),
-					_c([[3,0],[3,1],[3,2],[2,2],[2,3],[2,4],[3,4],[3,5],[3,6]])]
-		"R-6":
-			# The cap-2 shaft forces a split: LIFT 1 works the bottom (A,B,E), LIFT 2
-			# the top (E,C,D); they share only the cap-4 transfer E at (2,4). Cross-end
-			# riders hand off at E.
-			return [_c([[2,0],[2,1],[2,2],[2,3],[2,4],[2,5]]),
-					_c([[2,5],[2,6],[2,7],[2,8],[2,9],[2,10]])]
-		"R-7":
+		"R-2":
+			# Wall splits the towers: BLUE the left (A,B), GREEN the right (C,D).
 			return [_c([[2,0],[2,1],[2,2],[2,3],[2,4],[2,5]]),
 					_c([[4,0],[4,1],[4,2],[4,3],[4,4],[4,5]])]
-		"R-8":
-			return [_c([[2,0],[2,1],[2,2],[2,3],[2,4],[2,5],[2,6]])]
-		"R-9":
+		"R-3":
+			# BLUE serves apartment A + lobby B; GREEN serves lobby B + office C.
+			return [_c([[2,0],[2,1]]),
+					_c([[5,0],[5,1]])]
+		"R-4":
+			# Bottleneck: both lifts thread the width-2 corridor (2,2..2,4).
+			return [_c([[2,0],[2,1],[2,2],[2,3],[2,4],[2,5],[2,6]]),
+					_c([[3,0],[3,1],[3,2],[2,2],[2,3],[2,4],[3,4],[3,5],[3,6]])]
+		"R-5":
+			# Relay: BLUE the left (A,B,atrium C), GREEN the right (C,D,E).
 			return [_c([[2,0],[2,1],[2,2],[2,3],[2,4]]),
 					_c([[5,0],[5,1],[5,2],[5,3],[5,4]])]
+		"R-6":
+			# Stepped capped shaft: LIFT 1 the lower-left (A,B,C), LIFT 2 the upper-
+			# right (C,D,E); they share only the cap-4 atrium C at (2,4) in the bend.
+			return [_c([[2,0],[2,1],[2,2],[2,3],[2,4]]),
+					_c([[2,4],[3,4],[3,5],[3,6],[3,7],[3,8]])]
+		"R-7":
+			# EXPRESS runs the left channel lobby->penthouse; LOCAL the right office stack.
+			return [_c([[1,0],[1,1],[1,2],[1,3],[1,4],[1,5],[1,6],[1,7],[1,8],[1,9],[1,10]]),
+					_c([[4,0],[4,1],[4,2],[4,3],[4,4],[4,5],[4,6],[4,7],[4,8]])]
+		"R-8":
+			# CARGO runs the wide freight shaft (delivery A -> cafe B); LOCAL the narrow
+			# people corridor (lobby C, offices D,E, up to cafe B for lunch).
+			return [_c([[2,0],[2,1],[2,2],[2,3],[2,4],[2,5],[2,6]]),
+					_c([[5,0],[5,1],[5,2],[5,3],[5,4],[5,5],[5,6]])]
+		"R-9":
+			# Two non-overlapping snakes: LIFT 1 the lower docks + delivery + lobby,
+			# LIFT 2 the top store dock + cafe. Disjoint under the cap-2 tiles.
+			return [_c([[4,0],[3,0],[2,0],[2,1],[2,2],[2,3],[3,3],[4,3]]),
+					_c([[2,5],[2,6],[3,6],[4,6]])]
 		"R-10":
-			return [_c([[2,0],[2,1],[2,2],[2,3],[2,4]]),
-					_c([[2,4],[2,5],[2,6],[2,7],[2,8]])]
-		"R-11":
-			return [_c([[2,0],[2,1],[2,2],[2,3],[2,4],[2,5],[2,6],[2,7],[2,8],[2,9],[2,10]]),
-					_c([[2,0],[2,1],[2,2]])]
-		"R-12":
-			return [_c([[2,0],[2,1],[2,2],[3,2],[3,1],[3,0]]),
-					_c([[2,6],[3,6],[3,5],[3,4],[3,3],[3,2],[3,1],[3,0]])]
-		"R-13":
-			return [_c([[2,0],[2,1],[2,2],[2,3],[2,4]]),
-					_c([[2,4],[2,5],[2,6],[2,7],[2,8]])]
-		"R-14":
-			return [_c([[2,0],[2,1],[2,2],[2,3],[2,4],[2,5]]),
-					_c([[2,5],[2,6],[2,7],[2,8],[2,9],[2,10]]),
-					_c([[2,0],[2,1],[2,2],[2,3],[2,4]])]
+			# LIFT 1 a horseshoe past all four; LIFT 2 doubles the busy apartment side.
+			return [_c([[2,1],[2,2],[2,3],[2,4],[2,5],[2,6],[3,6],[3,5],[3,4],[3,3],[3,2],[3,1]]),
+					_c([[2,1],[2,2],[2,3],[2,4],[2,5]])]
 	return []
 
 
@@ -85,11 +83,11 @@ func _solution(id: String) -> Array:
 func _expect_serves(id: String) -> Array:
 	match id:
 		"R-1":
-			return [3]
-		"R-5":
-			return [2, 2]
+			return [3] # one lift serves A + both offices via the shared top dock
+		"R-4":
+			return [2, 2] # Bottleneck: BLUE serves A,B; GREEN serves C,D
 		"R-6":
-			return [3, 3] # LIFT 1 serves A,B,E; LIFT 2 serves E,C,D
+			return [3, 3] # LIFT 1 serves A,B,C; LIFT 2 serves C,D,E
 	return []
 
 
@@ -115,8 +113,8 @@ func _overlap_test() -> bool:
 	root.add_child(node)
 	node.to_plan()
 	var ok := true
-	var l1 := _c([[2,0],[2,1],[2,2],[2,3],[2,4],[2,5]]) # bottom half + transfer, legal
-	var l2coop := _c([[2,5],[2,6],[2,7],[2,8],[2,9],[2,10]]) # top half; shares (2,5) cap-4
+	var l1 := _c([[2,0],[2,1],[2,2],[2,3],[2,4]]) # lower-left + atrium (2,4), legal
+	var l2coop := _c([[2,4],[3,4],[3,5],[3,6],[3,7],[3,8]]) # upper-right; shares (2,4) cap-4
 	var l2bad := _c([[2,2],[2,3]]) # would overlap L1 on cap-2 tiles (2+2 > 2)
 	if not node.commit_route(0, l1, false):
 		ok = false
@@ -167,11 +165,11 @@ func _run_r6(r0, r1) -> String:
 ## cooperative split is verified by the main loop (R-6 WINs with transfers > 0).
 func _cooperation_test() -> bool:
 	var ok := true
-	var one := _run_r6([[2,0],[2,1],[2,2],[2,3],[2,4],[2,5],[2,6],[2,7],[2,8],[2,9],[2,10]], null)
+	var one := _run_r6([[2,0],[2,1],[2,2],[2,3],[2,4],[3,4],[3,5],[3,6],[3,7],[3,8]], null)
 	if one == "WIN":
 		ok = false
 		print("  cooperation: one lift alone WON (should be insufficient) **FAIL**")
-	var disjoint := _run_r6([[2,0],[2,1],[2,2]], [[2,8],[2,9],[2,10]])
+	var disjoint := _run_r6([[2,0],[2,1],[2,2]], [[3,6],[3,7],[3,8]])
 	if disjoint == "WIN":
 		ok = false
 		print("  cooperation: disjoint two (no transfer) WON (cross trips should fail) **FAIL**")
@@ -323,12 +321,13 @@ func _process(_delta: float) -> bool:
 	if not a.saw_walk:
 		ok = false
 		notes.append("no-walk")
-	# R-3 and R-6 must actually show a transfer (a cross-end rider changes lifts).
-	if (lv.id == "R-3" or lv.id == "R-6") and a.transfers == 0:
+	# Transfer levels must actually show a transfer (a rider changes lifts):
+	# R-3 Handoff, R-5 Relay, R-6 Squeeze all route cross trips through a shared room.
+	if (lv.id == "R-3" or lv.id == "R-5" or lv.id == "R-6") and a.transfers == 0:
 		ok = false
 		notes.append("no-xfer")
-	# (c) one-lift corridor serialises two contenders.
-	if lv.id == "R-5":
+	# (c) one-lift corridor serialises two contenders (R-4 Bottleneck).
+	if lv.id == "R-4":
 		if not a.corridor_ok:
 			ok = false
 			notes.append("corridor-shared")
@@ -343,7 +342,7 @@ func _process(_delta: float) -> bool:
 			notes.append("serves[%d]=%d!=%d" % [ci, a.serve_sizes[ci], exp[ci]])
 	# R-3 runs a deliberate CROWD STRESS spawn and is NOT required to win; the other
 	# four keep normal spawns and must WIN. (det / served / transfer still checked.)
-	if a.state != "WIN" and lv.id != "R-3":
+	if a.state != "WIN":
 		ok = false
 		notes.append("not-WIN")
 	if not ok:
@@ -352,7 +351,7 @@ func _process(_delta: float) -> bool:
 			lv.id, a.state, a.served, a.lost, a.t, a.ride_peak, a.transfers,
 			a.reactivations,
 			"Y" if deterministic else "N", "Y" if a.saw_walk else "N",
-			("ok" if a.corridor_ok else "SHARED") if lv.id == "R-5" else "-",
+			("ok" if a.corridor_ok else "SHARED") if lv.id == "R-4" else "-",
 			"  ".join(a.serve_desc),
 			"OK" if ok else "**FAIL**", " ".join(notes)])
 	_i += 1
