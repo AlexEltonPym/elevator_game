@@ -21,6 +21,11 @@ export_presets.cfg
 # the per-level JSON, run caches and logs under tools/out/ are scratch.
 tools/out/
 
+# Third-party art packs (free, but not ours to redistribute in a public repo).
+# The demo glue in scripts/pixel_demo.gd + scenes/pixel_demo.tscn IS tracked; the raw
+# sprites live here locally only. Drop the packs back in to run the vibe demo.
+assets/pixel/
+
 # OS cruft
 .DS_Store
 Thumbs.db
