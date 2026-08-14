@@ -374,6 +374,14 @@ func _run_once(lv: Dictionary, i: int, seed: int) -> Dictionary:
 	var saw_walk := false
 	var corridor_ok := true
 	var sig := ""
+	# R-8 EXACT-FICTION observation (per-trip type binding): delivery men must appear
+	# ONLY on the supply run (a trip that touches the delivery BAY A = room 0) and must
+	# ride ONLY the CARGO lift (cars[0]); commuters (everyone else) must NEVER touch the
+	# bay. cargo = cars[0], the CARGO card is first in R-8's roster.
+	var r8: bool = lv.id == "R-8"
+	var r8_saw_delivery := false
+	var r8_delivery_on_cargo := false
+	var r8_fiction_ok := true
 	while t < CAP and node.state == node.State.PLAYING:
 		node.advance(STEP)
 		t += STEP
@@ -383,6 +391,20 @@ func _run_once(lv: Dictionary, i: int, seed: int) -> Dictionary:
 				riding += 1
 			elif p.walk_left > 0.0:
 				saw_walk = true
+			if r8:
+				var touches_bay: bool = p.origin_room == 0 or p.dest_room == 0
+				if p.ptype == "delivery":
+					r8_saw_delivery = true
+					# supply run only: both ends in {A=0, B=1} AND it involves the bay A.
+					if not (touches_bay and p.origin_room <= 1 and p.dest_room <= 1):
+						r8_fiction_ok = false
+					if p.riding != null:
+						if p.riding == node.cars[0]:
+							r8_delivery_on_cargo = true
+						else:
+							r8_fiction_ok = false # a delivery man on a non-CARGO lift
+				elif touches_bay:
+					r8_fiction_ok = false # a commuter on a supply (bay) trip
 		max_riding = maxi(max_riding, riding)
 		# Corridor invariant: sum of widths of cars physically in each group <=
 		# group width, i.e. no two normal lifts share a width-2 corridor.
@@ -420,6 +442,8 @@ func _run_once(lv: Dictionary, i: int, seed: int) -> Dictionary:
 		"transfer_rooms": transfer_rooms, "saw_walk": saw_walk,
 		"corridor_ok": corridor_ok, "contended": contended, "transits": transits,
 		"reactivations": node.reactivations,
+		"r8_saw_delivery": r8_saw_delivery, "r8_delivery_on_cargo": r8_delivery_on_cargo,
+		"r8_fiction_ok": r8_fiction_ok,
 		"sig": sig,
 	}
 	node.free()
@@ -490,6 +514,18 @@ func _process(_delta: float) -> bool:
 		if not a.contended:
 			ok = false
 			notes.append("no-contention")
+	# R-8 EXACT FICTION: delivery men appear ONLY on the supply run and ride ONLY the
+	# CARGO lift; commuters only on people trips (per-trip type binding).
+	if lv.id == "R-8":
+		if not a.r8_saw_delivery:
+			ok = false
+			notes.append("no-delivery")
+		if not a.r8_delivery_on_cargo:
+			ok = false
+			notes.append("delivery-off-cargo")
+		if not a.r8_fiction_ok:
+			ok = false
+			notes.append("fiction-violated")
 	# (d) serve-count correct for a known route.
 	var exp := _expect_serves(lv.id)
 	for ci in exp.size():
@@ -510,5 +546,9 @@ func _process(_delta: float) -> bool:
 			("ok" if a.corridor_ok else "SHARED") if lv.id == "R-4" else "-",
 			"  ".join(a.serve_desc),
 			"OK" if ok else "**FAIL**", " ".join(notes)])
+	if lv.id == "R-8":
+		print("     R-8 fiction: delivery men seen=%s, rode CARGO=%s, bay/commuter binding clean=%s" % [
+				"Y" if a.r8_saw_delivery else "N", "Y" if a.r8_delivery_on_cargo else "N",
+				"Y" if a.r8_fiction_ok else "N"])
 	_i += 1
 	return false

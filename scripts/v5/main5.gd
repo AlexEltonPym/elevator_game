@@ -565,6 +565,19 @@ func _spawn_random() -> void:
 		if roll <= 0.0:
 			picked = row
 			break
+	# THEMATIC DEMAND (per-trip type binding): a trip row may DECLARE who takes it
+	# via an OPTIONAL `type` field — "this run is only ever wheeled by delivery men",
+	# "these seats are commuters". When the chosen trip carries a `type`, it OVERRIDES
+	# the mix draw above so the passenger IS that type; a trip with NO `type` keeps the
+	# mix-drawn `t` and behaves exactly as before. This is how a level makes its fiction
+	# literal (R-8 binds the delivery-bay supply run to delivery men).
+	#
+	# DETERMINISM: the mix draw (_pick_type) and the trip draw (rng.randf above) still
+	# run in the SAME order with the SAME rng calls regardless of whether the trip is
+	# typed — the override only reassigns the resulting string. So every level that uses
+	# no typed trips draws a byte-identical spawn stream and keeps its exact fingerprint.
+	if picked.has("type"):
+		t = str(picked.type)
 	var o := Levels5.room_id_of_letter(level, str(picked.from))
 	var d := Levels5.room_id_of_letter(level, str(picked.to))
 	if o < 0 or d < 0 or o == d:

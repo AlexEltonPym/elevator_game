@@ -362,13 +362,14 @@ corridor, on to D.",
 		"intro": "The delivery BAY A is bottom-left; the rooftop CAFE B, the\nLOBBY C and the office floors D, E stack up the middle.\nDELIVERY MEN wheel wide carts (width 3) - they ONLY fit the\nCARGO lift, so run it up the left past the bay and the doors.\nThe office crowd is width-1: commute lobby<->office and up to\nthe cafe for lunch on the LOCAL up the right. Two lifts, each\nbuilt for its load - the local can't take a cart at all.",
 		"cols": 7, "rows": 7,
 		# GEOMETRY (delivery-man wiring): CARGO (x=2->3 snake) is the ONLY lift that
-		# reaches every room, so a wide width-3 delivery man ALWAYS has a cargo path and
-		# never strands (passenger type and trip are drawn independently by the sim, so
-		# a delivery man can be handed any trip). The delivery BAY A is cargo-only (its
-		# docks (2,0)/(2,1) sit off the LOCAL's shaft); the people rooms C/D/E/B carry
-		# TWO doors — a LEFT door onto the cargo shaft (x=3) and a RIGHT door onto the
-		# LOCAL shaft (x=6) — so commuters ride the faster local while the cargo still
-		# covers them for any stray delivery-man trip.
+		# reaches every room. The delivery BAY A is cargo-only (its docks (2,0)/(2,1)
+		# sit off the LOCAL's shaft), so freight PHYSICALLY cannot ride the local. The
+		# people rooms C/D/E/B carry TWO doors — a LEFT door onto the cargo shaft (x=3)
+		# and a RIGHT door onto the LOCAL shaft (x=6) — so commuters ride the faster
+		# local. FICTION IS NOW EXACT (per-trip type binding, main5._spawn_random): the
+		# supply run A<->B is bound to delivery men and the people trips to commuters, so
+		# a delivery man ONLY ever wheels bay<->cafe (always on cargo, never stranded)
+		# and a commuter ONLY ever rides a people trip — no off-fiction pairings.
 		"rooms": [
 			{"type": "delivery", "cells": [
 					Vector2i(0, 0), Vector2i(1, 0), Vector2i(0, 1), Vector2i(1, 1)],
@@ -397,27 +398,35 @@ corridor, on to D.",
 			{"name": "LOCAL", "type": "standard", "color": COL_A},
 		],
 		"quota": 15, "max_lost": 8,
-		# Delivery men are cargo-ONLY, so a plan without the CARGO lift strands ALL the
-		# freight. A calm spawn keeps the slow cargo lift comfortably ahead of the two-
-		# lift hand solution (freight served in well under its patience, 0 lost), while a
-		# freight patience below the time a single lift needs to grind out the quota means
-		# that stranded freight EXPIRES first and sinks a cargo-less plan (max_lost 8 <
-		# quota 15) - so CARGO is genuinely needed, yet the many two-lift assignments all
-		# clear the calm load, keeping the level a forgiving soft-border.
-		"patience": {"delivery": 60.0},
+		# BALANCE (retuned for the EXACT type binding below). Delivery men are cargo-ONLY
+		# (width-3, and the bay A sits off the local's shaft), so freight is cleared only
+		# by routing the CARGO lift up through the bay — the natural, rewarded plan. The
+		# supply run is a big slice of demand (~38%, matching the pre-binding freight
+		# weight), all served by the one slow cargo lift, so the spawn stays CALM (slow
+		# interval) to keep that lift comfortably ahead: in the two-lift hand solution
+		# freight is served in ~45 s, under its 62 s patience, 0 lost. This is a forgiving
+		# SOFT-BORDER — a broad basin of two-lift plans clear the load — where covering
+		# the bay with cargo is the thing good plans do, not a hard gate.
+		"patience": {"delivery": 62.0},
 		"spawn": {"interval_start": 3.4, "interval_end": 3.0, "ramp": 55.0,
 				"burst_min": 1, "burst_max": 2, "gap": 1.1},
-		# A minority of the demand is DELIVERY MEN (width 3, slow, cargo-only); the rest
-		# are width-1 commuters. NOTE: the sim draws type and trip INDEPENDENTLY, so a
-		# delivery man can ride any trip — the geometry (cargo serves every room) keeps
-		# him from ever stranding, and the width rule keeps him off the local.
-		"mix": {"visitor": 0.62, "delivery": 0.38},
-		# FREIGHT: delivery bay -> cafe supplies, wheeled by delivery men on the CARGO
-		# lift. COMMUTE: offices<->lobby and offices->cafe (lunch) — width-1 people who
-		# take the faster LOCAL. The cafe B is the shared hub.
+		# EXACT FICTION via per-trip type binding (main5._spawn_random): the mix names
+		# the type of every UNTYPED (people) trip — here all commuters — while the supply
+		# trips below carry an explicit `type: "delivery"` that overrides the mix. So
+		# delivery men are spawned ONLY by the supply run and commuters ONLY by the people
+		# trips; the delivery share is exactly the supply run's combined weight (~38%).
+		"mix": {"visitor": 1.0},
+		# Every rider takes exactly ONE bound trip (reactivate 0): a served delivery man
+		# does NOT wander into a people room, nor a served commuter into the bay — so the
+		# "delivery men only on the supply run" fiction holds for the whole life of a fig.
+		"reactivate": 0.0,
+		# FREIGHT (type-bound to delivery men): delivery bay <-> cafe supplies, wheeled on
+		# the CARGO lift — a big slice of the demand. COMMUTE (untyped -> the mix's
+		# commuters): offices<->lobby and offices->cafe (lunch) — width-1 people on the
+		# faster LOCAL. Cafe B is the hub.
 		"trips": [
-			{"w": 0.16, "from": "A", "to": "B"},
-			{"w": 0.10, "from": "B", "to": "A"},
+			{"w": 0.27, "from": "A", "to": "B", "type": "delivery"},
+			{"w": 0.18, "from": "B", "to": "A", "type": "delivery"},
 			{"w": 0.12, "from": "D", "to": "C"},
 			{"w": 0.10, "from": "C", "to": "D"},
 			{"w": 0.10, "from": "E", "to": "C"},
