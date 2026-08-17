@@ -675,7 +675,10 @@ func _draw_speed(body: Rect2, half: float) -> void:
 	if not running() or speed <= 0.0:
 		return
 	var spd := clampf(vel / speed, 0.0, 1.0)
-	if spd <= 0.08:
+	# Motion blur is a TOP-SPEED effect only: nothing until ~70% of max, then ramp in
+	# over the last stretch so the streaks read as "it's really flying now".
+	var hot := clampf((spd - 0.7) / 0.3, 0.0, 1.0)
+	if hot <= 0.0:
 		return
 	# Travel direction in world space (the node isn't rotated, so world == local here).
 	var seg_from := Grid5.cell_center(route.cells[idx])
@@ -684,20 +687,19 @@ func _draw_speed(body: Rect2, half: float) -> void:
 	tdir = tdir.normalized() if tdir.length() > 0.01 else Vector2(0.0, -1.0)
 	var back := -tdir # trails OPPOSITE travel
 	# Afterimage ghosts: fading copies of the car trailing behind, spread wider the
-	# faster it goes. This is the loud, unmistakable "it's moving fast" read.
-	var spread := 16.0 + 52.0 * spd
+	# faster it goes. This is the loud, unmistakable "it's at top speed" read.
+	var spread := 16.0 + 52.0 * hot
 	for i in [3, 2, 1]:
 		var t := float(i) / 3.0
 		var off := back * spread * t
 		draw_rect(Rect2(body.position + off, body.size),
-				Color(color.lightened(0.35), 0.30 * spd * (1.0 - 0.55 * t)))
+				Color(color.lightened(0.35), 0.34 * hot * (1.0 - 0.55 * t)))
 	# Bold motion streaks flanking the car.
 	var perp := Vector2(-back.y, back.x)
-	var col_s := Color(color.lightened(0.6), 0.35 + 0.5 * spd)
-	var slen := 20.0 + 48.0 * spd
+	var col_s := Color(color.lightened(0.6), 0.35 + 0.55 * hot)
+	var slen := 22.0 + 46.0 * hot
 	for k in 3:
 		var base := perp * (half - 2.0) * float(k - 1)
 		draw_line(base, base + back * slen, col_s, 4.0)
-	# Warm efficiency glow, brightening as it nears top speed (full momentum banked).
-	if spd > 0.35:
-		draw_rect(body.grow(3.0), Color(1.0, 0.9, 0.55, 0.18 + 0.4 * (spd - 0.35)), false, 4.0)
+	# Warm top-speed glow, brightening as it maxes out (full momentum banked).
+	draw_rect(body.grow(3.0), Color(1.0, 0.9, 0.55, 0.15 + 0.4 * hot), false, 4.0)
