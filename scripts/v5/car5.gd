@@ -674,10 +674,13 @@ func _draw() -> void:
 func _draw_speed(body: Rect2, half: float) -> void:
 	if not running() or speed <= 0.0:
 		return
+	# Motion blur is an EXPRESS-only, TOP-SPEED-only effect: a normal-speed lift never
+	# blurs (even flat out), and a fast lift only blurs in the top slice of its OWN
+	# range — so the streaks always read as "the express is really flying now".
+	if speed <= STANDARD_SPEED:
+		return
 	var spd := clampf(vel / speed, 0.0, 1.0)
-	# Motion blur is a TOP-SPEED effect only: nothing until ~70% of max, then ramp in
-	# over the last stretch so the streaks read as "it's really flying now".
-	var hot := clampf((spd - 0.7) / 0.3, 0.0, 1.0)
+	var hot := clampf((spd - 0.85) / 0.15, 0.0, 1.0)
 	if hot <= 0.0:
 		return
 	# Travel direction in world space (the node isn't rotated, so world == local here).
