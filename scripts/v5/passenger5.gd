@@ -457,9 +457,8 @@ func _draw() -> void:
 		_draw_cart(col)
 	var tex: Texture2D = _npc_tex[_sheet] if _sheet < _npc_tex.size() else null
 	if tex != null:
-		var scale := NPC_H / 16.0
-		var w := 16.0 * scale
-		var dest := Rect2(-w / 2.0, 12.0 - NPC_H, w, NPC_H)  # feet on the floor line
+		var side := 16.0 * Grid5.ART_K   # uniform art scale — same K as the furniture
+		var dest := Rect2(-side / 2.0, 12.0 - side, side, side)  # feet on the floor line
 		var src := Rect2(_cols[_anim_i] * 16, 0, 16, 16)
 		if _facing < 0:
 			draw_set_transform(Vector2.ZERO, 0.0, Vector2(-1, 1))

@@ -87,6 +87,11 @@ const ROOM_STYLE := {
 	"penthouse": {"bg": Color(0.89, 0.79, 0.43), "line": Color(0.66, 0.52, 0.20), "furn": "Furniture/Living Room/Couch_large_red.png"},
 }
 const _PS := "res://assets/pixel/pixelspaces/"
+# Uniform art scale: 1 PixelSpaces pixel -> ART_K logical px, for EVERY sprite (furniture,
+# people, doors, cart) so native art RATIOS are preserved (a 23px fridge stays taller than a
+# 13px couch instead of both being forced to one cell fraction). ~2.2 keeps a 16px person at
+# ~35px (the size the car-slot packing expects). passenger5 reads Grid5.ART_K too.
+const ART_K := 2.2
 
 # Legacy flat tint (fallback when a type has no ROOM_STYLE entry).
 const ROOM_TINT := {
@@ -445,25 +450,51 @@ func _draw_window(rect: Rect2) -> void:
 	draw_rect(Rect2(g.position.x, g.get_center().y - 1.5, g.size.x, 3.0), Color(0.72, 0.82, 0.88))
 
 
-## Draw a sprite centred in `rect`, at `frac` of the cell, aspect-preserved & nearest.
-func _draw_centered(tex: Texture2D, rect: Rect2, frac: float) -> void:
+## Draw a sprite centred in `rect` at the uniform ART_K scale (native ratios), nearest.
+func _draw_centered(tex: Texture2D, rect: Rect2) -> void:
 	if tex == null:
 		return
-	var s := (CELL * frac) / float(maxi(tex.get_width(), tex.get_height()))
-	var sz := Vector2(tex.get_width(), tex.get_height()) * s
+	var sz := Vector2(tex.get_width(), tex.get_height()) * ART_K
 	draw_texture_rect(tex, Rect2(rect.get_center() - sz * 0.5, sz), false)
 
 
-## Draw a PixelSpaces sprite bottom-aligned inside `rect`, at ~`frac` of the cell height,
-## aspect-preserved and nearest-filtered. No-op when the texture is absent.
-func _draw_furn(tex: Texture2D, rect: Rect2, frac: float) -> void:
+## Place the room's theme furniture: uniform ART_K scale (native ratios), bottom-aligned to
+## the room's floor, INSET from the walls, and pushed to the side OPPOSITE the dropoff (so it
+## doesn't block the door — "furniture opposite the door"). May span more than one tile.
+func _place_furniture(rm: Dictionary, _id: int, _bg: Color) -> void:
+	var tex: Texture2D = _furn_tex.get(rm.type)
 	if tex == null:
 		return
-	var h := CELL * frac
-	var scale := h / float(tex.get_height())
-	var w := tex.get_width() * scale
-	var pos := Vector2(rect.get_center().x - w * 0.5, rect.end.y - 8.0 - h)
-	draw_texture_rect(tex, Rect2(pos, Vector2(w, h)), false)
+	var fw := tex.get_width() * ART_K
+	var fh := tex.get_height() * ART_K
+	var rrect: Rect2 = rm.rect
+	# floor line = bottom of the room's lowest row (world y is up; min c.y = ground)
+	var min_cy: int = rm.cells[0].y
+	for c in rm.cells:
+		min_cy = mini(min_cy, c.y)
+	var floor_y := cell_rect(Vector2i(rm.cells[0].x, min_cy)).end.y - 1.0
+	var ddir: Vector2i = rm.drops[0].dir if not rm.drops.is_empty() else Vector2i(1, 0)
+	var inset := 8.0
+	var fx: float
+	if fw >= rrect.size.x - inset:
+		fx = rrect.get_center().x - fw * 0.5             # wider than the room: centre
+	elif ddir.x > 0:
+		fx = rrect.position.x + inset                    # dropoff right -> furniture left
+	elif ddir.x < 0:
+		fx = rrect.end.x - inset - fw                    # dropoff left -> furniture right
+	else:
+		fx = rrect.get_center().x - fw * 0.5
+	draw_texture_rect(tex, Rect2(Vector2(fx, floor_y - 6.0 - fh), Vector2(fw, fh)), false)
+
+
+## A subtle ladder up an interior-vertical stretch of a tall room (people traversal read).
+func _draw_ladder(rect: Rect2, bg: Color) -> void:
+	var lc := bg.lightened(0.18)
+	var x0 := rect.end.x - 16.0
+	draw_rect(Rect2(x0 - 5.0, rect.position.y, 2.5, rect.size.y), lc)
+	draw_rect(Rect2(x0 + 5.0, rect.position.y, 2.5, rect.size.y), lc)
+	for k in 4:
+		draw_rect(Rect2(x0 - 5.0, rect.position.y + (k + 0.5) * rect.size.y / 4.0, 12.5, 2.0), lc)
 
 
 func _process(_delta: float) -> void:
@@ -551,20 +582,25 @@ func _draw_room(id: int) -> void:
 	var pair: int = int(rm.get("pair", 0))
 	var has_pair: bool = pair > 0 and pair <= PAIR_COLS.size()
 	var pair_col: Color = PAIR_COLS[pair - 1] if has_pair else line
-	# Room body: per-type colour + a floor slab at each cell's base (cutaway floor read).
+	# Room body. A multi-cell room is ONE space: the floor slab is drawn only on the room's
+	# BOTTOM edge (not between stacked cells), so a tall room reads as an extra-tall room with
+	# a skylight at the top — never split into "floors". A ladder marks interior vertical
+	# stretches (so a genuinely tall room reads as traversable, not just a high ceiling).
 	for c in rm.cells:
 		var rect := cell_rect(c).grow(-1.0)
 		draw_rect(rect, bg)
-		draw_rect(Rect2(rect.position + Vector2(0, rect.size.y - 6.0),
-				Vector2(rect.size.x, 6.0)), bg.darkened(0.35))
+		if Grid5.room_id_at(c + Vector2i(0, -1)) != id:  # bottom edge of the room
+			draw_rect(Rect2(rect.position + Vector2(0, rect.size.y - 6.0),
+					Vector2(rect.size.x, 6.0)), bg.darkened(0.35))
+		if Grid5.room_id_at(c + Vector2i(0, 1)) != id:   # top edge -> roof / skylight
+			draw_rect(Rect2(rect.position + Vector2(rect.size.x * 0.28, 3.0),
+					Vector2(rect.size.x * 0.44, 5.0)), bg.lightened(0.30))
 		if has_pair:
 			draw_rect(rect, Color(pair_col, 0.12))
-	# Theme furniture, bottom-aligned in the room's lowest (world-bottom) cell.
-	var floor_cell: Vector2i = rm.cells[0]
-	for c in rm.cells:
-		if c.y < floor_cell.y or (c.y == floor_cell.y and c.x < floor_cell.x):
-			floor_cell = c
-	_draw_furn(_furn_tex.get(rm.type), cell_rect(floor_cell), 0.62)
+	for c in rm.cells:  # ladder on interior-vertical cells (same room above AND below)
+		if Grid5.room_id_at(c + Vector2i(0, 1)) == id and Grid5.room_id_at(c + Vector2i(0, -1)) == id:
+			_draw_ladder(cell_rect(c), bg)
+	_place_furniture(rm, id, bg)
 	# One outline around the whole room footprint (type colour; pair colour if paired).
 	var ow := 4.0 if has_pair else 3.0
 	var ocol: Color = Color(pair_col, 0.95) if has_pair else Color(line, 0.9)
@@ -619,7 +655,7 @@ func _draw_dock(mark: Dictionary, cover: Array, is_open := false) -> void:
 	# Node2D child) draws over it when present. Falls back to just the notch without art.
 	var door_tex: Texture2D = _door_open if is_open else _door_shut
 	if door_tex != null:
-		_draw_centered(door_tex, cell_rect(mark.dock), 0.82)
+		_draw_centered(door_tex, cell_rect(mark.dock))
 	# Dock cell outline.
 	var dock := cell_rect(mark.dock).grow(-6.0)
 	if cover.is_empty():
