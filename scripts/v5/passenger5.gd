@@ -484,7 +484,8 @@ func _draw() -> void:
 	# clock-wipe on this blob to signal dwindling patience.)
 	if is_waiting_to_board():
 		var badge_y := feet - side - 6.0
-		draw_circle(Vector2(0, badge_y), 8.0, Grid5.room_color(dest_room))
+		draw_circle(Vector2(0, badge_y), 9.0, Color(0.08, 0.08, 0.10, 0.95))  # dark border ring
+		draw_circle(Vector2(0, badge_y), 7.0, Grid5.room_color(dest_room))
 	if no_path and activated and not between and riding == null:
 		var by := -32.0
 		draw_circle(Vector2(0, by), 9.0, Color(1, 1, 1, 0.92))
