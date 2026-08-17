@@ -467,34 +467,44 @@ func _place_furniture(rm: Dictionary, _id: int, _bg: Color) -> void:
 		return
 	var fw := tex.get_width() * ART_K
 	var fh := tex.get_height() * ART_K
-	var rrect: Rect2 = rm.rect
-	# floor line = bottom of the room's lowest row (world y is up; min c.y = ground)
+	# The floor is the room's lowest ROW; place furniture WITHIN that row's actual cells
+	# (never the whole bounding box) so it can't spill into the walls of a T/L shape.
 	var min_cy: int = rm.cells[0].y
 	for c in rm.cells:
 		min_cy = mini(min_cy, c.y)
-	var floor_y := cell_rect(Vector2i(rm.cells[0].x, min_cy)).end.y - 1.0
+	var fx_min := INF
+	var fx_max := -INF
+	var floor_y := 0.0
+	for c in rm.cells:
+		if c.y == min_cy:
+			var cr := cell_rect(c)
+			fx_min = minf(fx_min, cr.position.x)
+			fx_max = maxf(fx_max, cr.end.x)
+			floor_y = cr.end.y - 1.0
+	var avail := fx_max - fx_min
 	var ddir: Vector2i = rm.drops[0].dir if not rm.drops.is_empty() else Vector2i(1, 0)
-	var inset := 8.0
+	var inset := 6.0
 	var fx: float
-	if fw >= rrect.size.x - inset:
-		fx = rrect.get_center().x - fw * 0.5             # wider than the room: centre
+	if fw >= avail - inset:
+		fx = fx_min + (avail - fw) * 0.5                 # wider than the floor row: centre
 	elif ddir.x > 0:
-		fx = rrect.position.x + inset                    # dropoff right -> furniture left
+		fx = fx_min + inset                              # dropoff right -> furniture left
 	elif ddir.x < 0:
-		fx = rrect.end.x - inset - fw                    # dropoff left -> furniture right
+		fx = fx_max - inset - fw                          # dropoff left -> furniture right
 	else:
-		fx = rrect.get_center().x - fw * 0.5
+		fx = fx_min + (avail - fw) * 0.5
 	draw_texture_rect(tex, Rect2(Vector2(fx, floor_y - 6.0 - fh), Vector2(fw, fh)), false)
 
 
-## A subtle ladder up an interior-vertical stretch of a tall room (people traversal read).
-func _draw_ladder(rect: Rect2, bg: Color) -> void:
-	var lc := bg.lightened(0.18)
-	var x0 := rect.end.x - 16.0
-	draw_rect(Rect2(x0 - 5.0, rect.position.y, 2.5, rect.size.y), lc)
-	draw_rect(Rect2(x0 + 5.0, rect.position.y, 2.5, rect.size.y), lc)
-	for k in 4:
-		draw_rect(Rect2(x0 - 5.0, rect.position.y + (k + 0.5) * rect.size.y / 4.0, 12.5, 2.0), lc)
+## A ladder up an interior-vertical stretch of a tall room (traversal read). A solid bar
+## against the room's right wall with rung lines, so it clearly reads as a ladder.
+func _draw_ladder(rect: Rect2, _bg: Color) -> void:
+	var w := 16.0
+	var x0 := rect.end.x - 4.0 - w
+	draw_rect(Rect2(x0, rect.position.y, w, rect.size.y), Color(0.62, 0.48, 0.32))
+	for k in 5:
+		draw_rect(Rect2(x0, rect.position.y + (k + 0.5) * rect.size.y / 5.0, w, 3.0),
+				Color(0.40, 0.30, 0.20))
 
 
 func _process(_delta: float) -> void:

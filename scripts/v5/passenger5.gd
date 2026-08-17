@@ -450,15 +450,19 @@ func _draw() -> void:
 	# ~14 x 24, on the floor. Normal colour always (no recolour); the impatience bar
 	# shows only while patience is running.
 	var col: Color = PTYPES.get(ptype, PTYPES.visitor).color
-	# The delivery man (width >= 3) still pushes his programmer-art 2-box cart (drawn
-	# first, under the body). Everyone renders as a PixelSpaces side-NPC; the type is
-	# read from the destination BADGE colour (the sprite is one shared character).
+	var side := 16.0 * Grid5.ART_K   # uniform art scale — same K as the furniture
+	# FEET position. Standing/walking in a room, drop the figure onto the actual FLOOR
+	# (FLOOR_OFF-6 below its centre) so it isn't floating; riding keeps the car-slot feet.
+	var feet := 12.0 if riding != null else FLOOR_OFF - 6.0
+	# The delivery man (width >= 3) pushes his programmer-art 2-box cart (drawn first,
+	# under the body), translated down with the figure so it stays at his feet.
 	if width >= 3:
+		draw_set_transform(Vector2(0, feet - 12.0), 0.0, Vector2.ONE)
 		_draw_cart(col)
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	var tex: Texture2D = _npc_tex[_sheet] if _sheet < _npc_tex.size() else null
 	if tex != null:
-		var side := 16.0 * Grid5.ART_K   # uniform art scale — same K as the furniture
-		var dest := Rect2(-side / 2.0, 12.0 - side, side, side)  # feet on the floor line
+		var dest := Rect2(-side / 2.0, feet - side, side, side)  # feet on the floor line
 		var src := Rect2(_cols[_anim_i] * 16, 0, 16, 16)
 		if _facing < 0:
 			draw_set_transform(Vector2.ZERO, 0.0, Vector2(-1, 1))
@@ -469,13 +473,13 @@ func _draw() -> void:
 	else:
 		# Fallback placeholder person (no art pack).
 		var bw := 18.0 if width >= 3 else 14.0
-		var body := Rect2(-bw / 2.0, -12.0, bw, 24.0)
+		var body := Rect2(-bw / 2.0, feet - 24.0, bw, 24.0)
 		draw_rect(body, col)
 		draw_rect(body, Color(0, 0, 0, 0.45), false, 2.0)
-		draw_rect(Rect2(Vector2(-bw / 2.0 + 1.0, -9.0), Vector2(bw - 2.0, 13.0)),
+		draw_rect(Rect2(Vector2(-bw / 2.0 + 1.0, feet - 21.0), Vector2(bw - 2.0, 13.0)),
 				Color(1, 1, 1, 0.85))
-	# Destination badge above the head: a type-coloured disc with the dest room letter.
-	var badge_y := -30.0
+	# Destination badge just above the head: a type-coloured disc with the dest letter.
+	var badge_y := feet - side - 6.0
 	draw_circle(Vector2(0, badge_y), 8.5, Color(0.08, 0.08, 0.10, 0.85))
 	draw_circle(Vector2(0, badge_y), 7.0, col)
 	draw_string(ThemeDB.fallback_font, Vector2(-4.0, badge_y + 4.5),
