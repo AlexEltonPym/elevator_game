@@ -578,6 +578,35 @@ func _draw() -> void:
 	if game.drawing and game.stroke.size() > 0 and game.selected_card >= 0:
 		_draw_stroke_preview(game.stroke, game.CARDS[game.selected_card].color,
 				game.stroke_closed)
+	_draw_momentum_hints()
+
+
+## MOMENTUM feedback: for a card that carries `min_hop`, ring in warning-red any stop
+## that sits too close to the previous one — live on the stroke being drawn (so the
+## constraint is felt as you draw), plus a lingering ring on the stop that just got a
+## commit rejected. Pure rendering; cards without `min_hop` draw nothing.
+func _draw_momentum_hints() -> void:
+	if game.drawing and game.selected_card >= 0:
+		var mh := int(game.CARDS[game.selected_card].get("min_hop", 0))
+		if mh > 0:
+			var prev_y := 0
+			var have_prev := false
+			for c in game.stroke:
+				if not Grid5.is_dock(c):
+					continue
+				if have_prev and c.y != prev_y and absi(c.y - prev_y) < mh:
+					_ring_warn(cell_center(c))
+				prev_y = c.y
+				have_prev = true
+	if game.reject_stop.x >= 0 and Time.get_ticks_msec() < game.reject_until_ms:
+		_ring_warn(cell_center(game.reject_stop))
+
+
+func _ring_warn(at: Vector2) -> void:
+	var col := Color(0.98, 0.35, 0.35)
+	var pulse := 18.0 + 4.0 * sin(Time.get_ticks_msec() / 110.0)
+	draw_arc(at, pulse, 0.0, TAU, 28, col, 4.0)
+	draw_arc(at, pulse - 6.0, 0.0, TAU, 28, Color(col, 0.4), 2.0)
 
 
 func _draw_room(id: int) -> void:

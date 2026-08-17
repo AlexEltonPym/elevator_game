@@ -79,6 +79,9 @@ var stroke_loop_end_hint := -1
 var reject_msg := ""
 var reject_card := -1
 var reject_until_ms := 0
+# MOMENTUM (express min-hop): the dock cell whose stop violated the min-hop rule on
+# the last rejected commit, so Grid5 can glow it. Vector2i(-1,-1) = none.
+var reject_stop := Vector2i(-1, -1)
 
 @onready var grid: Grid5 = $Grid
 @onready var cars_node: Node2D = $Cars
@@ -563,6 +566,25 @@ func commit_route(i: int, cells: Array, closed := false,
 		var err := Route5.validate(cells, closed and cells.size() >= 4)
 		if err == "" and Grid5.route_min_corridor_width(cells) < cars[i].width:
 			err = "too wide for that corridor"
+		# MOMENTUM (opt-in per card via `min_hop`): a car with this flag physically
+		# needs `min_hop` floors of run-up to brake, so two of its stops may not sit
+		# closer than that. Walk the route's dock cells in travel order and reject if
+		# consecutive stops on DIFFERENT floors are < min_hop apart. Cards without
+		# `min_hop` (every shipped level) skip this entirely -> sim byte-identical.
+		if err == "":
+			var mh := int(CARDS[i].get("min_hop", 0))
+			if mh > 0:
+				var prev_y := 0
+				var have_prev := false
+				for mc in cells:
+					if not Grid5.is_dock(mc):
+						continue
+					if have_prev and mc.y != prev_y and absi(mc.y - prev_y) < mh:
+						err = "needs %d floors to brake between stops" % mh
+						reject_stop = mc
+						break
+					prev_y = mc.y
+					have_prev = true
 		if err == "":
 			# Overlap cap: this route's width plus the OTHER committed routes' widths
 			# through any capped tile must not exceed that tile's cap (Numberlink-
@@ -581,6 +603,7 @@ func commit_route(i: int, cells: Array, closed := false,
 		r.cells = cells.duplicate()
 		r.closed = closed and cells.size() >= 4
 		r.spawn_cell = spawn if (spawn.x >= 0 and cells.has(spawn)) else cells[0]
+	reject_stop = Vector2i(-1, -1) # a valid commit clears any lingering momentum glow
 	routes[i] = r
 	cars[i].set_route(r)
 	replan_all()
