@@ -675,20 +675,29 @@ func _draw_speed(body: Rect2, half: float) -> void:
 	if not running() or speed <= 0.0:
 		return
 	var spd := clampf(vel / speed, 0.0, 1.0)
-	if spd <= 0.06:
+	if spd <= 0.08:
 		return
 	# Travel direction in world space (the node isn't rotated, so world == local here).
 	var seg_from := Grid5.cell_center(route.cells[idx])
 	var seg_to := Grid5.cell_center(route.cells[_wrap_idx(idx + dir)])
 	var tdir := seg_to - seg_from
 	tdir = tdir.normalized() if tdir.length() > 0.01 else Vector2(0.0, -1.0)
-	var back := -tdir # streaks trail OPPOSITE travel
+	var back := -tdir # trails OPPOSITE travel
+	# Afterimage ghosts: fading copies of the car trailing behind, spread wider the
+	# faster it goes. This is the loud, unmistakable "it's moving fast" read.
+	var spread := 16.0 + 52.0 * spd
+	for i in [3, 2, 1]:
+		var t := float(i) / 3.0
+		var off := back * spread * t
+		draw_rect(Rect2(body.position + off, body.size),
+				Color(color.lightened(0.35), 0.30 * spd * (1.0 - 0.55 * t)))
+	# Bold motion streaks flanking the car.
 	var perp := Vector2(-back.y, back.x)
-	var maxlen := 40.0 * spd
-	var col_s := Color(color.lightened(0.5), 0.12 + 0.5 * spd)
-	for i in 3:
-		var base := perp * (half - 5.0) * float(i - 1) * 0.9
-		draw_line(base, base + back * maxlen, col_s, 3.0)
-	if spd > 0.5:
-		# Warm efficiency glow, brightening toward top speed.
-		draw_rect(body.grow(3.0), Color(1.0, 0.88, 0.5, 0.12 + 0.28 * (spd - 0.5)), false, 3.0)
+	var col_s := Color(color.lightened(0.6), 0.35 + 0.5 * spd)
+	var slen := 20.0 + 48.0 * spd
+	for k in 3:
+		var base := perp * (half - 2.0) * float(k - 1)
+		draw_line(base, base + back * slen, col_s, 4.0)
+	# Warm efficiency glow, brightening as it nears top speed (full momentum banked).
+	if spd > 0.35:
+		draw_rect(body.grow(3.0), Color(1.0, 0.9, 0.55, 0.18 + 0.4 * (spd - 0.35)), false, 4.0)
