@@ -478,13 +478,15 @@ func _draw() -> void:
 		draw_rect(body, Color(0, 0, 0, 0.45), false, 2.0)
 		draw_rect(Rect2(Vector2(-bw / 2.0 + 1.0, feet - 21.0), Vector2(bw - 2.0, 13.0)),
 				Color(1, 1, 1, 0.85))
-	# Destination badge just above the head: a type-coloured disc with the dest letter.
-	var badge_y := feet - side - 6.0
-	draw_circle(Vector2(0, badge_y), 8.5, Color(0.08, 0.08, 0.10, 0.85))
-	draw_circle(Vector2(0, badge_y), 7.0, col)
-	draw_string(ThemeDB.fallback_font, Vector2(-4.0, badge_y + 4.5),
-			Grid5.room_letter(dest_room),
-			HORIZONTAL_ALIGNMENT_CENTER, -1.0, 12, Color(0.1, 0.1, 0.1))
+	# Destination blob above the head: a disc in the DESTINATION room's colour — no
+	# letter (too little resolution for one, and the room colour already says where
+	# they're headed). Shown ONLY while standing in the queue. (Later: fade / flash /
+	# clock-wipe on this blob to signal dwindling patience.)
+	if is_waiting_to_board():
+		var badge_y := feet - side - 6.0
+		var dest_col: Color = Grid5.room_color(dest_room)
+		draw_circle(Vector2(0, badge_y), 9.0, Color(0.08, 0.08, 0.10, 0.9))
+		draw_circle(Vector2(0, badge_y), 7.0, dest_col)
 	if _patience_running():
 		var w := 22.0
 		var top := -22.0

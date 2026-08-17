@@ -252,6 +252,16 @@ static func room_type(id: int) -> String:
 	return _rooms[id].type if id >= 0 and id < _rooms.size() else ""
 
 
+## The room's identity COLOUR (its ROOM_STYLE background) — used by the destination
+## blob above a queued figure so "where are they headed" reads off the room palette.
+## Falls back to the legacy tint, then a neutral grey.
+static func room_color(id: int) -> Color:
+	var t := room_type(id)
+	if ROOM_STYLE.has(t):
+		return ROOM_STYLE[t].bg
+	return ROOM_TINT.get(t, Color(0.62, 0.64, 0.70))
+
+
 static func room_cells(id: int) -> Array:
 	return _rooms[id].cells
 
@@ -653,10 +663,7 @@ func _draw_room(id: int) -> void:
 						Vector2(ow, rect.size.y))]]:
 			if Grid5.room_id_at(c + e[0]) != id:
 				draw_rect(e[1], ocol)
-	# Room letter, small, top-left corner (type is now read from the colour, not text).
-	var lp: Vector2 = rm.rect.position + Vector2(6.0, 2.0)
-	draw_string(ThemeDB.fallback_font, lp + Vector2(0, 22), rm.letter,
-			HORIZONTAL_ALIGNMENT_LEFT, -1.0, 22, Color(0.12, 0.12, 0.14, 0.75))
+	# (Room letters removed: a room's identity reads off its COLOUR + furniture, not text.)
 	# Pair badge: a filled disc in the pair colour with the pair NUMBER, in the room's
 	# top-left corner (away from the door mark) — the "endpoint marker" both rooms share.
 	if has_pair:
