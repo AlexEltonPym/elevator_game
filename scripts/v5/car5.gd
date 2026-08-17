@@ -663,3 +663,32 @@ func _draw() -> void:
 	if waiting_gate:
 		var pulse := 0.5 + 0.5 * sin(vis_t * 6.0)
 		draw_rect(body.grow(3.0), Color(0.95, 0.8, 0.3, 0.35 + 0.4 * pulse), false, 3.0)
+	_draw_speed(body, half)
+
+
+## ACCELERATION viz: live speed drawn as motion streaks trailing the car (plus a warm
+## "at full efficiency" glow as it nears top speed). The point is SOFT — a car may stop
+## anywhere, but every stop throws all this momentum away and rebuilds it slowly, so the
+## viz makes skipping-to-stay-fast read as the efficient play. Length + opacity track
+## vel/speed: a long skip-run streaks hard; a car braked at a dock shows nothing.
+func _draw_speed(body: Rect2, half: float) -> void:
+	if not running() or speed <= 0.0:
+		return
+	var spd := clampf(vel / speed, 0.0, 1.0)
+	if spd <= 0.06:
+		return
+	# Travel direction in world space (the node isn't rotated, so world == local here).
+	var seg_from := Grid5.cell_center(route.cells[idx])
+	var seg_to := Grid5.cell_center(route.cells[_wrap_idx(idx + dir)])
+	var tdir := seg_to - seg_from
+	tdir = tdir.normalized() if tdir.length() > 0.01 else Vector2(0.0, -1.0)
+	var back := -tdir # streaks trail OPPOSITE travel
+	var perp := Vector2(-back.y, back.x)
+	var maxlen := 40.0 * spd
+	var col_s := Color(color.lightened(0.5), 0.12 + 0.5 * spd)
+	for i in 3:
+		var base := perp * (half - 5.0) * float(i - 1) * 0.9
+		draw_line(base, base + back * maxlen, col_s, 3.0)
+	if spd > 0.5:
+		# Warm efficiency glow, brightening toward top speed.
+		draw_rect(body.grow(3.0), Color(1.0, 0.88, 0.5, 0.12 + 0.28 * (spd - 0.5)), false, 3.0)

@@ -862,7 +862,9 @@ func _queue_slot_pos(rid: int, idx: int) -> Vector2:
 		units += float(arr[j].width)
 	var self_w := float(arr[idx].width) if idx >= 0 and idx < arr.size() else 1.0
 	units += (self_w - 1.0) * 0.5
-	return Vector2(qc.x - tx * units * SPACING, floor_y)
+	# Pull the whole line one SPACING toward the dock so the front waits right at the
+	# doors (a shorter board step), not one tile back.
+	return Vector2(qc.x - tx * (units - 1.0) * SPACING, floor_y)
 
 
 # ---------------------------------------------------------------- corridors
