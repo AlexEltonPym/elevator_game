@@ -511,9 +511,12 @@ func _front_boarder():
 		for p in game.queues.get(rid, []):
 			if not p.is_waiting_to_board():
 				continue
-			var leg: Dictionary = p.legs[0]
-			if leg.car == self and leg.board_cell == cell and fits(p.width) \
-					and free_slots() >= p.width:
+			if not fits(p.width) or free_slots() < p.width:
+				continue
+			# OPPORTUNISTIC: board whoever this here-now lift can carry without
+			# worsening their trip (Pathfind5.board_now), not just its planned riders.
+			if Pathfind5.board_now(self, cell, p.cur_room, p.dest_room, game.cars,
+					p.salt, p.width, p.walk_mult) != null:
 				return p
 	return null
 
@@ -529,6 +532,15 @@ func _assign_next_boarder() -> bool:
 	var p = _front_boarder()
 	if p == null:
 		return false
+	var cell: Vector2i = route.cells[idx]
+	var tgt = Pathfind5.board_now(self, cell, p.cur_room, p.dest_room, game.cars,
+			p.salt, p.width, p.walk_mult)
+	if tgt == null:
+		return false
+	# Re-bind the passenger's current leg to boarding THIS lift NOW; on_alight replans
+	# the remainder from tgt.to_room (or serves it, if that's the destination).
+	p.legs = [{"car": self, "from_room": p.cur_room, "to_room": tgt.to_room,
+			"board_cell": tgt.board_cell, "alight_cell": tgt.alight_cell}]
 	p.boarding_car = self
 	_boarding.append(p)
 	p.start_board_walk()

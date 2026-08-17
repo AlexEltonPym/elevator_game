@@ -36,6 +36,26 @@ static func find_path(start_room: int, dest_room: int, cars: Array,
 		salt: float = -1.0, width: int = 1, walk_mult: float = 1.0) -> Variant:
 	if start_room == dest_room:
 		return []
+	var d := _dijkstra(start_room, dest_room, cars, salt, width, walk_mult)
+	var done: Dictionary = d.done
+	if not done.has(dest_room):
+		return null
+	var parent: Dictionary = d.parent
+	var legs: Array = []
+	var c := dest_room
+	while c != start_room:
+		var pr: Dictionary = parent[c]
+		legs.push_front({"car": pr.car, "from_room": pr.from, "to_room": c,
+				"board_cell": pr.board, "alight_cell": pr.alight})
+		c = pr.from
+	return legs
+
+
+## Time-based Dijkstra from `start_room`, returning {best, parent, done}. The edge
+## model is the SAME as before (this is the extracted core of find_path); find_path,
+## best_time and board_now all read it, so their costs stay mutually consistent.
+static func _dijkstra(start_room: int, dest_room: int, cars: Array,
+		salt: float, width: int, walk_mult: float) -> Dictionary:
 	# Build the room adjacency fresh (tiny graphs; no caching needed here).
 	var edges := {} # from_room -> Array of edge dicts
 	for ci in cars.size():
@@ -88,16 +108,63 @@ static func find_path(start_room: int, dest_room: int, cars: Array,
 				best[e.to] = nc
 				parent[e.to] = {"from": u, "car": e.car, "board": e.board,
 						"alight": e.alight}
-	if not done.has(dest_room):
+	return {"best": best, "parent": parent, "done": done}
+
+
+## Best total travel time start_room -> dest_room on the committed network, or INF_T
+## if unreachable. Same cost model as find_path (each first/transfer leg pays LEG_WAIT).
+static func best_time(start_room: int, dest_room: int, cars: Array,
+		salt: float = -1.0, width: int = 1, walk_mult: float = 1.0) -> float:
+	if start_room == dest_room:
+		return 0.0
+	var d := _dijkstra(start_room, dest_room, cars, salt, width, walk_mult)
+	if not d.done.has(dest_room):
+		return INF_T
+	return d.best[dest_room]
+
+
+## OPPORTUNISTIC BOARDING. Should a (cur_room -> dest) passenger board `car`, which is
+## stopped at dock `cell` RIGHT NOW, instead of waiting for its planned lift? Yes iff
+## riding this car now — first leg priced with NO wait (it's here) — reaches dest by a
+## total time no worse (within TIE_EPS) than the passenger's best plan (which prices a
+## LEG_WAIT for its first leg). So: it grabs a here-now lift that's on a shortest-enough
+## path, but a normal still refuses a slow lift whose ride costs more than the wait it
+## would save, and a wide party only ever considers lifts it fits (width feeds best_time
+## and the caller gates fits()). Returns {to_room, board_cell, alight_cell} or null.
+static func board_now(car, cell: Vector2i, cur_room: int, dest_room: int, cars: Array,
+		salt: float = -1.0, width: int = 1, walk_mult: float = 1.0) -> Variant:
+	if cur_room == dest_room or car.route == null:
 		return null
-	var legs: Array = []
-	var c := dest_room
-	while c != start_room:
-		var pr: Dictionary = parent[c]
-		legs.push_front({"car": pr.car, "from_room": pr.from, "to_room": c,
-				"board_cell": pr.board, "alight_cell": pr.alight})
-		c = pr.from
-	return legs
+	var route = car.route
+	var served: Dictionary = route.served()
+	var pen: float = car.stop_penalty()
+	var eps := 0.0
+	if salt >= 0.0:
+		eps = TIE_EPS * _hash01(salt, car.card_index)
+	var plan := best_time(cur_room, dest_room, cars, salt, width, walk_mult)
+	var best_total := INF_T
+	var best_b := -1
+	var best_alight := Vector2i.ZERO
+	for b in served.keys():
+		if b == cur_room:
+			continue
+		var cb: Vector2i = served[b]
+		# Board at `cell` NOW (no LEG_WAIT); walk queue(cur)->cell and cb->queue(b).
+		var walk: float = float(Grid5.manhattan(Grid5.room_queue(cur_room), cell) \
+				+ Grid5.manhattan(cb, Grid5.room_queue(b))) * Grid5.WALK_PER_TILE * walk_mult
+		var leg: float = route.ride_dist(cell, cb) / car.speed \
+				+ route.stops_between(cell, cb) * pen + walk + eps
+		var rest := best_time(b, dest_room, cars, salt, width, walk_mult)
+		if rest >= INF_T:
+			continue
+		var total := leg + rest
+		if total < best_total:
+			best_total = total
+			best_b = b
+			best_alight = cb
+	if best_b < 0 or best_total > plan + TIE_EPS:
+		return null
+	return {"to_room": best_b, "board_cell": cell, "alight_cell": best_alight}
 
 
 static func _hash01(salt: float, i: int) -> float:
