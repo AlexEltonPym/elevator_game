@@ -484,16 +484,7 @@ func _draw() -> void:
 	# clock-wipe on this blob to signal dwindling patience.)
 	if is_waiting_to_board():
 		var badge_y := feet - side - 6.0
-		var dest_col: Color = Grid5.room_color(dest_room)
-		draw_circle(Vector2(0, badge_y), 9.0, Color(0.08, 0.08, 0.10, 0.9))
-		draw_circle(Vector2(0, badge_y), 7.0, dest_col)
-	if _patience_running():
-		var w := 22.0
-		var top := -22.0
-		var frac := clampf(patience / patience_max, 0.0, 1.0)
-		draw_rect(Rect2(-w / 2.0, top, w, 4.0), Color(0, 0, 0, 0.55))
-		var bar_col := Color(0.35, 0.9, 0.4).lerp(Color(0.95, 0.25, 0.2), 1.0 - frac)
-		draw_rect(Rect2(-w / 2.0, top, w * frac, 4.0), bar_col)
+		draw_circle(Vector2(0, badge_y), 8.0, Grid5.room_color(dest_room))
 	if no_path and activated and not between and riding == null:
 		var by := -32.0
 		draw_circle(Vector2(0, by), 9.0, Color(1, 1, 1, 0.92))
