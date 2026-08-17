@@ -583,12 +583,63 @@ func _draw() -> void:
 			continue
 		_draw_route(route.cells, game.CARDS[i].color, i,
 				game.selected_card == i, route.served_rooms().size() < 2, route.closed)
+		# PLAN-time ACCELERATION GUIDE for fast (express) lifts: a speed heatmap along the
+		# route so you can SEE where it's up to speed (green) vs still ramping/braking
+		# (amber) — a segment that never turns green is too short to be worth skipping into.
+		if game.can_edit() and i < game.cars.size() and game.cars[i].speed > Car5.STANDARD_SPEED:
+			_draw_accel_profile(route.cells, game.cars[i], route.closed)
 	_draw_overlap_caps()
 	# Live drag preview on top.
 	if game.drawing and game.stroke.size() > 0 and game.selected_card >= 0:
+		if game.cars[game.selected_card].speed > Car5.STANDARD_SPEED:
+			_draw_accel_profile(game.stroke, game.cars[game.selected_card], game.stroke_closed)
 		_draw_stroke_preview(game.stroke, game.CARDS[game.selected_card].color,
 				game.stroke_closed)
 	_draw_momentum_hints()
+
+
+## PLAN-time acceleration guide: colour every cell of a fast lift's route by the speed
+## it would actually carry THERE — v = min(accel-from-the-last-stop, brake-to-the-next-
+## stop, top speed) — as a dot from amber (crawling) to green (full speed). The length
+## of the amber ramp leaving a stop IS "how many blocks until up to speed"; a whole
+## segment that never greens is too tight for this lift to stretch its legs. Stops are
+## the route's dock cells; an open route's two ends are turnarounds (also stops).
+func _draw_accel_profile(cells: Array, car, closed: bool) -> void:
+	if cells.size() < 2 or car.speed <= 0.0:
+		return
+	var stops: Array = []
+	for j in cells.size():
+		if Grid5.is_dock(cells[j]):
+			stops.append(j)
+	if not closed:
+		if stops.is_empty() or stops[0] != 0:
+			stops.push_front(0)
+		if stops.back() != cells.size() - 1:
+			stops.append(cells.size() - 1)
+	if stops.size() < 2:
+		return
+	var n := cells.size()
+	var amber := Color(0.96, 0.55, 0.20)
+	var green := Color(0.38, 0.95, 0.45)
+	for j in n:
+		# Path-distance (in cells) to the nearest stop behind and ahead along the route.
+		var dprev := 1 << 20
+		var dnext := 1 << 20
+		for s in stops:
+			var db: int = j - s
+			var df: int = s - j
+			if closed:
+				db = posmod(j - s, n)
+				df = posmod(s - j, n)
+			if db >= 0 and db < dprev:
+				dprev = db
+			if df >= 0 and df < dnext:
+				dnext = df
+		var v_acc := sqrt(2.0 * car.accel * float(dprev) * CELL)
+		var v_brk := sqrt(2.0 * car.decel * float(dnext) * CELL)
+		var v := minf(minf(v_acc, v_brk), car.speed)
+		var frac := clampf(v / car.speed, 0.0, 1.0)
+		draw_circle(cell_center(cells[j]), 5.0, Color(amber.lerp(green, frac), 0.92))
 
 
 ## MOMENTUM feedback: for a card that carries `min_hop`, ring in warning-red any stop
