@@ -28,6 +28,14 @@ extends RefCounted
 
 const NEIGHBORS := [Vector2i(0, 1), Vector2i(1, 0), Vector2i(0, -1), Vector2i(-1, 0)]
 const MAX_STOPS := 8
+## WAYPOINTS (general pathing). A gene may carry `vias`: a per-leg list of extra cells
+## the decoder threads shortest-paths THROUGH (leg from stops[k] uses vias[k]). Docks
+## stay the SERVICE atoms; vias are pure routing hints, so any polyline is expressible
+## (a path is a shortest-path through enough vias) — this lets the search DEVIATE from
+## the naive shortest line (skip a dock via another lane, route around an obstacle)
+## without a mechanic-specific gene. A gene with no vias decodes EXACTLY as before, so
+## the cost is pay-for-what-you-use. `MAX_VIAS` caps a gene's total waypoint budget.
+const MAX_VIAS := 6
 const CAR_TYPES := {
 	"pod": {"width": 1}, "standard": {"width": 2},
 	"express": {"width": 2}, "cargo": {"width": 3},
@@ -65,6 +73,17 @@ static func room_docks() -> Dictionary:
 			if not out.has(rid):
 				out[rid] = []
 			out[rid].append(d)
+	return out
+
+
+## Every passable OPEN cell on the loaded grid (via-waypoint candidates), (y,x) order.
+static func open_cells() -> Array:
+	var out: Array = []
+	for y in Grid5.ROWS:
+		for x in Grid5.COLS:
+			var c := Vector2i(x, y)
+			if Grid5.passable(c):
+				out.append(c)
 	return out
 
 
@@ -139,6 +158,27 @@ static func _cell_open_for(v: Vector2i, cap_left: Dictionary, width: int) -> boo
 	return true
 
 
+## Lay cells from the route's current head THROUGH `waypoints` in order (BFS each hop,
+## never revisiting). `exclude_last` reaches the final waypoint but does not append it
+## (the loop-closing hop, whose target is the existing start cell). "" on success.
+static func _lay(cells: Array, used: Dictionary, waypoints: Array, cap_left: Dictionary,
+		width: int, exclude_last: bool) -> String:
+	for wi in waypoints.size():
+		var target = waypoints[wi]
+		if not (target is Vector2i) or not Grid5.passable(target):
+			return "-> %s not passable" % str(target)
+		var leg := _bfs(cells[cells.size() - 1], target, used, cap_left, width)
+		if leg.is_empty():
+			return "-> %s unreachable" % str(target)
+		var stop_at := leg.size()
+		if exclude_last and wi == waypoints.size() - 1:
+			stop_at -= 1
+		for i in range(1, stop_at):
+			cells.append(leg[i])
+			used[leg[i]] = true
+	return ""
+
+
 ## One gene -> {"cells", "closed", "err"} against a live `cap_left` (NOT consumed
 ## here; decode_genome consumes after a successful decode). err == "" means legal.
 static func decode_gene(gene: Dictionary, width: int, cap_left: Dictionary) -> Dictionary:
@@ -160,24 +200,30 @@ static func decode_gene(gene: Dictionary, width: int, cap_left: Dictionary) -> D
 	if not _cell_open_for(stops[0], cap_left, width):
 		out.err = "start dock %s over cap for this car" % str(stops[0])
 		return out
+	var vias: Array = gene.get("vias", [])
 	var cells: Array = [stops[0]]
 	var used := {stops[0]: true}
 	for k in range(1, stops.size()):
-		var leg := _bfs(cells[cells.size() - 1], stops[k], used, cap_left, width)
-		if leg.is_empty():
-			out.err = "leg %s -> %s cannot be decoded" % [str(cells[cells.size() - 1]), str(stops[k])]
+		var wps: Array = []
+		if k - 1 < vias.size():
+			for v in vias[k - 1]:
+				wps.append(v)
+		wps.append(stops[k])
+		var e := _lay(cells, used, wps, cap_left, width, false)
+		if e != "":
+			out.err = "leg %d %s" % [k, e]
 			return out
-		for i in range(1, leg.size()):
-			cells.append(leg[i])
-			used[leg[i]] = true
 	if closed and cells.size() >= 3:
-		var back := _bfs(cells[cells.size() - 1], stops[0], used, cap_left, width)
-		if back.is_empty():
-			out.err = "closing leg cannot be decoded"
+		var wps2: Array = []
+		var li: int = stops.size() - 1
+		if li >= 0 and li < vias.size():
+			for v in vias[li]:
+				wps2.append(v)
+		wps2.append(stops[0])
+		var e2 := _lay(cells, used, wps2, cap_left, width, true)
+		if e2 != "":
+			out.err = "closing leg %s" % e2
 			return out
-		for i in range(1, back.size() - 1):
-			cells.append(back[i])
-			used[back[i]] = true
 	else:
 		out.closed = false
 	out.err = Route5.validate(cells, out.closed and cells.size() >= 4)
@@ -215,14 +261,40 @@ static func genome_key(genome: Array) -> String:
 		for c in g.stops:
 			s += "%d,%d;" % [c.x, c.y]
 		s += "C" if g.closed else "O"
+		# Empty vias append nothing, so a no-via gene keys identically to before.
+		for leg in g.get("vias", []):
+			if not (leg as Array).is_empty():
+				s += "v"
+				for c in leg:
+					s += "%d,%d;" % [c.x, c.y]
 	return s
 
 
 static func clone(genome: Array) -> Array:
 	var out: Array = []
 	for g in genome:
-		out.append({"stops": (g.stops as Array).duplicate(), "closed": g.closed})
+		out.append({"stops": (g.stops as Array).duplicate(),
+				"vias": _clone_vias(g.get("vias", [])), "closed": g.closed})
 	return out
+
+
+static func _clone_vias(vias: Array) -> Array:
+	var out: Array = []
+	for leg in vias:
+		out.append((leg as Array).duplicate())
+	return out
+
+
+## Pad/trim a gene's `vias` to one slot per stop (the leg leaving that stop), so it
+## survives stop-count mutations. Extra slots (past the used legs) are harmless.
+static func _norm_vias(g: Dictionary) -> void:
+	var need: int = (g.stops as Array).size()
+	var vias: Array = g.get("vias", [])
+	while vias.size() < need:
+		vias.append([])
+	while vias.size() > need:
+		vias.pop_back()
+	g["vias"] = vias
 
 
 # ---------------------------------------------------------------- demand
@@ -566,6 +638,13 @@ static func mutate(rng: RandomNumberGenerator, genome: Array, all_docks: Array,
 static func _mutate_once(rng: RandomNumberGenerator, genome: Array, all_docks: Array) -> Array:
 	var g := clone(genome)
 	var c := rng.randi_range(0, g.size() - 1)
+	# ~1 in 4 mutations edits the ROUTING (waypoints); the rest edit the dock sequence
+	# as before. So a level that needs no detours barely pays for the extra freedom.
+	if rng.randf() < 0.25:
+		_mutate_via(rng, g[c])
+		for gg in g:
+			_norm_vias(gg)
+		return g
 	var stops: Array = g[c].stops
 	match rng.randi_range(0, 7):
 		0: # add a dock
@@ -605,14 +684,56 @@ static func _mutate_once(rng: RandomNumberGenerator, genome: Array, all_docks: A
 		7: # REORDER CARDS: rotate which card decodes first (who gets scarce cap).
 			if g.size() >= 2:
 				g.append(g.pop_front())
+	for gg in g:
+		_norm_vias(gg) # a stop-count change must keep vias one-slot-per-stop
 	return g
+
+
+## Add / move / drop ONE waypoint on a gene (general pathing). Vias are ordinary open
+## cells; a bad one just makes the gene decode invalid (scored, never crashes).
+static func _mutate_via(rng: RandomNumberGenerator, gene: Dictionary) -> void:
+	_norm_vias(gene)
+	var stops: Array = gene.stops
+	if stops.size() < 2:
+		return
+	var vias: Array = gene.vias
+	var total := 0
+	for leg in vias:
+		total += (leg as Array).size()
+	match rng.randi_range(0, 2):
+		0: # add a waypoint on a random leg
+			if total < MAX_VIAS:
+				var opens := open_cells()
+				if not opens.is_empty():
+					var legmax: int = (stops.size() - 1) if gene.get("closed", false) else (stops.size() - 2)
+					var li := rng.randi_range(0, maxi(0, legmax))
+					(vias[li] as Array).append(opens[rng.randi_range(0, opens.size() - 1)])
+		1: # move an existing waypoint to another open cell
+			var li2 := _rand_via_leg(rng, vias)
+			var opens2 := open_cells()
+			if li2 >= 0 and not opens2.is_empty():
+				var arr: Array = vias[li2]
+				arr[rng.randi_range(0, arr.size() - 1)] = opens2[rng.randi_range(0, opens2.size() - 1)]
+		2: # drop an existing waypoint
+			var li3 := _rand_via_leg(rng, vias)
+			if li3 >= 0:
+				(vias[li3] as Array).pop_at(rng.randi_range(0, (vias[li3] as Array).size() - 1))
+
+
+static func _rand_via_leg(rng: RandomNumberGenerator, vias: Array) -> int:
+	var idxs: Array = []
+	for i in vias.size():
+		if not (vias[i] as Array).is_empty():
+			idxs.append(i)
+	return -1 if idxs.is_empty() else int(idxs[rng.randi_range(0, idxs.size() - 1)])
 
 
 ## Route-level crossover: the child is `a` with ONE card's whole route from `b`.
 static func crossover(rng: RandomNumberGenerator, a: Array, b: Array) -> Array:
 	var child := clone(a)
 	var c := rng.randi_range(0, child.size() - 1)
-	child[c] = {"stops": (b[c].stops as Array).duplicate(), "closed": b[c].closed}
+	child[c] = {"stops": (b[c].stops as Array).duplicate(),
+			"vias": _clone_vias(b[c].get("vias", [])), "closed": b[c].closed}
 	return child
 
 
