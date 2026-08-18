@@ -24,6 +24,12 @@ If a rule here seems wrong for a task, ask — do not silently violate it.
    room reads as serving that room via verticality — not allowed. One dock serving TWO
    rooms is fine *only when both rooms are horizontally adjacent to it* (left + right).
 
+2d. **A dock sandwiched between two rooms must INTENTIONALLY serve both.** If a dock has a
+   room on its left AND a room on its right, it reads as serving both — so it must actually
+   connect to both (both rooms drop to it: a deliberate shared/transfer dock, allowed). If
+   a dock should serve only ONE room, do NOT sandwich it — leave the cell on its other side
+   open. Never leave an ambiguous dock that touches two rooms but only serves one.
+
 3. **Rooms are non-standard shapes placed as ISLANDS, anywhere.** Use the shape catalogue
    below. Rooms are islands the routes weave *around*; they are **not required on the outer
    edge** (except the entry rooms, rule 3b), and the layout is **not** a central shaft with
