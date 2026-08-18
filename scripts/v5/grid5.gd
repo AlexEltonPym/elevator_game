@@ -176,6 +176,8 @@ static func load_level(level: Dictionary) -> void:
 		var qcell: Vector2i = _pick_queue(cells, door_cells, ctr)
 		_rooms.append({
 			"type": str(rm.type), "cells": cells, "letter": ROOM_LETTERS.substr(i, 1),
+			# Optional draw-only display label (background text); defaults to the type.
+			"label": str(rm.get("label", rm.type)),
 			"drops": drops, "center": ctr, "rect": _cells_rect(cells),
 			"anchor": _closest_cell(cells, ctr),
 			"queue": qcell,
@@ -747,7 +749,7 @@ func _draw_room(id: int) -> void:
 	# the identity). Faint, centred across the room's footprint.
 	var lrect: Rect2 = rm.rect
 	draw_string(ThemeDB.fallback_font, lrect.position + Vector2(0.0, lrect.size.y * 0.5 + 8.0),
-			str(rm.type).to_upper(), HORIZONTAL_ALIGNMENT_CENTER, lrect.size.x, 22,
+			str(rm.get("label", rm.type)).to_upper(), HORIZONTAL_ALIGNMENT_CENTER, lrect.size.x, 22,
 			Color(0.12, 0.12, 0.14, 0.55))
 	# Pair badge: a filled disc in the pair colour with the pair NUMBER, in the room's
 	# top-left corner (away from the door mark) — the "endpoint marker" both rooms share.

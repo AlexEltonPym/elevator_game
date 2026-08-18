@@ -44,11 +44,13 @@ If a rule here seems wrong for a task, ask — do not silently violate it.
    silhouettes. A dock tucked in a room's OWN concavity (same room above/below) is fine;
    only a dock under a DIFFERENT room is banned (rule 2c).
 
-3b. **Entry rooms touch the bottom edge, in the corners.** The lobby and the delivery bay
-   are where people enter the building **from outside the screen** (off the bottom of the
-   map). So: lobby and delivery MUST touch the bottom row, and the **first two rooms of a
-   level occupy the bottom-left and bottom-right corners** (flip a room horizontally so its
-   dock faces inward, off the map edge).
+3b. **People-entry rooms touch the bottom edge, in the corners.** Rooms where PEOPLE enter
+   the building **from outside the screen** (off the bottom of the map) — always the lobby,
+   and any similar people-entrance — sit in the bottom corners (lobby = bottom-left). Flip a
+   corner room horizontally so its dock faces inward. An internal room (e.g. a STORAGE /
+   cargo bay for goods, not people) does NOT need to touch the bottom and can sit in the
+   interior. (Rooms can carry a `label` field to show custom background text while keeping
+   their type/theme — e.g. a "delivery"-typed room labelled STORAGE.)
 
 4. **Tall rooms = one extra-tall space, never stacked floors.** A tall room is a single
    volume (skylight at the top), not sliced into floors by internal borders. A ladder
