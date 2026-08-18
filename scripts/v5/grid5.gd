@@ -551,8 +551,10 @@ func _draw() -> void:
 				draw_rect(rect, Color(0.155, 0.165, 0.20))
 				draw_rect(rect.grow(-5.0), Color(0.115, 0.125, 0.16))
 				draw_rect(rect, Color(0, 0, 0, 0.18), false, 1.0)
-			if Grid5.is_overlap_capped(c):
-				draw_rect(rect, Color(0.86, 0.72, 0.34, 0.5), false, 2.0)
+			# Disjoint tiles are the DEFAULT and render blank; only SHAREABLE tiles (cap
+			# lets >= 2 width-2 lifts overlap) get a subtle "you may double up here" tint.
+			if Grid5.overlap_cap(c) >= 4:
+				draw_rect(rect.grow(-3.0), Color(0.55, 0.78, 0.95, 0.14))
 	for id in Grid5._rooms.size():
 		_draw_room(id)
 	if game == null:
@@ -741,7 +743,12 @@ func _draw_room(id: int) -> void:
 						Vector2(ow, rect.size.y))]]:
 			if Grid5.room_id_at(c + e[0]) != id:
 				draw_rect(e[1], ocol)
-	# (Room letters removed: a room's identity reads off its COLOUR + furniture, not text.)
+	# Background TYPE LABEL (temporary readability aid — later the furniture + shape carry
+	# the identity). Faint, centred across the room's footprint.
+	var lrect: Rect2 = rm.rect
+	draw_string(ThemeDB.fallback_font, lrect.position + Vector2(0.0, lrect.size.y * 0.5 + 8.0),
+			str(rm.type).to_upper(), HORIZONTAL_ALIGNMENT_CENTER, lrect.size.x, 22,
+			Color(0.12, 0.12, 0.14, 0.55))
 	# Pair badge: a filled disc in the pair colour with the pair NUMBER, in the room's
 	# top-left corner (away from the door mark) — the "endpoint marker" both rooms share.
 	if has_pair:
@@ -866,6 +873,8 @@ func _draw_corridor(rect: Rect2, c: Vector2i) -> void:
 func _draw_overlap_caps() -> void:
 	for c in Grid5._overlap_cap:
 		var cap: int = Grid5._overlap_cap[c]
+		if cap < 4:
+			continue # disjoint tiles (the default) show no capacity pips
 		var used := 0
 		var fill_col := Color(0.86, 0.72, 0.34)
 		for i in game.routes.size():
