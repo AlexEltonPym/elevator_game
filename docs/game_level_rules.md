@@ -16,6 +16,14 @@ If a rule here seems wrong for a task, ask — do not silently violate it.
    cell left/right of a room cell). **No vertical (`U`/`D`) dropoffs** — "they just make
    no sense, for now." Dropoffs are orthogonal to a *side* of a room.
 
+2b. **One dropoff per room** by default; only a few hub rooms (atrium, cafe) get 2.
+   Don't sprinkle 3+ docks on ordinary rooms. A room served by multiple lifts uses ONE
+   **shared** dock (cap-6), not one dock per lift.
+
+2c. **No dock directly above/below another room cell.** A dock vertically adjacent to a
+   room reads as serving that room via verticality — not allowed. One dock serving TWO
+   rooms is fine *only when both rooms are horizontally adjacent to it* (left + right).
+
 3. **Rooms are non-standard shapes placed as ISLANDS, anywhere.** Use tetris-ish shapes
    (L / T / plus / 2×2 and larger). **A 2×1 room reads as a normal room — avoid it.**
    Rooms are islands the routes weave *around*; they are **not required on the outer
