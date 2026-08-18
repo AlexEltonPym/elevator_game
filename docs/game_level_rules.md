@@ -24,11 +24,24 @@ If a rule here seems wrong for a task, ask — do not silently violate it.
    room reads as serving that room via verticality — not allowed. One dock serving TWO
    rooms is fine *only when both rooms are horizontally adjacent to it* (left + right).
 
-3. **Rooms are non-standard shapes placed as ISLANDS, anywhere.** Use tetris-ish shapes
-   (L / T / plus / 2×2 and larger). **A 2×1 room reads as a normal room — avoid it.**
-   Rooms are islands the routes weave *around*; they are **not required on the outer
-   edge**, and the layout is **not** a central shaft with rooms lining the walls. Prefer
-   an open field with a few rooms in the interior. Fewer, bigger rooms > many small ones.
+3. **Rooms are non-standard shapes placed as ISLANDS, anywhere.** Use the shape catalogue
+   below. Rooms are islands the routes weave *around*; they are **not required on the outer
+   edge** (except the entry rooms, rule 3b), and the layout is **not** a central shaft with
+   rooms lining the walls. Prefer an open field with a few rooms in the interior. Fewer,
+   bigger rooms > many small ones.
+
+   **Shape catalogue (user-drawn 2026-08-19; all horizontally flippable):**
+   lobby = 3×2; delivery = 2×2; apartment = 2×1; penthouse = step (3 bottom + 2 top);
+   cafe = 4 top + 2 bottom with its two docks tucked into the bottom notch. Other room
+   types get their own shapes in this spirit — bigger than 2×1 except apartment, distinct
+   silhouettes. A dock tucked in a room's OWN concavity (same room above/below) is fine;
+   only a dock under a DIFFERENT room is banned (rule 2c).
+
+3b. **Entry rooms touch the bottom edge, in the corners.** The lobby and the delivery bay
+   are where people enter the building **from outside the screen** (off the bottom of the
+   map). So: lobby and delivery MUST touch the bottom row, and the **first two rooms of a
+   level occupy the bottom-left and bottom-right corners** (flip a room horizontally so its
+   dock faces inward, off the map edge).
 
 4. **Tall rooms = one extra-tall space, never stacked floors.** A tall room is a single
    volume (skylight at the top), not sliced into floors by internal borders. A ladder
