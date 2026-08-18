@@ -31,8 +31,9 @@ If a rule here seems wrong for a task, ask — do not silently violate it.
    bigger rooms > many small ones.
 
    **Shape catalogue (user-drawn 2026-08-19; all horizontally flippable):**
-   lobby = 3×2; delivery = 2×2; apartment = 2×1; penthouse = step (3 bottom + 2 top);
-   cafe = 4 top + 2 bottom with its two docks tucked into the bottom notch. Other room
+   lobby = 3×2; delivery = 2×2; apartment = 2×1; penthouse = 4 bottom + 2 top (symmetric,
+   couch bottom-left mirrored by a block bottom-right); cafe = 4 top + 2 bottom with its
+   two docks tucked into the bottom notch. Other room
    types get their own shapes in this spirit — bigger than 2×1 except apartment, distinct
    silhouettes. A dock tucked in a room's OWN concavity (same room above/below) is fine;
    only a dock under a DIFFERENT room is banned (rule 2c).
