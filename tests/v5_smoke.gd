@@ -76,6 +76,13 @@ func _solution(id: String) -> Array:
 			# LIFT 1 a horseshoe past all four; LIFT 2 doubles the busy apartment side.
 			return [_c([[2,1],[2,2],[2,3],[2,4],[2,5],[2,6],[3,6],[3,5],[3,4],[3,3],[3,2],[3,1]]),
 					_c([[2,1],[2,2],[2,3],[2,4],[2,5]])]
+		"XLINK":
+			# Numberlink: three disjoint snakes. LOCAL the left cluster (A,F,G);
+			# EXPRESS the long right run scooping cafe on the way (A,B,C,D,E); CARGO
+			# the short bay<->cafe hop (B,C). They meet only on shared cap-6 docks.
+			return [_c([[3,0],[3,1],[3,2],[3,3],[2,3],[2,4],[2,5],[2,6],[2,7],[2,8]]),
+					_c([[7,7],[7,6],[8,6],[8,5],[8,4],[7,4],[7,3],[6,3],[6,2],[6,1],[6,0],[5,0],[4,0],[3,0]]),
+					_c([[4,4],[4,3],[5,3],[5,2],[5,1],[6,1]])]
 	return []
 
 

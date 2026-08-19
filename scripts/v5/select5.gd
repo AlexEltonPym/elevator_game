@@ -11,11 +11,13 @@ const WORLD_BLURB := {
 	"LEARN": "One new idea per level. Forgiving - you can't really lose by trying.",
 	"MECHANICS": "Each level proves one mechanic: transfers, corridors, caps, express, cargo.",
 	"GENERIC": "Open optimization. Many legal plans - the craft is finding a good one.",
+	"CROSSLINK": "Numberlink for lifts: thread disjoint routes past each other. Many weavings fit.",
 }
 const WORLD_COL := {
 	"LEARN": Color(0.42, 0.62, 0.88),
 	"MECHANICS": Color(0.86, 0.62, 0.30),
 	"GENERIC": Color(0.55, 0.78, 0.52),
+	"CROSSLINK": Color(0.35, 0.74, 0.72),
 }
 
 var page := 0 # index into Levels5.WORLDS

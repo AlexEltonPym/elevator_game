@@ -66,7 +66,7 @@ const COL_D := Color(0.80, 0.55, 0.92)
 ##   LEARN     — forgiving tutorial ramp, one concept per level
 ##   MECHANICS — thesis levels that prove/feature one mechanic
 ##   GENERIC   — middleground optimization: many legal plans, only some good
-const WORLDS := ["LEARN", "MECHANICS", "GENERIC"]
+const WORLDS := ["LEARN", "MECHANICS", "GENERIC", "CROSSLINK"]
 
 const LEVELS := [
 	# ===================== LEARN =====================
@@ -548,6 +548,79 @@ corridor, on to D.",
 			{"w": 0.10, "from": "B", "to": "D"},
 			{"w": 0.08, "from": "D", "to": "B"},
 			{"w": 0.08, "from": "C", "to": "D"},
+		],
+	},
+	# ===================== CROSSLINK =====================
+	# Numberlink / snake-fitting: disjoint routes threaded past each other. Open cells
+	# cap at 3 (a width-2 LOCAL/EXPRESS can't share; a width-3 CARGO exactly fits), so
+	# each committed route becomes walls the next must weave around. Dock cells cap at 6
+	# (dropoffs may be shared). CARGO is deliberately sluggish (short bay<->cafe only);
+	# EXPRESS is very fast + hard-accelerating so its long run banks momentum, and exec
+	# demand (A<->D) is dominant so the express is essential.
+	{
+		"id": "XLINK",
+		"world": "CROSSLINK",
+		"name": "Crosslink",
+		"thesis": "thread three disjoint snakes past each other",
+		"intro": "",
+		"cols": 10, "rows": 9,
+		"blocked": [],
+		"overlaps": [
+			{"cells": [
+				Vector2i(4, 0), Vector2i(5, 0), Vector2i(6, 0), Vector2i(7, 0), Vector2i(8, 0),
+				Vector2i(9, 0), Vector2i(3, 1), Vector2i(4, 1), Vector2i(5, 1), Vector2i(9, 1),
+				Vector2i(0, 2), Vector2i(1, 2), Vector2i(2, 2), Vector2i(3, 2), Vector2i(4, 2),
+				Vector2i(5, 2), Vector2i(6, 2), Vector2i(9, 2), Vector2i(3, 3), Vector2i(4, 3),
+				Vector2i(5, 3), Vector2i(6, 3), Vector2i(7, 3), Vector2i(8, 3), Vector2i(9, 3),
+				Vector2i(0, 4), Vector2i(1, 4), Vector2i(2, 4), Vector2i(3, 4), Vector2i(8, 4),
+				Vector2i(9, 4), Vector2i(0, 5), Vector2i(1, 5), Vector2i(2, 5), Vector2i(3, 5),
+				Vector2i(8, 5), Vector2i(9, 5), Vector2i(0, 6), Vector2i(1, 6), Vector2i(2, 6),
+				Vector2i(3, 6), Vector2i(4, 6), Vector2i(5, 6), Vector2i(6, 6), Vector2i(7, 6),
+				Vector2i(8, 6), Vector2i(9, 6), Vector2i(0, 7), Vector2i(1, 7), Vector2i(2, 7),
+				Vector2i(3, 8), Vector2i(6, 8), Vector2i(7, 8), Vector2i(8, 8), Vector2i(9, 8)],
+				"max": 3},
+			{"cells": [
+				Vector2i(3, 0), Vector2i(6, 1), Vector2i(4, 4), Vector2i(7, 4), Vector2i(7, 7),
+				Vector2i(2, 3), Vector2i(2, 8)],
+				"max": 6},
+		],
+		"rooms": [
+			{"type": "lobby", "cells": [Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0),
+					Vector2i(0, 1), Vector2i(1, 1), Vector2i(2, 1)],
+					"drops": [{"cell": Vector2i(2, 0), "dir": R}]},
+			{"type": "delivery", "label": "storage",
+					"cells": [Vector2i(7, 1), Vector2i(8, 1), Vector2i(7, 2), Vector2i(8, 2)],
+					"drops": [{"cell": Vector2i(7, 1), "dir": L}]},
+			{"type": "cafe", "cells": [Vector2i(4, 5), Vector2i(5, 5), Vector2i(6, 5), Vector2i(7, 5),
+					Vector2i(5, 4), Vector2i(6, 4)],
+					"drops": [{"cell": Vector2i(5, 4), "dir": L}, {"cell": Vector2i(6, 4), "dir": R}]},
+			{"type": "penthouse", "cells": [Vector2i(3, 7), Vector2i(4, 7), Vector2i(5, 7), Vector2i(6, 7),
+					Vector2i(4, 8), Vector2i(5, 8)],
+					"drops": [{"cell": Vector2i(6, 7), "dir": R}]},
+			{"type": "apartment", "cells": [Vector2i(8, 7), Vector2i(9, 7)],
+					"drops": [{"cell": Vector2i(8, 7), "dir": L}]},
+			{"type": "apartment", "cells": [Vector2i(0, 3), Vector2i(1, 3)],
+					"drops": [{"cell": Vector2i(1, 3), "dir": R}]},
+			{"type": "apartment", "cells": [Vector2i(0, 8), Vector2i(1, 8)],
+					"drops": [{"cell": Vector2i(1, 8), "dir": R}]},
+		],
+		"cards": [
+			{"name": "LOCAL", "type": "standard", "color": COL_A},
+			{"name": "EXPRESS", "type": "express", "color": COL_D, "speed": 1500.0, "accel": 1200.0},
+			{"name": "CARGO", "type": "cargo", "color": COL_C, "speed": 100.0, "accel": 80.0},
+		],
+		"quota": 20, "max_lost": 12,
+		"spawn": {"interval_start": 2.2, "interval_end": 1.7, "ramp": 40.0,
+				"burst_min": 1, "burst_max": 2, "gap": 0.9},
+		"mix": {"visitor": 0.6, "shopper": 0.25, "patient": 0.15},
+		"trips": [
+			{"w": 0.15, "from": "B", "to": "C", "type": "delivery"},
+			{"w": 0.07, "from": "C", "to": "B", "type": "delivery"},
+			{"w": 0.30, "from": "A", "to": "D"}, {"w": 0.16, "from": "D", "to": "A"},
+			{"w": 0.12, "from": "A", "to": "C"}, {"w": 0.07, "from": "C", "to": "A"},
+			{"w": 0.10, "from": "A", "to": "E"}, {"w": 0.05, "from": "E", "to": "A"},
+			{"w": 0.10, "from": "A", "to": "F"}, {"w": 0.05, "from": "F", "to": "A"},
+			{"w": 0.09, "from": "A", "to": "G"}, {"w": 0.05, "from": "G", "to": "A"},
 		],
 	},
 ]
