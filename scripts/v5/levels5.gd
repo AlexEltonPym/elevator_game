@@ -610,8 +610,10 @@ corridor, on to D.",
 			{"name": "CARGO", "type": "cargo", "color": COL_C, "speed": 100.0, "accel": 80.0},
 		],
 		"quota": 20, "max_lost": 12,
+		# cover: round-robin demand so EVERY room gets passengers; combined with the
+		# all-rooms-served win rule, abandoning any room forfeits the run.
 		"spawn": {"interval_start": 2.2, "interval_end": 1.7, "ramp": 40.0,
-				"burst_min": 1, "burst_max": 2, "gap": 0.9},
+				"burst_min": 1, "burst_max": 2, "gap": 0.9, "cover": true},
 		"mix": {"visitor": 0.6, "shopper": 0.25, "patient": 0.15},
 		"trips": [
 			{"w": 0.15, "from": "B", "to": "C", "type": "delivery"},

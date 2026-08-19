@@ -41,6 +41,18 @@ var pulse_timer := 0.0
 var burst_left := 0
 var burst_timer := 0.0
 
+# COVERAGE DEMAND (opt-in via level.spawn.cover == true). Instead of pure weighted-
+# random trips (which let a low-weight room spawn ~nobody, so abandoning it is free),
+# the spawner ROUND-ROBINS over every demand room so each gets an equal share of the
+# load. With max_lost tuned below a room's guaranteed share, skipping ANY room is a
+# guaranteed loss - so a real solution must serve every room (the numberlink premise).
+# Off by default: a level without `cover` draws the identical weighted stream as before.
+var _cover_on := false
+var _cover_rooms: Array = []   # demand room ids (from OR to in trips), sorted
+var _cover_by_room := {}       # rid -> Array of trip rows originating at rid (else ending)
+var _cover_idx := 0
+var _served_rooms := {}         # rid -> true once a passenger has been delivered there
+
 var active_passengers: Array = []
 var reactivations := 0 # completed trips that spawned a fresh trip (stat / smoke)
 var _passengers_dirty := false
@@ -101,6 +113,7 @@ func _ready() -> void:
 	CARDS = level.cards
 	QUOTA = level.quota
 	MAX_LOST = level.max_lost
+	_build_cover(level)
 	routes = []
 	cars = []
 	for gi in Grid5.corridor_groups().size():
@@ -232,6 +245,52 @@ func _reset_spawner() -> void:
 	pulse_timer = 2.0
 	burst_left = 0
 	burst_timer = 0.0
+	_cover_idx = 0
+	_served_rooms = {}
+
+
+## Precompute the round-robin demand rooms for coverage spawning (opt-in). A no-op that
+## leaves _cover_on false for every level that doesn't set spawn.cover (byte-identical).
+func _build_cover(lv: Dictionary) -> void:
+	_cover_on = bool((lv.get("spawn", {}) as Dictionary).get("cover", false))
+	_cover_rooms = []
+	_cover_by_room = {}
+	_cover_idx = 0
+	if not _cover_on:
+		return
+	var to_map := {}
+	var seen := {}
+	for row in lv.trips:
+		var o: int = Levels5.room_id_of_letter(lv, str(row.from))
+		var d: int = Levels5.room_id_of_letter(lv, str(row.to))
+		if o >= 0:
+			if not _cover_by_room.has(o):
+				_cover_by_room[o] = []
+			(_cover_by_room[o] as Array).append(row)
+		if d >= 0:
+			if not to_map.has(d):
+				to_map[d] = []
+			(to_map[d] as Array).append(row)
+		for rid in [o, d]:
+			if rid >= 0 and not seen.has(rid):
+				seen[rid] = true
+				_cover_rooms.append(rid)
+	_cover_rooms.sort()
+	# A room that never appears as an origin still needs demand: fall back to trips that
+	# END at it (a passenger heading there still requires that room be served).
+	for rid in _cover_rooms:
+		if not _cover_by_room.has(rid) or (_cover_by_room[rid] as Array).is_empty():
+			_cover_by_room[rid] = to_map.get(rid, [])
+
+
+## True unless this is a coverage level with a demand room not yet served.
+func _rooms_covered() -> bool:
+	if not _cover_on:
+		return true
+	for rid in _cover_rooms:
+		if not _served_rooms.has(rid):
+			return false
+	return true
 
 
 func _win() -> void:
@@ -653,16 +712,35 @@ func _pick_type() -> String:
 func _spawn_random() -> void:
 	var t := _pick_type()
 	var trips: Array = level.trips
-	var total := 0.0
-	for row in trips:
-		total += row.w
-	var roll := rng.randf() * total
-	var picked: Dictionary = trips.back()
-	for row in trips:
-		roll -= row.w
-		if roll <= 0.0:
-			picked = row
-			break
+	var picked: Dictionary
+	if _cover_on and not _cover_rooms.is_empty():
+		# Round-robin: this spawn belongs to the next demand room, weighted among its trips.
+		var r: int = _cover_rooms[_cover_idx % _cover_rooms.size()]
+		_cover_idx += 1
+		var cand: Array = _cover_by_room.get(r, [])
+		if cand.is_empty():
+			cand = trips
+		var ctotal := 0.0
+		for row in cand:
+			ctotal += row.w
+		var croll := rng.randf() * ctotal
+		picked = cand.back()
+		for row in cand:
+			croll -= row.w
+			if croll <= 0.0:
+				picked = row
+				break
+	else:
+		var total := 0.0
+		for row in trips:
+			total += row.w
+		var roll := rng.randf() * total
+		picked = trips.back()
+		for row in trips:
+			roll -= row.w
+			if roll <= 0.0:
+				picked = row
+				break
 	# THEMATIC DEMAND (per-trip type binding): a trip row may DECLARE who takes it
 	# via an OPTIONAL `type` field — "this run is only ever wheeled by delivery men",
 	# "these seats are commuters". When the chosen trip carries a `type`, it OVERRIDES
@@ -733,8 +811,13 @@ func on_served(p) -> void:
 		waiting[p.cur_room].erase(p)
 	log_served.append({"type": p.ptype, "wait": p.wait_time, "rides": p.rides})
 	served += 1
+	if _cover_on:
+		_served_rooms[p.cur_room] = true
 	p.begin_between()
-	if state == State.PLAYING and not endless and served >= QUOTA:
+	# Coverage levels also require EVERY demand room to have been served: hitting the
+	# passenger quota while abandoning a room is not a win (the room keeps spawning and
+	# eventually loses you the run). Non-cover levels keep the plain quota check.
+	if state == State.PLAYING and not endless and served >= QUOTA and _rooms_covered():
 		_win()
 
 
