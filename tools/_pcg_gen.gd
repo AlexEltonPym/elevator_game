@@ -162,6 +162,19 @@ func _generate(seed_v: int, n_rooms := 0) -> Dictionary:
 		wish[wish.size() - 1] = "atrium"
 	for type in wish:
 		add.call(_place(type, cols, rows, occ, docks_all, rng, 60))
+	# LEGALITY RULE: storage(delivery) implies cafe (it delivers to one); a cafe does NOT
+	# require storage. If cafe failed to place, drop any orphan storage rooms (repair, not
+	# reject) so we never ship a storage with no cafe + a dangling cargo card.
+	var has_cafe := false
+	for rm in rooms:
+		if rm.type == "cafe":
+			has_cafe = true
+	if not has_cafe:
+		var kept := []
+		for rm in rooms:
+			if rm.type != "delivery":
+				kept.append(rm)
+		rooms = kept
 	if rooms.size() < 4:
 		return {}
 	# Reject enclosed docks (unreachable in the open field) at generation time.
@@ -308,7 +321,7 @@ func _classify(lv: Dictionary, expert_budget := EXPERT_BUDGET, novice_tries := N
 	if not _feasible():
 		return {"tier": "BROKEN", "note": "a dock is walled off"}
 	var widths := RG.card_widths(lv)
-	var seeds := SimApi5.SEEDS_TRAIN.slice(0, 3)
+	var seeds := SimApi5.SEEDS_TRAIN.slice(0, 2)
 	# EXPERT ORACLE: MAP-Elites tip ceiling. Its coverage archive holds the serve-
 	# everyone plan the plain EA abandons, so the expert tip total it reports is a
 	# trustworthy pro ceiling (docs: mapelites5.gd). Also gives max rooms covered.
@@ -318,26 +331,42 @@ func _classify(lv: Dictionary, expert_budget := EXPERT_BUDGET, novice_tries := N
 	tsim.shift = float(lv.get("shift", 90.0))
 	var me = ME.new()
 	me.setup(tsim, 0, lv, seeds, STEP, 40404)
-	var mres: Dictionary = me.run(expert_budget)
+	# ADEPT tier = best tips after a fixed brief effort (a player who thinks a little, not a
+	# full search); EXPERT = best at full budget. The adept->expert gap is the MIN-MAX
+	# HEADROOM, captured free. Keep adept_at small+fixed so it means the same "brief thought"
+	# regardless of the expert budget, and so a deep level shows real headroom above it.
+	var adept_at: int = mini(60, expert_budget / 2)
+	var mres: Dictionary = me.run(expert_budget, adept_at)
 	var expert_tips: float = mres.best_score
 	if expert_tips <= 0.0:
 		return {"tier": "BROKEN", "note": "no positive-tip plan (MAP-Elites best=%.0f)" % expert_tips}
+	var adept_tips: float = mres.adept_score
+	var adept_cover: int = mres.adept_cover
 	# NOVICE accessibility: fraction of random plans reaching EXPERT_FRAC of the ceiling.
 	var nov := _novice_tip(tsim, widths, seeds, EXPERT_FRAC * expert_tips, novice_tries)
 	var wr: float = float(nov.hits) / float(novice_tries)
-	var depth: float = maxf(0.0, expert_tips - nov.med)   # tip headroom (novice -> expert)
+	var depth: float = maxf(0.0, expert_tips - nov.med)   # novice -> expert (correlates w/ difficulty)
 	var cover: int = me.max_served()
 	var nrooms: int = lv.rooms.size()
+	# SWEEP = adept->expert headroom, GATED on the adept plan being a competent floor
+	# (positive tips AND serving ~everyone). This decorrelates from difficulty: a level is
+	# a good "sweep" when a quick plan already serves almost everyone a bit late and there's
+	# real room to min-max on top — not merely when novices fail.
+	var floor_ok: bool = adept_tips > 0.0 and adept_cover >= nrooms - 1
+	var sweep: float = maxf(0.0, expert_tips - adept_tips) * (1.0 if floor_ok else 0.25)
 	var tier := "EXPERT"
 	if wr > 0.40: tier = "TUTORIAL"
 	elif wr >= 0.15: tier = "EASY"
 	elif wr >= 0.05: tier = "MEDIUM"
 	elif wr > 0.0: tier = "HARD"
 	else: tier = "EXPERT"   # novices never approach the ceiling; only search finds it
-	var note := "nov %.0f%% (legal %d) | novTips=%.0f expertTips=%.0f depth=%.0f cover=%d/%d niches=%d" % [
-			wr * 100.0, nov.legal, nov.med, expert_tips, depth, cover, nrooms, mres.niches]
+	var note := "nov %.0f%% | adept=%.0f(cov%d)%s expert=%.0f sweep=%.0f | novDepth=%.0f cover=%d/%d fcN=%d" % [
+			wr * 100.0, adept_tips, adept_cover, "" if floor_ok else "!", expert_tips, sweep,
+			depth, cover, nrooms, mres.full_cover_niches]
 	return {"tier": tier, "note": note, "wr": wr, "expert_tips": expert_tips,
-			"novice_tips": nov.med, "depth": depth, "cover": cover, "niches": mres.niches}
+			"adept_tips": adept_tips, "adept_cover": adept_cover, "sweep": sweep,
+			"floor_ok": floor_ok, "novice_tips": nov.med, "depth": depth, "cover": cover,
+			"full_cover_niches": mres.full_cover_niches, "niches": mres.niches}
 
 
 func _served_str(cells: Array) -> String:
@@ -349,22 +378,35 @@ func _served_str(cells: Array) -> String:
 
 
 # ---- OUTER MAP-ELITES over LEVEL DESIGNS (illuminate the design space) ----------------
-## The design behavioral descriptor: [nrooms, compactness_bin]. nrooms is the size axis;
-## compactness = room cells / bounding-box area (dense packing vs sprawl) is a shape axis
-## independent of size. Two designs in different niches LOOK different -> gives goal A.
+## The 5-D design behavioral descriptor: [nrooms, compactness(2), has_cargo, has_atrium,
+## has_penthouse]. nrooms + compactness are size/shape; the three binaries are the CARD
+## LOADOUT (which lifts the puzzle is about) — the mechanical identity that makes designs
+## feel distinct. 5*2*2*2*2 = 80 cells, but many are structurally impossible (cargo needs
+## cafe+delivery, atrium needs >=6 rooms) so effective niches are ~30-40. Goal A.
 func _design_bd(lv: Dictionary) -> Array:
 	var nrooms: int = lv.rooms.size()
 	var cells := 0
 	var minx := 9999; var miny := 9999; var maxx := -1; var maxy := -1
+	var has_cafe := false; var has_delivery := false; var has_atrium := false; var has_penth := false
 	for rm in lv.rooms:
+		match str(rm.type):
+			"cafe": has_cafe = true
+			"delivery": has_delivery = true
+			"atrium": has_atrium = true
+			"penthouse": has_penth = true
 		for c in rm.cells:
 			cells += 1
 			minx = mini(minx, c.x); maxx = maxi(maxx, c.x)
 			miny = mini(miny, c.y); maxy = maxi(maxy, c.y)
 	var bbox: float = maxf(1.0, float((maxx - minx + 1) * (maxy - miny + 1)))
 	var compact: float = float(cells) / bbox
-	var cbin: int = clampi(int((compact - 0.2) / 0.13), 0, 3)
-	return [nrooms, cbin]
+	var cbin: int = clampi(int((compact - 0.32) / 0.14), 0, 1)   # 2 bins: sprawl vs dense
+	var cargo: int = 1 if (has_cafe and has_delivery) else 0
+	return [nrooms, cbin, cargo, 1 if has_atrium else 0, 1 if has_penth else 0]
+
+
+func _bd_key(bd: Array) -> String:
+	return "%d|%d|%d|%d|%d" % [bd[0], bd[1], bd[2], bd[3], bd[4]]
 
 
 ## A sorted room-type signature (a second, categorical read on design uniqueness).
@@ -377,28 +419,27 @@ func _type_sig(lv: Dictionary) -> String:
 
 
 ## MAP-Elites over designs. Genome = (seed, nrooms); each is generated, gated (novice
-## probe + MAP-Elites expert oracle), and filed into the [nrooms x compactness] archive
-## keeping the design that best maximises FITNESS = difficulty (1-novice_success) + range
-## (depth/expert). One elite per niche = a diverse set (A); fitness rewards hard (B) and
-## wide-gap (C) designs. Emitter: mostly fresh random draws (seed chaotic => ~restart),
-## with nrooms cycled to fill size niches, plus occasional nudges of an elite's nrooms.
-## Writes the archive to `jpath` after every eval so a long run's partial results survive.
+## probe + MAP-Elites adept/expert oracle), and filed into the 5-D [nrooms x compactness x
+## cargo x atrium x penthouse] FEASIBLE archive keeping the design that best maximises
+## FITNESS = SWEEP (adept->expert min-max headroom, gated on an accessible competent floor).
+## Infeasible / illegal designs go to a SEPARATE archive (the FI two-map structure) so we
+## can see the broken niches; note that without a mutable genome they are catalogued, not
+## evolved. Reports A (niches), B (hardest), C (widest sweep). Partial-safe JSON each eval.
 func _mapgen(outer_budget: int, expert_budget: int, jpath: String) -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 20250820
-	var archive := {}
-	var rejects := 0
+	var archive := {}       # feasible: bd_key -> design (best sweep)
+	var infeasible := {}     # broken/illegal: bd_key -> {seed, reason}
 	var evals := 0
 	var sigs := {}
-	var nroom_cycle := [4, 5, 6, 6, 5, 7]
+	var nroom_cycle := [4, 5, 6, 6, 5, 7, 8]
 	while evals < outer_budget:
-		# choose a design genome
 		var seed_v: int
 		var nrooms: int
 		if archive.size() >= 4 and rng.randf() < 0.35:
 			var vals: Array = archive.values()
 			var e: Dictionary = vals[rng.randi_range(0, vals.size() - 1)]
-			nrooms = clampi(int(e.nrooms) + rng.randi_range(-1, 1), 4, 8)
+			nrooms = clampi(int(e.req) + rng.randi_range(-1, 1), 4, 8)
 			seed_v = rng.randi_range(1, 900000)
 		else:
 			nrooms = nroom_cycle[evals % nroom_cycle.size()]
@@ -408,61 +449,73 @@ func _mapgen(outer_budget: int, expert_budget: int, jpath: String) -> void:
 			continue   # generation miss (doesn't count as an eval)
 		var res := _classify(lv, expert_budget, 20)
 		evals += 1
+		var bd := _design_bd(lv)
+		var nkey := _bd_key(bd)
 		if res.tier == "BROKEN" or float(res.get("expert_tips", 0.0)) < 120.0:
-			rejects += 1
+			# INFEASIBLE map: keep one representative per niche (the two-map FI structure).
+			if not infeasible.has(nkey):
+				infeasible[nkey] = {"seed": seed_v, "req": nrooms, "nrooms": int(lv.rooms.size()),
+						"reason": str(res.get("note", res.tier)), "sig": _type_sig(lv)}
 		else:
-			var difficulty: float = 1.0 - float(res.wr)
-			var rng_score: float = float(res.depth) / maxf(1.0, float(res.expert_tips))
-			var fitness: float = difficulty + rng_score
-			var bd := _design_bd(lv)
 			var sig := _type_sig(lv)
 			sigs[sig] = int(sigs.get(sig, 0)) + 1
-			var cand := {"seed": seed_v, "req": nrooms, "nrooms": int(lv.rooms.size()), "cbin": bd[1],
-					"fitness": fitness, "difficulty": difficulty, "range": rng_score,
-					"wr": float(res.wr), "expert": float(res.expert_tips),
-					"novice": float(res.novice_tips), "depth": float(res.depth),
-					"cover": int(res.cover), "tier": str(res.tier), "sig": sig}
-			var nkey := "%d|%d" % [bd[0], bd[1]]
-			if not archive.has(nkey) or fitness > archive[nkey].fitness:
+			var difficulty: float = 1.0 - float(res.wr)
+			var cand := {"seed": seed_v, "req": nrooms, "nrooms": int(lv.rooms.size()),
+					"cbin": bd[1], "cargo": bd[2], "atrium": bd[3], "penth": bd[4],
+					"fitness": float(res.sweep), "sweep": float(res.sweep),
+					"difficulty": difficulty, "wr": float(res.wr),
+					"expert": float(res.expert_tips), "adept": float(res.adept_tips),
+					"floor_ok": bool(res.floor_ok), "novice": float(res.novice_tips),
+					"depth": float(res.depth), "cover": int(res.cover),
+					"fcov_niches": int(res.full_cover_niches), "tier": str(res.tier), "sig": sig}
+			if not archive.has(nkey) or cand.fitness > archive[nkey].fitness:
 				archive[nkey] = cand
-		_mapgen_save(jpath, archive, evals, rejects, sigs)
+		_mapgen_save(jpath, archive, infeasible, evals, sigs)
 		print("  eval %d/%d seed %d r%d -> %-8s %s" % [evals, outer_budget, seed_v, nrooms,
 				res.tier, res.get("note", "")])
-	_mapgen_report(archive, evals, rejects, sigs)
+	_mapgen_report(archive, infeasible, evals, sigs)
 
 
-func _mapgen_save(jpath: String, archive: Dictionary, evals: int, rejects: int, sigs: Dictionary) -> void:
+func _mapgen_save(jpath: String, archive: Dictionary, infeasible: Dictionary, evals: int, sigs: Dictionary) -> void:
 	var f := FileAccess.open(jpath, FileAccess.WRITE)
 	if f == null:
 		return
-	f.store_string(JSON.stringify({"evals": evals, "rejects": rejects,
-			"distinct_types": sigs.size(), "archive": archive.values()}))
+	f.store_string(JSON.stringify({"evals": evals, "feasible_niches": archive.size(),
+			"infeasible_niches": infeasible.size(), "distinct_types": sigs.size(),
+			"archive": archive.values(), "infeasible": infeasible.values()}))
 	f.close()
 
 
-func _mapgen_report(archive: Dictionary, evals: int, rejects: int, sigs: Dictionary) -> void:
+func _mapgen_report(archive: Dictionary, infeasible: Dictionary, evals: int, sigs: Dictionary) -> void:
 	var els: Array = archive.values()
-	print("\n=== MAP-ELITES DESIGN ARCHIVE (%d evals, %d shippable, %d rejects, %d distinct type-sigs) ===" % [
-			evals, els.size(), rejects, sigs.size()])
-	els.sort_custom(func(a, b): return a.fitness > b.fitness)
-	print("  [A] archive niches (nrooms x compactness) -- each a distinct design:")
-	print("  %-6s %-5s %-8s %-4s %-5s %-5s %-5s %-5s %s" % ["seed", "rooms", "tier", "cbin", "fit", "diff", "range", "cover", "expert/novice/depth"])
+	print("\n=== MAP-ELITES DESIGN ARCHIVE (%d evals | %d feasible niches, %d infeasible niches, %d distinct room-comps) ===" % [
+			evals, els.size(), infeasible.size(), sigs.size()])
+	els.sort_custom(func(a, b): return a.sweep > b.sweep)
+	print("  [A] feasible niches (nrooms|compact|cargo|atrium|penth) -- each a distinct design:")
+	print("  %-6s %-4s %-8s %-5s %-5s %-5s %-5s %-5s %s" % ["seed", "room", "tier", "sweep", "adept", "exprt", "diff", "fcovN", "cargo/atr/pen  comp"])
 	for e in els:
-		print("  %-6d %-5d %-8s %-4d %-5.2f %-5.2f %-5.2f %d/%d  %.0f/%.0f/%.0f  %s" % [
-				e.seed, e.nrooms, e.tier, e.cbin, e.fitness, e.difficulty, e.range,
-				e.cover, e.nrooms, e.expert, e.novice, e.depth, e.sig])
+		print("  %-6d %-4d %-8s %-5.0f %-5.0f %-5.0f %-5.2f %-5d %d/%d/%d  %s" % [
+				e.seed, e.nrooms, e.tier, e.sweep, e.adept, e.expert, e.difficulty,
+				e.fcov_niches, e.cargo, e.atrium, e.penth, e.sig])
 	var by_diff: Array = els.duplicate()
 	by_diff.sort_custom(func(a, b): return a.difficulty > b.difficulty)
 	print("  [B] hardest (lowest novice success):")
 	for i in mini(5, by_diff.size()):
 		var e: Dictionary = by_diff[i]
-		print("    seed %d r%d  novice %.0f%% success  expert=%.0f  (%s)" % [e.seed, e.nrooms, (1.0 - e.difficulty) * 100.0, e.expert, e.tier])
-	var by_rng: Array = els.duplicate()
-	by_rng.sort_custom(func(a, b): return a.depth > b.depth)
-	print("  [C] widest novice->expert gap:")
-	for i in mini(5, by_rng.size()):
-		var e: Dictionary = by_rng[i]
-		print("    seed %d r%d  novice=%.0f -> expert=%.0f  (+%.0f tips, range %.2f)" % [e.seed, e.nrooms, e.novice, e.expert, e.depth, e.range])
+		print("    seed %d r%d(req%d)  novice %.0f%% success  expert=%.0f  (%s)" % [e.seed, e.nrooms, e.req, (1.0 - e.difficulty) * 100.0, e.expert, e.tier])
+	var by_sweep: Array = els.duplicate()
+	by_sweep.sort_custom(func(a, b): return a.sweep > b.sweep)
+	print("  [C] widest SWEEP (competent-quick -> min-maxed expert, floor accessible):")
+	for i in mini(6, by_sweep.size()):
+		var e: Dictionary = by_sweep[i]
+		var flag: String = "" if e.floor_ok else " (floor weak)"
+		print("    seed %d r%d(req%d)  adept=%.0f -> expert=%.0f  (+%.0f sweep, %d full-cov rungs)%s" % [
+				e.seed, e.nrooms, e.req, e.adept, e.expert, e.sweep, e.fcov_niches, flag])
+	if not infeasible.is_empty():
+		print("  [FI] infeasible archive (%d niches catalogued, not yet evolved -- needs a mutable genome):" % infeasible.size())
+		var infs: Array = infeasible.values()
+		for i in mini(4, infs.size()):
+			print("    seed %d r%d: %s" % [infs[i].seed, infs[i].nrooms, infs[i].reason])
 
 
 func _routes_json(routes: Array) -> Array:

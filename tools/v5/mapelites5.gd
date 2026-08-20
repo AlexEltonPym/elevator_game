@@ -114,8 +114,13 @@ func max_served() -> int:
 
 ## Run for `budget` simulations. Returns {best_score, best_genome, best_routes, niches,
 ## iters, runs} — best_score/best_genome named to match optimizers5.run_ea's contract.
-func run(budget: int) -> Dictionary:
+## `adept_at` (>0): also captures the best tips + coverage found after that many sims (an
+## ADEPT tier — a player who thinks only briefly), so the caller gets the anytime
+## optimization curve (adept -> expert) for free, no extra simulations.
+func run(budget: int, adept_at := 0) -> Dictionary:
 	var start: int = sim.runs
+	var adept_score := SimApi5.NEG_INF
+	var adept_cover := 0
 	# Seed the archive: capacity-aware primitives, then random legal draws.
 	var init: Array = RG.primitive_genomes(level, widths, rng, INIT_SEEDS)
 	var guard := 0
@@ -128,6 +133,10 @@ func run(budget: int) -> Dictionary:
 		if sim.runs - start >= budget:
 			break
 		_offer(g)
+		if adept_at > 0 and adept_score <= SimApi5.NEG_INF and sim.runs - start >= adept_at:
+			var ab := best()
+			adept_score = ab.get("fitness", SimApi5.NEG_INF)
+			adept_cover = ab.get("served", 0)
 	# Illuminate: pick a (biased) elite, vary it, file the child.
 	var iter_cap := budget * 40 + 10000
 	iters = 0
@@ -144,10 +153,30 @@ func run(budget: int) -> Dictionary:
 		else:
 			child = RG.mutate(rng, parent.genome, all_docks)
 		_offer(child)
+		if adept_at > 0 and adept_score <= SimApi5.NEG_INF and sim.runs - start >= adept_at:
+			var ab2 := best()
+			adept_score = ab2.get("fitness", SimApi5.NEG_INF)
+			adept_cover = ab2.get("served", 0)
 	var b := best()
+	if adept_score <= SimApi5.NEG_INF:   # budget never reached the checkpoint
+		adept_score = b.get("fitness", SimApi5.NEG_INF)
+		adept_cover = b.get("served", 0)
 	return {"best_score": b.get("fitness", SimApi5.NEG_INF),
 			"best_genome": b.get("genome", []), "best_routes": b.get("routes", []),
-			"niches": archive.size(), "iters": iters, "runs": sim.runs - start}
+			"adept_score": adept_score, "adept_cover": adept_cover,
+			"niches": archive.size(), "iters": iters, "runs": sim.runs - start,
+			"full_cover_niches": _full_cover_niches()}
+
+
+## How many DISTINCT economy niches reach the max coverage — a read on whether the
+## solution gradient is a smooth SWEEP (many rungs from slow-full to fast-full) or bimodal.
+func _full_cover_niches() -> int:
+	var mx := max_served()
+	var n := 0
+	for e in archive.values():
+		if e.served >= mx:
+			n += 1
+	return n
 
 
 ## Archive as a served x cells heat grid of best tips (for reports).
