@@ -425,15 +425,20 @@ func _type_sig(lv: Dictionary) -> String:
 ## Infeasible / illegal designs go to a SEPARATE archive (the FI two-map structure) so we
 ## can see the broken niches; note that without a mutable genome they are catalogued, not
 ## evolved. Reports A (niches), B (hardest), C (widest sweep). Partial-safe JSON each eval.
-func _mapgen(outer_budget: int, expert_budget: int, jpath: String) -> void:
+func _mapgen(outer_budget: int, expert_budget: int, jpath: String, seed_offset := 0) -> void:
+	# RESUMABLE: load any existing archive so a fresh short-lived process can CONTINUE it
+	# (process-per-chunk sidesteps the GDScript CLI memory leak that OOM-kills long runs).
+	var loaded := _mapgen_load(jpath)
+	var archive: Dictionary = loaded.archive      # feasible: bd_key -> design (best sweep)
+	var infeasible: Dictionary = loaded.infeasible # broken/illegal: bd_key -> {seed, reason}
+	var sigs: Dictionary = loaded.sigs
+	var total: int = loaded.evals                 # evals across all chunks so far
 	var rng := RandomNumberGenerator.new()
-	rng.seed = 20250820
-	var archive := {}       # feasible: bd_key -> design (best sweep)
-	var infeasible := {}     # broken/illegal: bd_key -> {seed, reason}
-	var evals := 0
-	var sigs := {}
+	# advance the stream so chunks don't repeat; seed_offset diverges parallel workers.
+	rng.seed = 20250820 + (total + seed_offset) * 1009
+	var did := 0                                  # NEW evals this chunk
 	var nroom_cycle := [4, 5, 6, 6, 5, 7, 8]
-	while evals < outer_budget:
+	while did < outer_budget:
 		var seed_v: int
 		var nrooms: int
 		if archive.size() >= 4 and rng.randf() < 0.35:
@@ -442,25 +447,26 @@ func _mapgen(outer_budget: int, expert_budget: int, jpath: String) -> void:
 			nrooms = clampi(int(e.req) + rng.randi_range(-1, 1), 4, 8)
 			seed_v = rng.randi_range(1, 900000)
 		else:
-			nrooms = nroom_cycle[evals % nroom_cycle.size()]
+			nrooms = nroom_cycle[total % nroom_cycle.size()]
 			seed_v = rng.randi_range(1, 900000)
 		var lv := _generate(seed_v, nrooms)
 		if lv.is_empty():
 			continue   # generation miss (doesn't count as an eval)
 		var res := _classify(lv, expert_budget, 20)
-		evals += 1
+		did += 1
+		total += 1
 		var bd := _design_bd(lv)
 		var nkey := _bd_key(bd)
 		if res.tier == "BROKEN" or float(res.get("expert_tips", 0.0)) < 120.0:
 			# INFEASIBLE map: keep one representative per niche (the two-map FI structure).
 			if not infeasible.has(nkey):
-				infeasible[nkey] = {"seed": seed_v, "req": nrooms, "nrooms": int(lv.rooms.size()),
+				infeasible[nkey] = {"key": nkey, "seed": seed_v, "req": nrooms, "nrooms": int(lv.rooms.size()),
 						"reason": str(res.get("note", res.tier)), "sig": _type_sig(lv)}
 		else:
 			var sig := _type_sig(lv)
 			sigs[sig] = int(sigs.get(sig, 0)) + 1
 			var difficulty: float = 1.0 - float(res.wr)
-			var cand := {"seed": seed_v, "req": nrooms, "nrooms": int(lv.rooms.size()),
+			var cand := {"key": nkey, "seed": seed_v, "req": nrooms, "nrooms": int(lv.rooms.size()),
 					"cbin": bd[1], "cargo": bd[2], "atrium": bd[3], "penth": bd[4],
 					"fitness": float(res.sweep), "sweep": float(res.sweep),
 					"difficulty": difficulty, "wr": float(res.wr),
@@ -470,10 +476,31 @@ func _mapgen(outer_budget: int, expert_budget: int, jpath: String) -> void:
 					"fcov_niches": int(res.full_cover_niches), "tier": str(res.tier), "sig": sig}
 			if not archive.has(nkey) or cand.fitness > archive[nkey].fitness:
 				archive[nkey] = cand
-		_mapgen_save(jpath, archive, infeasible, evals, sigs)
-		print("  eval %d/%d seed %d r%d -> %-8s %s" % [evals, outer_budget, seed_v, nrooms,
+		_mapgen_save(jpath, archive, infeasible, total, sigs)
+		print("  eval %d (chunk %d/%d) seed %d r%d -> %-8s %s" % [total, did, outer_budget, seed_v, nrooms,
 				res.tier, res.get("note", "")])
-	_mapgen_report(archive, infeasible, evals, sigs)
+	_mapgen_report(archive, infeasible, total, sigs)
+
+
+## Reload a mapgen archive so a fresh process continues it (process-per-chunk robustness).
+func _mapgen_load(jpath: String) -> Dictionary:
+	var out := {"archive": {}, "infeasible": {}, "sigs": {}, "evals": 0}
+	if not FileAccess.file_exists(jpath):
+		return out
+	var f := FileAccess.open(jpath, FileAccess.READ)
+	if f == null:
+		return out
+	var data = JSON.parse_string(f.get_as_text())
+	f.close()
+	if typeof(data) != TYPE_DICTIONARY:
+		return out
+	out.evals = int(data.get("evals", 0))
+	for e in data.get("archive", []):
+		out.archive[str(e.get("key", ""))] = e
+		out.sigs[str(e.get("sig", ""))] = int(out.sigs.get(str(e.get("sig", "")), 0)) + 1
+	for e in data.get("infeasible", []):
+		out.infeasible[str(e.get("key", ""))] = e
+	return out
 
 
 func _mapgen_save(jpath: String, archive: Dictionary, infeasible: Dictionary, evals: int, sigs: Dictionary) -> void:
@@ -1207,7 +1234,8 @@ func _initialize() -> void:
 		var outer := int(args[1])
 		var expert_b := int(args[2]) if args.size() > 2 else 500
 		var jp := str(args[3]) if args.size() > 3 else "mapgen.json"
-		_mapgen(outer, expert_b, jp)
+		var soff := int(args[4]) if args.size() > 4 else 0
+		_mapgen(outer, expert_b, jp, soff)
 		quit(); return
 	if mode == "fievo":
 		var outer := int(args[1])
