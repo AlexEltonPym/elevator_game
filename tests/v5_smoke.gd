@@ -118,6 +118,7 @@ func _overlap_test() -> bool:
 	var node = load("res://scenes/v5_main.tscn").instantiate()
 	node.headless = true
 	root.add_child(node)
+	node.shift_len = 0.0  # smoke checks routing in classic quota mode; ship uses shift/tips
 	node.to_plan()
 	var ok := true
 	var l1 := _c([[2,0],[2,1],[2,2],[2,3],[2,4]]) # lower-left + atrium (2,4), legal
@@ -191,6 +192,7 @@ func _delivery_test() -> bool:
 	var node = load("res://scenes/v5_main.tscn").instantiate()
 	node.headless = true
 	root.add_child(node)
+	node.shift_len = 0.0  # smoke checks routing in classic quota mode; ship uses shift/tips
 	node.rng.seed = 40404
 	node.to_plan()
 	var ok := true
@@ -328,6 +330,7 @@ func _run_r6(r0, r1) -> String:
 	var node = load("res://scenes/v5_main.tscn").instantiate()
 	node.headless = true
 	root.add_child(node)
+	node.shift_len = 0.0  # smoke checks routing in classic quota mode; ship uses shift/tips
 	node.rng.seed = 20260814
 	node.to_plan()
 	if r0 != null:
@@ -372,6 +375,7 @@ func _run_once(lv: Dictionary, i: int, seed: int) -> Dictionary:
 	var node = scene.instantiate()
 	node.headless = true
 	root.add_child(node)
+	node.shift_len = 0.0  # smoke checks routing in classic quota mode; ship uses shift/tips
 	# NO BRIEFING: picking a level (main5._ready) must land straight in PLAN, not a
 	# briefing screen. Captured before the explicit to_plan() below so it proves _ready
 	# itself did it.
