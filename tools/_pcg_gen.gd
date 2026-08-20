@@ -1405,14 +1405,12 @@ func _colname(c: Color) -> String:
 	return "Color(%.2f, %.2f, %.2f)" % [c.r, c.g, c.b]
 
 
-## Emit a generated level as a GDScript LEVELS entry + its smoke _solution case.
-func _dump(seed_v: int, nrooms: int, id: String, name: String, soljson: String) -> void:
-	var lv := _generate(seed_v, nrooms)
-	if lv.is_empty():
-		print("gen failed"); return
+## Emit a level dict as a GDScript LEVELS entry (blocked included) + its smoke _solution
+## case from `expert_routes` (list of {cells:[[x,y]], closed}).
+func _dump_level(lv: Dictionary, id: String, name: String, expert_routes: Array) -> void:
 	print("\t{")
 	print("\t\t\"id\": \"%s\", \"world\": \"CROSSLINK\", \"name\": \"%s\", \"thesis\": \"\", \"intro\": \"\"," % [id, name])
-	print("\t\t\"cols\": %d, \"rows\": %d, \"blocked\": []," % [lv.cols, lv.rows])
+	print("\t\t\"cols\": %d, \"rows\": %d, \"blocked\": [%s]," % [lv.cols, lv.rows, _vecs(lv.get("blocked", []))])
 	print("\t\t\"overlaps\": [")
 	print("\t\t\t{\"cells\": [%s], \"max\": 3}," % _vecs(lv.overlaps[0].cells))
 	print("\t\t\t{\"cells\": [%s], \"max\": 6}," % _vecs(lv.overlaps[1].cells))
@@ -1443,20 +1441,44 @@ func _dump(seed_v: int, nrooms: int, id: String, name: String, soljson: String) 
 		print("\t\t\t{\"w\": %.2f, \"from\": \"%s\", \"to\": \"%s\"%s}," % [tr.w, tr.from, tr.to, ty])
 	print("\t\t],")
 	print("\t},")
-	# smoke solution (win-optimal expert routes, quota-mode winnable)
+	if not expert_routes.is_empty():
+		print("\t\t\t\"%s\":" % id)
+		var parts := []
+		for r in expert_routes:
+			var cc := []
+			for xy in r.cells:
+				cc.append("[%d,%d]" % [int(xy[0]), int(xy[1])])
+			parts.append("_c([%s])" % ",".join(cc))
+		print("\t\t\t\treturn [%s]" % ",\n\t\t\t\t\t\t".join(parts))
+
+
+## Emit a SEED-generated level (legacy path).
+func _dump(seed_v: int, nrooms: int, id: String, name: String, soljson: String) -> void:
+	var lv := _generate(seed_v, nrooms)
+	if lv.is_empty():
+		print("gen failed"); return
+	var routes := []
 	var f := FileAccess.open(soljson, FileAccess.READ)
 	if f != null:
 		var data: Dictionary = JSON.parse_string(f.get_as_text())
 		f.close()
 		if data.has("expert"):
-			print("\t\t\t\"%s\":" % id)
-			var parts := []
-			for r in data.expert.routes:
-				var cc := []
-				for xy in r.cells:
-					cc.append("[%d,%d]" % [int(xy[0]), int(xy[1])])
-				parts.append("_c([%s])" % ",".join(cc))
-			print("\t\t\t\treturn [%s]" % ",\n\t\t\t\t\t\t".join(parts))
+			routes = data.expert.routes
+	_dump_level(lv, id, name, routes)
+
+
+## Emit a FIEVO design (from a solvegen sol.json holding genome + expert routes).
+func _dumpgen(soljson: String, id: String, name: String) -> void:
+	var f := FileAccess.open(soljson, FileAccess.READ)
+	if f == null:
+		print("cannot read %s" % soljson); return
+	var data: Dictionary = JSON.parse_string(f.get_as_text())
+	f.close()
+	var genome := _genome_parse(data.genome)
+	var a := _assess_design(genome)
+	if not a.feasible:
+		print("design infeasible"); return
+	_dump_level(a.level, id, name, data.expert.routes)
 
 
 func _initialize() -> void:
@@ -1504,6 +1526,9 @@ func _initialize() -> void:
 		quit(); return
 	if mode == "dump":
 		_dump(int(args[1]), int(args[2]), str(args[3]), str(args[4]), str(args[5]))
+		quit(); return
+	if mode == "dumpgen":
+		_dumpgen(str(args[1]), str(args[2]), str(args[3]))
 		quit(); return
 	if mode == "gate" or mode == "batch":
 		var lo := int(args[1])
