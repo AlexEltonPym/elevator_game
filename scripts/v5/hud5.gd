@@ -207,8 +207,13 @@ func refresh_stats() -> void:
 	if headless or game == null:
 		return
 	level_label.text = str(game.level.get("id", "R-1"))
-	served_label.text = "Served %d/%d" % [game.served, game.QUOTA]
-	lost_label.text = "Lost %d/%d" % [game.lost, game.MAX_LOST]
+	if game.shift_len > 0.0:
+		served_label.text = "Tips %d" % roundi(game.tips)
+		var remain: float = maxf(0.0, game.shift_len - game.elapsed)
+		lost_label.text = "Last orders" if game.shift_closed else "%ds left" % roundi(remain)
+	else:
+		served_label.text = "Served %d/%d" % [game.served, game.QUOTA]
+		lost_label.text = "Lost %d/%d" % [game.lost, game.MAX_LOST]
 	var running: bool = game.state == game.State.PLAYING
 	for i in speed_buttons.size():
 		var active: bool = is_equal_approx(game.time_scale, SPEEDS[i][0])
@@ -270,7 +275,7 @@ func show_win(served: int, lost: int) -> void:
 		buttons.append({"text": "NEXT LEVEL", "cb": func(): game.next_level()})
 	buttons.append({"text": "RETRY", "cb": func(): game.to_plan()})
 	buttons.append({"text": "LEVEL SELECT", "cb": func(): game.to_level_select()})
-	_show_overlay("QUOTA MET", _result_body(served, lost), buttons)
+	_show_overlay("SHIFT COMPLETE" if game.shift_len > 0.0 else "QUOTA MET", _result_body(served, lost), buttons)
 
 
 func show_lose(served: int, lost: int) -> void:
@@ -289,6 +294,9 @@ func _result_body(served: int, lost: int) -> String:
 		wait += e.wait
 	if not game.log_served.is_empty():
 		wait /= game.log_served.size()
+	if game.shift_len > 0.0:
+		return "Tips: %d\nServed %d, lost %d, avg wait %.0f s.\nRETRY keeps your routes." % [
+				roundi(game.tips), served, lost, wait]
 	return "Served %d of %d, lost %d of %d.\nAverage wait %.0f s over %.0f s of shift.\nRETRY keeps your routes." % [
 			served, game.QUOTA, lost, game.MAX_LOST, wait, game.elapsed]
 
