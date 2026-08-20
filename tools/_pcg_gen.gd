@@ -103,16 +103,6 @@ func _place(type: String, cols: int, rows: int, occ: Dictionary, docks_all: Dict
 			cells.append(cell)
 		if not ok:
 			continue
-		# island gap: reject a placement that orthogonally touches an existing room (so every
-		# room reads as its own block with unambiguous docks).
-		for c in cells:
-			for d in RG.NEIGHBORS:
-				if occ.has(c + d):
-					ok = false; break
-			if not ok:
-				break
-		if not ok:
-			continue
 		var cellset := {}
 		for c in cells:
 			cellset[c] = true
@@ -123,17 +113,25 @@ func _place(type: String, cols: int, rows: int, occ: Dictionary, docks_all: Dict
 			# dock must be open (not any room cell, not another dock) and in bounds
 			if dc.x < 0 or dc.y < 0 or dc.x >= cols or dc.y >= rows or occ.has(dc) or docks_all.has(dc) or cellset.has(dc):
 				ok = false; break
-			# rule 2c: dock not directly above/below a DIFFERENT room's cell
-			if occ.has(dc + Vector2i(0,1)) or occ.has(dc + Vector2i(0,-1)):
-				ok = false; break
+			# NO AMBIGUITY: this dock must not orthogonally touch an EXISTING room it does not
+			# serve (the sampler places rooms singly, so any existing-room neighbour is a non-
+			# server). Rooms may still ABUT where no dock sits between them.
+			for nd in RG.NEIGHBORS:
+				if occ.has(dc + nd):
+					ok = false; break
+			if not ok:
+				break
 			drops.append({"cell": Vector2i(ax + d.c.x, ay + d.c.y), "dir": d.dir})
 			dockcells.append(dc)
 		if not ok:
 			continue
-		# rule 2c reverse: none of MY cells sit directly above/below an EXISTING dock
+		# reverse: none of MY cells orthogonally touch an EXISTING dock (it would read as mine).
 		for c in cells:
-			if docks_all.has(c + Vector2i(0,1)) or docks_all.has(c + Vector2i(0,-1)):
-				ok = false; break
+			for nd in RG.NEIGHBORS:
+				if docks_all.has(c + nd):
+					ok = false; break
+			if not ok:
+				break
 		if not ok:
 			continue
 		var room := {"type": type, "cells": cells, "drops": drops}
@@ -657,7 +655,10 @@ func _assess_design(genome: Dictionary) -> Dictionary:
 			if occ.has(c):
 				viol += 1
 			occ[c] = gi
-	# docks (after all room cells claimed, so dock-on-room is detectable)
+	# docks: build the SERVERS of each dock cell (the rooms that drop to it). A dock cell must
+	# be OPEN (a dock landing on a room cell is illegal). SHARED docks -- two rooms dropping to
+	# one cell -- are allowed and intentional.
+	var servers := {}   # dock cell -> {room index: true}
 	for gi in built.size():
 		for dr in built[gi].drops:
 			var dc: Vector2i = dr.cell + dr.dir
@@ -666,16 +667,19 @@ func _assess_design(genome: Dictionary) -> Dictionary:
 				continue
 			if occ.has(dc) and occ[dc] != gi:   # dock on ANOTHER room's cell
 				viol += 1
+			if not servers.has(dc):
+				servers[dc] = {}
+			servers[dc][gi] = true
 			if not dockcells.has(dc):
 				dockcells[dc] = gi
-	# rule 2c: a dock directly above/below a DIFFERENT room's cell (its own room is fine --
-	# e.g. a cafe dock sits under its own cell by design).
-	for dc in dockcells:
-		var owner: int = dockcells[dc]
-		var up: Vector2i = dc + Vector2i(0, 1)
-		var dn: Vector2i = dc + Vector2i(0, -1)
-		if (occ.has(up) and occ[up] != owner) or (occ.has(dn) and occ[dn] != owner):
-			viol += 1
+	# AMBIGUITY (the 'looks like a dropoff' bug): a dock orthogonally adjacent to a room it
+	# does NOT serve reads as that room's dock too. Its own room + any co-server are fine, so
+	# rooms may ABUT and may SHARE a dock; only a NON-serving room neighbour is illegal.
+	for dc in servers:
+		for d in RG.NEIGHBORS:
+			var n: Vector2i = dc + d
+			if occ.has(n) and not servers[dc].has(occ[n]):
+				viol += 1
 	# BLOCKS: 1x1 impassable window cells. A block on a room cell or a dock cell is illegal
 	# (can't wall a room/dock); otherwise blocks are walls routes detour around. `walls` =
 	# rooms + blocks is what the reachability flood must go around.
@@ -728,16 +732,6 @@ func _assess_design(genome: Dictionary) -> Dictionary:
 				top = maxi(top, c.y)
 			if top < rows - 2:
 				viol += 1
-	# DESIGN RULE: rooms are ISLANDS -- no two different rooms' cells orthogonally touch, so
-	# every room reads as its own block and its docks are unambiguous (fixes a non-dock edge
-	# looking like a dock because another room abuts it). Check right + up to count once.
-	for c in occ:
-		var rr: Vector2i = c + Vector2i(1, 0)
-		var uu: Vector2i = c + Vector2i(0, 1)
-		if occ.has(rr) and occ[rr] != occ[c]:
-			viol += 1
-		if occ.has(uu) and occ[uu] != occ[c]:
-			viol += 1
 	var out := {"feasible": viol == 0, "distance": viol, "level": {}}
 	if viol == 0:
 		out.level = _wrap(cols, rows, built, blockset.keys())
