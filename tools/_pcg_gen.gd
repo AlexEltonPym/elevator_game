@@ -338,16 +338,19 @@ func _novice_tip(tsim: InjSim, widths: Array, seeds: Array, thresh: float, tries
 ## solver actually uses), or a BLOCK no route runs alongside (it forces no detour). Returns
 ## a reason string, or "" when everything present is doing work. Cheap: pure geometry.
 func _red_herring(lv: Dictionary, routes: Array) -> String:
-	var served := {}
+	var serve_count := {}   # room id -> how many routes serve it
 	var routecells := {}
 	for r in routes:
 		for rid in RG.served_rooms_of_cells(r.cells):
-			served[rid] = true
+			serve_count[rid] = int(serve_count.get(rid, 0)) + 1
 		for c in r.cells:
 			routecells[c] = true
+	# An ATRIUM carries no demand -- it only earns its place as a TRANSFER BRIDGE between two
+	# otherwise-disjoint lifts (alight one dock, walk across, board the other). So it must be
+	# served by >= 2 lifts; fewer means it bridges nothing and is a red herring.
 	for i in lv.rooms.size():
-		if str(lv.rooms[i].type) == "atrium" and not served.has(i):
-			return "unused atrium (room %s)" % Levels5.ROOM_LETTERS[i]
+		if str(lv.rooms[i].type) == "atrium" and int(serve_count.get(i, 0)) < 2:
+			return "atrium %s not a transfer bridge (served by %d lifts)" % [Levels5.ROOM_LETTERS[i], int(serve_count.get(i, 0))]
 	for b in lv.get("blocked", []):
 		var near := false
 		for d in RG.NEIGHBORS:
