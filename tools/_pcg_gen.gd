@@ -417,7 +417,7 @@ func _mapgen(outer_budget: int, expert_budget: int, jpath: String) -> void:
 			var bd := _design_bd(lv)
 			var sig := _type_sig(lv)
 			sigs[sig] = int(sigs.get(sig, 0)) + 1
-			var cand := {"seed": seed_v, "nrooms": int(lv.rooms.size()), "cbin": bd[1],
+			var cand := {"seed": seed_v, "req": nrooms, "nrooms": int(lv.rooms.size()), "cbin": bd[1],
 					"fitness": fitness, "difficulty": difficulty, "range": rng_score,
 					"wr": float(res.wr), "expert": float(res.expert_tips),
 					"novice": float(res.novice_tips), "depth": float(res.depth),
