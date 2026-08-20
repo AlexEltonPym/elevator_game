@@ -737,6 +737,120 @@ func _draw_gen(jpath: String, selector: String, png: String) -> void:
 			float(pick.get("sweep", 0)), (genome.blocks as Array).size(), pick.get("sig", ""), png])
 
 
+## Pick one design from a fievo archive: integer index into feasible-by-sweep, or "block".
+func _pick_gen(jpath: String, selector: String) -> Dictionary:
+	var f := FileAccess.open(jpath, FileAccess.READ)
+	if f == null:
+		return {}
+	var data = JSON.parse_string(f.get_as_text())
+	f.close()
+	var feas: Array = data.get("feasible", [])
+	feas.sort_custom(func(a, b): return float(a.get("sweep", 0)) > float(b.get("sweep", 0)))
+	if selector == "block":
+		for c in feas:
+			if (c.genome.get("blocks", []) as Array).size() > 0:
+				return c
+		return {}
+	var idx: int = clampi(int(selector), 0, feas.size() - 1)
+	return feas[idx] if not feas.is_empty() else {}
+
+
+## Solve a fievo design: EXPERT (MAP-Elites tip optimum) + NOVICE (a representative random
+## legal plan, median tips). Saves genome + both route-sets + held-out tips for the artifact.
+func _solve_gen(jpath: String, selector: String, out: String) -> void:
+	var pick := _pick_gen(jpath, selector)
+	if pick.is_empty():
+		print("no design matched '%s'" % selector); return
+	var genome := _genome_parse(pick.genome)
+	var a := _assess_design(genome)
+	if not a.feasible:
+		print("selected design infeasible"); return
+	var lv: Dictionary = a.level
+	Levels5.injected = lv
+	Levels5.headless = true
+	SimApi5.load_maze(lv)
+	var sim := InjSim.new(self)
+	sim.inj = lv
+	sim.tip_mode = true
+	sim.shift = 90.0
+	var test := SimApi5.SEEDS_TEST
+	# EXPERT via MAP-Elites
+	var me = ME.new()
+	me.setup(sim, 0, lv, SimApi5.SEEDS_TRAIN.slice(0, 3), STEP, 40404)
+	var eres: Dictionary = me.run(1200)
+	var expert_routes: Array = eres.best_routes
+	var expert_tips: float = sim.score_seeds(0, expert_routes, test, 0.25).score
+	# NOVICE: sample random legal plans, keep the median-tip one (a plausible clumsy plan)
+	var widths := RG.card_widths(lv)
+	var all_docks := RG.docks()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 999
+	var cands := []
+	for _i in 50:
+		var g := RG.random_genome(rng, all_docks, widths)
+		if g.is_empty():
+			continue
+		var dec := RG.decode_genome(g, widths)
+		if dec.err != "":
+			continue
+		cands.append({"routes": dec.routes, "tips": sim.score_seeds(0, dec.routes, test, 0.25).score})
+	cands.sort_custom(func(x, y): return x.tips < y.tips)
+	# A representative NOVICE is a plausible clumsy-but-working plan: the median among the
+	# POSITIVE-scoring random plans (a beginner who gets the building served, just slowly),
+	# not a money-losing disaster. Fall back to the best plan if none score positive.
+	var pos := cands.filter(func(c): return c.tips > 0.0)
+	var novice: Dictionary
+	if pos.size() >= 1:
+		novice = pos[pos.size() / 2]
+	elif not cands.is_empty():
+		novice = cands[cands.size() - 1]
+	else:
+		novice = {"routes": [], "tips": 0.0}
+	var save := {
+		"genome": _genome_json(genome), "sig": pick.get("sig", ""), "tier": pick.get("tier", ""),
+		"nrooms": int(pick.get("nrooms", 0)), "sweep": float(pick.get("sweep", 0)),
+		"nblocks": (genome.blocks as Array).size(),
+		"novice": {"routes": _routes_json(novice.routes), "tips": novice.tips},
+		"expert": {"routes": _routes_json(expert_routes), "tips": expert_tips}}
+	var wf := FileAccess.open(out, FileAccess.WRITE)
+	wf.store_string(JSON.stringify(save))
+	wf.close()
+	print("solvegen %s: novice=%.0f expert=%.0f (r%d %s blk%d) -> %s" % [selector, novice.tips, expert_tips,
+			int(pick.get("nrooms", 0)), pick.get("sig", ""), (genome.blocks as Array).size(), out])
+
+
+## Draw a solved design's NOVICE or EXPERT routes onto its level (windowed screenshot).
+func _draw_sol(out: String, which: String, png: String) -> void:
+	var f := FileAccess.open(out, FileAccess.READ)
+	if f == null:
+		print("cannot read %s" % out); return
+	var data = JSON.parse_string(f.get_as_text())
+	f.close()
+	var genome := _genome_parse(data.genome)
+	var a := _assess_design(genome)
+	if not a.feasible:
+		print("infeasible"); return
+	Levels5.injected = a.level
+	Levels5.headless = false
+	Levels5.current = 0
+	var scene: Node = load("res://scenes/v5_main.tscn").instantiate()
+	root.add_child(scene)
+	await process_frame
+	await process_frame
+	scene.to_plan()
+	var routes: Array = data[which].routes
+	for i in routes.size():
+		var cells: Array = []
+		for xy in routes[i].cells:
+			cells.append(Vector2i(int(xy[0]), int(xy[1])))
+		scene.commit_route(i, cells, bool(routes[i].get("closed", false)))
+	for _i in 6:
+		await process_frame
+	await RenderingServer.frame_post_draw
+	root.get_texture().get_image().save_png(png)
+	print("drew %s (%d routes, %.0f tips) -> %s" % [which, routes.size(), float(data[which].get("tips", 0)), png])
+
+
 func _same_cells(a: Array, b: Array) -> bool:
 	if a.size() != b.size():
 		return false
@@ -1357,6 +1471,12 @@ func _initialize() -> void:
 		quit(); return
 	if mode == "drawgen":
 		await _draw_gen(str(args[1]), str(args[2]), str(args[3]))
+		quit(); return
+	if mode == "solvegen":
+		_solve_gen(str(args[1]), str(args[2]), str(args[3]))
+		quit(); return
+	if mode == "drawsol":
+		await _draw_sol(str(args[1]), str(args[2]), str(args[3]))
 		quit(); return
 	if mode == "check":
 		_check(str(args[1]))
