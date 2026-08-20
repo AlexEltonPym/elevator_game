@@ -86,7 +86,14 @@ func _place(type: String, cols: int, rows: int, occ: Dictionary, docks_all: Dict
 	for _t in tries:
 		var t2: Dictionary = _flip(tpl) if rng.randf() < 0.5 else tpl.duplicate(true)
 		var ax := rng.randi_range(0, cols - t2.w)
-		var ay := 0 if bottom_only else rng.randi_range(0, rows - t2.h)
+		# lobby on the bottom row, penthouse in the top band, everyone else free.
+		var ay: int
+		if bottom_only:
+			ay = 0
+		elif type == "penthouse":
+			ay = rng.randi_range(maxi(0, rows - int(t2.h) - 1), rows - int(t2.h))
+		else:
+			ay = rng.randi_range(0, rows - t2.h)
 		var cells := []
 		var ok := true
 		for c in t2.cells:
@@ -94,6 +101,16 @@ func _place(type: String, cols: int, rows: int, occ: Dictionary, docks_all: Dict
 			if cell.x < 0 or cell.y < 0 or cell.x >= cols or cell.y >= rows or occ.has(cell) or docks_all.has(cell):
 				ok = false; break
 			cells.append(cell)
+		if not ok:
+			continue
+		# island gap: reject a placement that orthogonally touches an existing room (so every
+		# room reads as its own block with unambiguous docks).
+		for c in cells:
+			for d in RG.NEIGHBORS:
+				if occ.has(c + d):
+					ok = false; break
+			if not ok:
+				break
 		if not ok:
 			continue
 		var cellset := {}
@@ -318,6 +335,31 @@ func _novice_tip(tsim: InjSim, widths: Array, seeds: Array, thresh: float, tries
 	return {"legal": legal, "hits": hits, "med": _median(tips)}
 
 
+## A design has a RED HERRING if the expert plan ignores one of its features: an ATRIUM the
+## plan never serves (it carries no demand, so it only earns its place as a shortcut the
+## solver actually uses), or a BLOCK no route runs alongside (it forces no detour). Returns
+## a reason string, or "" when everything present is doing work. Cheap: pure geometry.
+func _red_herring(lv: Dictionary, routes: Array) -> String:
+	var served := {}
+	var routecells := {}
+	for r in routes:
+		for rid in RG.served_rooms_of_cells(r.cells):
+			served[rid] = true
+		for c in r.cells:
+			routecells[c] = true
+	for i in lv.rooms.size():
+		if str(lv.rooms[i].type) == "atrium" and not served.has(i):
+			return "unused atrium (room %s)" % Levels5.ROOM_LETTERS[i]
+	for b in lv.get("blocked", []):
+		var near := false
+		for d in RG.NEIGHBORS:
+			if routecells.has(b + d):
+				near = true; break
+		if not near:
+			return "idle block %s (no route detours around it)" % str(b)
+	return ""
+
+
 func _classify(lv: Dictionary, expert_budget := EXPERT_BUDGET, novice_tries := NOVICE_TRIES) -> Dictionary:
 	Levels5.injected = lv
 	Levels5.headless = true
@@ -344,6 +386,10 @@ func _classify(lv: Dictionary, expert_budget := EXPERT_BUDGET, novice_tries := N
 	var expert_tips: float = mres.best_score
 	if expert_tips <= 0.0:
 		return {"tier": "BROKEN", "note": "no positive-tip plan (MAP-Elites best=%.0f)" % expert_tips}
+	# NO RED HERRINGS: a room/barrier the expert solution ignores isn't intentional design.
+	var rh := _red_herring(lv, mres.best_routes)
+	if rh != "":
+		return {"tier": "REDHERRING", "note": "red herring: " + rh, "expert_tips": expert_tips}
 	var adept_tips: float = mres.adept_score
 	var adept_cover: int = mres.adept_cover
 	# NOVICE accessibility: fraction of random plans reaching EXPERT_FRAC of the ceiling.
@@ -462,7 +508,7 @@ func _mapgen(outer_budget: int, expert_budget: int, jpath: String, seed_offset :
 		total += 1
 		var bd := _design_bd(lv)
 		var nkey := _bd_key(bd)
-		if res.tier == "BROKEN" or float(res.get("expert_tips", 0.0)) < 120.0:
+		if res.tier == "BROKEN" or res.tier == "REDHERRING" or float(res.get("expert_tips", 0.0)) < 120.0:
 			# INFEASIBLE map: keep one representative per niche (the two-map FI structure).
 			if not infeasible.has(nkey):
 				infeasible[nkey] = {"key": nkey, "seed": seed_v, "req": nrooms, "nrooms": int(lv.rooms.size()),
@@ -673,6 +719,25 @@ func _assess_design(genome: Dictionary) -> Dictionary:
 	# a valid level needs >= 4 rooms and a lobby
 	if built.size() < 4 or not types.has("lobby"):
 		viol += 3
+	# DESIGN RULE: penthouse near the TOP (its top cell in the top 2 rows) -- a penthouse is
+	# the top of the building; placing it low reads as a mistake.
+	for room in built:
+		if room.type == "penthouse":
+			var top := -1
+			for c in room.cells:
+				top = maxi(top, c.y)
+			if top < rows - 2:
+				viol += 1
+	# DESIGN RULE: rooms are ISLANDS -- no two different rooms' cells orthogonally touch, so
+	# every room reads as its own block and its docks are unambiguous (fixes a non-dock edge
+	# looking like a dock because another room abuts it). Check right + up to count once.
+	for c in occ:
+		var rr: Vector2i = c + Vector2i(1, 0)
+		var uu: Vector2i = c + Vector2i(0, 1)
+		if occ.has(rr) and occ[rr] != occ[c]:
+			viol += 1
+		if occ.has(uu) and occ[uu] != occ[c]:
+			viol += 1
 	var out := {"feasible": viol == 0, "distance": viol, "level": {}}
 	if viol == 0:
 		out.level = _wrap(cols, rows, built, blockset.keys())
@@ -694,7 +759,14 @@ func _random_design(rng: RandomNumberGenerator, nrooms: int, cols: int, rows: in
 		var tpl: Dictionary = _templates()[type]
 		var flip: bool = rng.randf() < 0.5
 		var ax: int = rng.randi_range(0, maxi(0, cols - int(tpl.w)))
-		var ay: int = 0 if type == "lobby" else rng.randi_range(0, maxi(0, rows - int(tpl.h)))
+		# lobby on the bottom row, penthouse near the top, everyone else free.
+		var ay: int
+		if type == "lobby":
+			ay = 0
+		elif type == "penthouse":
+			ay = rng.randi_range(rows - int(tpl.h) - 1, rows - int(tpl.h))
+		else:
+			ay = rng.randi_range(0, maxi(0, rows - int(tpl.h)))
 		rooms.append({"type": type, "ax": ax, "ay": ay, "flip": flip})
 	return {"cols": cols, "rows": rows, "rooms": rooms, "blocks": []}
 
@@ -890,7 +962,12 @@ func _level_to_genome(lv: Dictionary) -> Dictionary:
 func _clamp_anchor(gene: Dictionary, cols: int, rows: int) -> void:
 	var tpl: Dictionary = _templates()[gene.type]
 	gene.ax = clampi(gene.ax, 0, maxi(0, cols - int(tpl.w)))
-	gene.ay = 0 if gene.type == "lobby" else clampi(gene.ay, 0, maxi(0, rows - int(tpl.h)))
+	if gene.type == "lobby":
+		gene.ay = 0
+	elif gene.type == "penthouse":   # keep it pinned to the top band
+		gene.ay = clampi(gene.ay, maxi(0, rows - int(tpl.h) - 1), rows - int(tpl.h))
+	else:
+		gene.ay = clampi(gene.ay, 0, maxi(0, rows - int(tpl.h)))
 
 
 func _nonlobby_idxs(g: Dictionary) -> Array:
@@ -1085,7 +1162,7 @@ func _fievo(chunk: int, expert_budget: int, jpath: String, seed_offset := 0) -> 
 	var file_feasible := func(child: Dictionary, level: Dictionary, from_inf: bool) -> void:
 		var res := _classify(level, expert_budget, 20)
 		st.evals += 1
-		if res.tier == "BROKEN" or float(res.get("expert_tips", 0.0)) < 120.0:
+		if res.tier == "BROKEN" or res.tier == "REDHERRING" or float(res.get("expert_tips", 0.0)) < 120.0:
 			return
 		var bd := _design_bd(level)
 		var nkey := _bd_key(bd)
