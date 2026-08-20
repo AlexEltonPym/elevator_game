@@ -699,6 +699,44 @@ func _random_design(rng: RandomNumberGenerator, nrooms: int, cols: int, rows: in
 	return {"cols": cols, "rows": rows, "rooms": rooms, "blocks": []}
 
 
+## Render one fievo design (genome -> level -> screenshot). `selector`: an integer index
+## into the feasible archive sorted by sweep (desc), or "block" for the first block-bearing
+## design. Rebuilds the level from the stored genome (fievo designs aren't seed-addressable).
+func _draw_gen(jpath: String, selector: String, png: String) -> void:
+	var f := FileAccess.open(jpath, FileAccess.READ)
+	if f == null:
+		print("cannot read %s" % jpath); return
+	var data = JSON.parse_string(f.get_as_text())
+	f.close()
+	var feas: Array = data.get("feasible", [])
+	feas.sort_custom(func(a, b): return float(a.get("sweep", 0)) > float(b.get("sweep", 0)))
+	var pick: Dictionary = {}
+	if selector == "block":
+		for c in feas:
+			if (c.genome.get("blocks", []) as Array).size() > 0:
+				pick = c; break
+	else:
+		var idx: int = clampi(int(selector), 0, feas.size() - 1)
+		pick = feas[idx]
+	if pick.is_empty():
+		print("no design matched selector '%s'" % selector); return
+	var genome := _genome_parse(pick.genome)
+	var a := _assess_design(genome)
+	if not a.feasible:
+		print("selected design is infeasible (dist %d)" % a.distance); return
+	Levels5.injected = a.level
+	Levels5.headless = false
+	Levels5.current = 0
+	var scene: Node = load("res://scenes/v5_main.tscn").instantiate()
+	root.add_child(scene)
+	for _i in 6:
+		await process_frame
+	await RenderingServer.frame_post_draw
+	root.get_texture().get_image().save_png(png)
+	print("drew %s r%d sweep=%.0f blocks=%d (%s) -> %s" % [pick.get("tier", "?"), int(pick.get("nrooms", 0)),
+			float(pick.get("sweep", 0)), (genome.blocks as Array).size(), pick.get("sig", ""), png])
+
+
 func _same_cells(a: Array, b: Array) -> bool:
 	if a.size() != b.size():
 		return false
@@ -1316,6 +1354,9 @@ func _initialize() -> void:
 		quit(); return
 	if mode == "draw":
 		await _draw(str(args[1]), str(args[2]), str(args[3]))
+		quit(); return
+	if mode == "drawgen":
+		await _draw_gen(str(args[1]), str(args[2]), str(args[3]))
 		quit(); return
 	if mode == "check":
 		_check(str(args[1]))
