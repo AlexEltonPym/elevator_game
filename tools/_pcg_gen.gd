@@ -208,8 +208,9 @@ func _reachable_all(cols: int, rows: int, occ: Dictionary, docks: Array) -> bool
 	return true
 
 
-## Wrap placed rooms into a full level: caps, cards, cover trips.
-func _wrap(cols: int, rows: int, rooms: Array) -> Dictionary:
+## Wrap placed rooms into a full level: caps, cards, cover trips. `blocks` are 1x1
+## impassable "window" cells routes must detour around (Grid5.passable is false for them).
+func _wrap(cols: int, rows: int, rooms: Array, blocks := []) -> Dictionary:
 	# letters by room order; classify which types exist.
 	var has := {}
 	var letter_of := {}
@@ -251,15 +252,18 @@ func _wrap(cols: int, rows: int, rooms: Array) -> Dictionary:
 	for rm in rooms:
 		for dr in rm.drops:
 			dockset[dr.cell + dr.dir] = true
+	var blockset := {}
+	for b in blocks:
+		blockset[b] = true
 	var cap3 := []
 	for x in cols:
 		for y in rows:
 			var c := Vector2i(x, y)
-			if not occ.has(c) and not dockset.has(c):
+			if not occ.has(c) and not dockset.has(c) and not blockset.has(c):
 				cap3.append(c)
 	return {
 		"id": "GEN", "world": "CROSSLINK", "name": "Generated", "thesis": "", "intro": "",
-		"cols": cols, "rows": rows, "blocked": [], "rooms": rooms,
+		"cols": cols, "rows": rows, "blocked": blockset.keys(), "rooms": rooms,
 		"overlaps": [{"cells": cap3, "max": 3}, {"cells": dockset.keys(), "max": 6}],
 		"cards": cards, "quota": 20, "max_lost": 4, "shift": 90.0,
 		"spawn": {"interval_start": 2.2, "interval_end": 1.7, "ramp": 40.0, "burst_min": 1, "burst_max": 2, "gap": 0.9, "cover": true},
@@ -402,11 +406,12 @@ func _design_bd(lv: Dictionary) -> Array:
 	var compact: float = float(cells) / bbox
 	var cbin: int = clampi(int((compact - 0.32) / 0.14), 0, 1)   # 2 bins: sprawl vs dense
 	var cargo: int = 1 if (has_cafe and has_delivery) else 0
-	return [nrooms, cbin, cargo, 1 if has_atrium else 0, 1 if has_penth else 0]
+	var has_blocks: int = 1 if (lv.get("blocked", []) as Array).size() > 0 else 0
+	return [nrooms, cbin, cargo, 1 if has_atrium else 0, 1 if has_penth else 0, has_blocks]
 
 
 func _bd_key(bd: Array) -> String:
-	return "%d|%d|%d|%d|%d" % [bd[0], bd[1], bd[2], bd[3], bd[4]]
+	return "%d|%d|%d|%d|%d|%d" % [bd[0], bd[1], bd[2], bd[3], bd[4], bd[5]]
 
 
 ## A sorted room-type signature (a second, categorical read on design uniqueness).
@@ -551,13 +556,17 @@ func _mapgen_report(archive: Dictionary, infeasible: Dictionary, evals: int, sig
 ## smooth landscape for QD), and an infeasible design can be REPAIRED toward feasibility
 ## and migrate into the feasible archive -- the whole point of keeping a two-map FI split.
 const PALETTE := ["apartment", "cafe", "penthouse", "delivery", "atrium"]
+const MAX_BLOCKS := 6
 
 
 func _clone_design(g: Dictionary) -> Dictionary:
 	var rooms := []
 	for r in g.rooms:
 		rooms.append((r as Dictionary).duplicate())
-	return {"cols": g.cols, "rows": g.rows, "rooms": rooms}
+	var blocks := []
+	for b in g.get("blocks", []):
+		blocks.append(b)
+	return {"cols": g.cols, "rows": g.rows, "rooms": rooms, "blocks": blocks}
 
 
 ## Build a room's cells/drops from a gene (no legality; cells may fall out of bounds).
@@ -621,12 +630,29 @@ func _assess_design(genome: Dictionary) -> Dictionary:
 		var dn: Vector2i = dc + Vector2i(0, -1)
 		if (occ.has(up) and occ[up] != owner) or (occ.has(dn) and occ[dn] != owner):
 			viol += 1
-	# reachability: every dock cell reachable from the first over open (non-room) cells
+	# BLOCKS: 1x1 impassable window cells. A block on a room cell or a dock cell is illegal
+	# (can't wall a room/dock); otherwise blocks are walls routes detour around. `walls` =
+	# rooms + blocks is what the reachability flood must go around.
+	var blocks: Array = genome.get("blocks", [])
+	var walls := occ.duplicate()
+	var blockset := {}
+	for b in blocks:
+		if not (b is Vector2i):
+			continue
+		if b.x < 0 or b.y < 0 or b.x >= cols or b.y >= rows:
+			viol += 1
+			continue
+		if occ.has(b) or dockcells.has(b) or blockset.has(b):
+			viol += 1
+			continue
+		blockset[b] = true
+		walls[b] = true
+	# reachability: every dock cell reachable from the first over open cells (not walls)
 	var docklist: Array = dockcells.keys()
 	if not docklist.is_empty():
 		var seen := {}
 		var start: Vector2i = docklist[0]
-		if not occ.has(start):
+		if not walls.has(start):
 			seen[start] = true
 			var q: Array = [start]
 			var head := 0
@@ -634,7 +660,7 @@ func _assess_design(genome: Dictionary) -> Dictionary:
 				var u: Vector2i = q[head]; head += 1
 				for d in RG.NEIGHBORS:
 					var v: Vector2i = u + d
-					if v.x < 0 or v.y < 0 or v.x >= cols or v.y >= rows or seen.has(v) or occ.has(v):
+					if v.x < 0 or v.y < 0 or v.x >= cols or v.y >= rows or seen.has(v) or walls.has(v):
 						continue
 					seen[v] = true
 					q.append(v)
@@ -649,7 +675,7 @@ func _assess_design(genome: Dictionary) -> Dictionary:
 		viol += 3
 	var out := {"feasible": viol == 0, "distance": viol, "level": {}}
 	if viol == 0:
-		out.level = _wrap(cols, rows, built)
+		out.level = _wrap(cols, rows, built, blockset.keys())
 	return out
 
 
@@ -670,7 +696,7 @@ func _random_design(rng: RandomNumberGenerator, nrooms: int, cols: int, rows: in
 		var ax: int = rng.randi_range(0, maxi(0, cols - int(tpl.w)))
 		var ay: int = 0 if type == "lobby" else rng.randi_range(0, maxi(0, rows - int(tpl.h)))
 		rooms.append({"type": type, "ax": ax, "ay": ay, "flip": flip})
-	return {"cols": cols, "rows": rows, "rooms": rooms}
+	return {"cols": cols, "rows": rows, "rooms": rooms, "blocks": []}
 
 
 func _same_cells(a: Array, b: Array) -> bool:
@@ -703,7 +729,10 @@ func _level_to_genome(lv: Dictionary) -> Dictionary:
 	var rooms := []
 	for rm in lv.rooms:
 		rooms.append(_gene_for_room(rm))
-	return {"cols": int(lv.cols), "rows": int(lv.rows), "rooms": rooms}
+	var blocks := []
+	for b in lv.get("blocked", []):
+		blocks.append(b)
+	return {"cols": int(lv.cols), "rows": int(lv.rows), "rooms": rooms, "blocks": blocks}
 
 
 func _clamp_anchor(gene: Dictionary, cols: int, rows: int) -> void:
@@ -734,6 +763,24 @@ func _mut_design(rng: RandomNumberGenerator, g: Dictionary, repair := false) -> 
 		var ri: int = nl[rng.randi_range(0, nl.size() - 1)]
 		out.rooms[ri].ax = rng.randi_range(0, maxi(0, cols - int(_templates()[out.rooms[ri].type].w)))
 		out.rooms[ri].ay = rng.randi_range(0, maxi(0, rows - int(_templates()[out.rooms[ri].type].h)))
+		return out
+	# ~18% of mutations edit BLOCKS (add/move/remove a 1x1 impassable window). A block that
+	# lands on a room/dock is caught as an infeasibility and repaired; good blocks force the
+	# route detours that make a level interesting.
+	if not repair and rng.randf() < 0.18:
+		var blocks: Array = out.blocks
+		match rng.randi_range(0, 2):
+			0:
+				if blocks.size() < MAX_BLOCKS:
+					blocks.append(Vector2i(rng.randi_range(0, cols - 1), rng.randi_range(0, rows - 1)))
+			1:
+				if not blocks.is_empty():
+					var bi: int = rng.randi_range(0, blocks.size() - 1)
+					var nb: Vector2i = blocks[bi] + Vector2i(rng.randi_range(-2, 2), rng.randi_range(-2, 2))
+					blocks[bi] = Vector2i(clampi(nb.x, 0, cols - 1), clampi(nb.y, 0, rows - 1))
+			2:
+				if not blocks.is_empty():
+					blocks.remove_at(rng.randi_range(0, blocks.size() - 1))
 		return out
 	var roll := rng.randf()
 	if roll < 0.40 and not nl.is_empty():            # JIGGLE
@@ -810,7 +857,10 @@ func _cross_design(rng: RandomNumberGenerator, a: Dictionary, b: Dictionary) -> 
 		rooms = rooms.slice(0, 8)
 	if rooms.size() < 4:
 		return _clone_design(a)
-	return {"cols": a.cols, "rows": a.rows, "rooms": rooms}
+	var blocks := []
+	for bl in a.get("blocks", []):
+		blocks.append(bl)
+	return {"cols": a.cols, "rows": a.rows, "rooms": rooms, "blocks": blocks}
 
 
 ## Descriptor for an (infeasible) genome, from its room types + count (geometry may be
@@ -820,23 +870,64 @@ func _design_bd_genome(g: Dictionary) -> Array:
 	for r in g.rooms:
 		types[r.type] = true
 	var cargo := 1 if (types.has("cafe") and types.has("delivery")) else 0
-	return [g.rooms.size(), 0, cargo, 1 if types.has("atrium") else 0, 1 if types.has("penthouse") else 0]
+	var has_blocks := 1 if (g.get("blocks", []) as Array).size() > 0 else 0
+	return [g.rooms.size(), 0, cargo, 1 if types.has("atrium") else 0, 1 if types.has("penthouse") else 0, has_blocks]
 
 
-## FEASIBLE-INFEASIBLE MAP-Elites over the mutable genome. Feasible designs are gated and
-## kept by SWEEP per 5-D niche; infeasible designs are kept by MIN violation-distance per
-## niche and can be mutated (repair-biased) back toward feasibility. Emitter draws parents
-## from both maps. Only feasible designs cost simulations, so the FI half is nearly free.
-func _fievo(outer_budget: int, expert_budget: int, jpath: String) -> void:
-	var rng := RandomNumberGenerator.new()
-	rng.seed = 20250821
+# ---- genome (de)serialization: blocks are Vector2i, not JSON-native ------------------
+func _genome_json(g: Dictionary) -> Dictionary:
+	var blocks := []
+	for b in g.get("blocks", []):
+		blocks.append([b.x, b.y])
+	return {"cols": int(g.cols), "rows": int(g.rows), "rooms": g.rooms, "blocks": blocks}
+
+
+func _genome_parse(d: Dictionary) -> Dictionary:
+	var rooms := []
+	for r in d.get("rooms", []):
+		rooms.append({"type": str(r.type), "ax": int(r.ax), "ay": int(r.ay), "flip": bool(r.get("flip", false))})
+	var blocks := []
+	for xy in d.get("blocks", []):
+		blocks.append(Vector2i(int(xy[0]), int(xy[1])))
+	return {"cols": int(d.cols), "rows": int(d.rows), "rooms": rooms, "blocks": blocks}
+
+
+func _fievo_load(jpath: String) -> Dictionary:
+	var out := {"feasible": {}, "infeasible": {}, "evals": 0}
+	if not FileAccess.file_exists(jpath):
+		return out
+	var f := FileAccess.open(jpath, FileAccess.READ)
+	if f == null:
+		return out
+	var data = JSON.parse_string(f.get_as_text())
+	f.close()
+	if typeof(data) != TYPE_DICTIONARY:
+		return out
+	out.evals = int(data.get("evals", 0))
+	for c in data.get("feasible", []):
+		c["genome"] = _genome_parse(c.genome)
+		out.feasible[str(c.get("key", ""))] = c
+	for c in data.get("infeasible", []):
+		c["genome"] = _genome_parse(c.genome)
+		out.infeasible[str(c.get("key", ""))] = c
+	return out
+
+
+## FEASIBLE-INFEASIBLE MAP-Elites over the mutable genome. RESUMABLE + chunked: loads the
+## master, seeds its population from the loaded elites (island model for parallel workers),
+## evolves `chunk` MORE feasible evals, merges, exits (process-per-chunk = leak-robust).
+## Feasible designs kept by SWEEP per niche; infeasible by MIN violation-distance and mutated
+## (repair-biased) back toward feasibility. Only feasible designs cost simulations.
+func _fievo(chunk: int, expert_budget: int, jpath: String, seed_offset := 0) -> void:
 	var cols := 9
 	var rows := 11
-	var feasible := {}      # bd_key -> {genome, sweep, ...}
-	var infeasible := {}    # bd_key -> {genome, distance}
-	# Counters live in a Dictionary so the offer/file lambdas mutate them BY REFERENCE
-	# (GDScript lambdas capture plain ints by value -- reassigning one wouldn't propagate).
-	var st := {"evals": 0, "migrated": 0, "born_inf": 0}
+	var loaded := _fievo_load(jpath)
+	var feasible: Dictionary = loaded.feasible
+	var infeasible: Dictionary = loaded.infeasible
+	var base_evals: int = loaded.evals
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 20250821 + (base_evals + seed_offset) * 1009
+	var st := {"evals": 0, "migrated": 0, "born_inf": 0}   # NEW this chunk
 	var iters := 0
 	var cycle := [4, 5, 6, 7, 6, 5, 8]
 	var file_feasible := func(child: Dictionary, level: Dictionary, from_inf: bool) -> void:
@@ -847,7 +938,8 @@ func _fievo(outer_budget: int, expert_budget: int, jpath: String) -> void:
 		var bd := _design_bd(level)
 		var nkey := _bd_key(bd)
 		var difficulty: float = 1.0 - float(res.wr)
-		var cand := {"genome": child, "cbin": bd[1], "cargo": bd[2], "atrium": bd[3], "penth": bd[4],
+		var cand := {"key": nkey, "genome": child, "cbin": bd[1], "cargo": bd[2], "atrium": bd[3],
+				"penth": bd[4], "nblocks": (level.get("blocked", []) as Array).size(),
 				"nrooms": int(level.rooms.size()), "sweep": float(res.sweep), "fitness": float(res.sweep),
 				"difficulty": difficulty, "wr": float(res.wr), "expert": float(res.expert_tips),
 				"adept": float(res.adept_tips), "floor_ok": bool(res.floor_ok),
@@ -867,19 +959,18 @@ func _fievo(outer_budget: int, expert_budget: int, jpath: String) -> void:
 			var bd := _design_bd_genome(child)
 			var nkey := _bd_key(bd)
 			if not infeasible.has(nkey) or a.distance < infeasible[nkey].distance:
-				infeasible[nkey] = {"genome": child, "distance": a.distance, "nrooms": child.rooms.size()}
-	# init population: SEED FROM _generate (retry-places legally) so the feasible archive
-	# starts populated; evolution then mutates from legal designs (far higher feasible yield
-	# than random anchors). Fall back to a random design if a generate attempt misses.
-	for i in 16:
-		var lv := _generate(rng.randi_range(1, 900000), cycle[i % cycle.size()])
-		if lv.is_empty():
-			offer.call(_random_design(rng, cycle[i % cycle.size()], cols, rows), false)
-		else:
-			offer.call(_level_to_genome(lv), false)
-	# illuminate
-	var iter_cap := outer_budget * 300 + 20000
-	while st.evals < outer_budget and iters < iter_cap:
+				infeasible[nkey] = {"key": nkey, "genome": child, "distance": a.distance, "nrooms": child.rooms.size()}
+	# init population ONLY on a cold start: seed from _generate (retry-places legally).
+	if feasible.is_empty() and infeasible.is_empty():
+		for i in 16:
+			var lv := _generate(rng.randi_range(1, 900000), cycle[i % cycle.size()])
+			if lv.is_empty():
+				offer.call(_random_design(rng, cycle[i % cycle.size()], cols, rows), false)
+			else:
+				offer.call(_level_to_genome(lv), false)
+	# illuminate: evolve `chunk` new feasible evals
+	var iter_cap := chunk * 300 + 20000
+	while st.evals < chunk and iters < iter_cap:
 		iters += 1
 		var use_inf: bool = feasible.is_empty() or (not infeasible.is_empty() and rng.randf() < 0.3)
 		var pool: Array = infeasible.values() if use_inf else feasible.values()
@@ -898,39 +989,45 @@ func _fievo(outer_budget: int, expert_budget: int, jpath: String) -> void:
 			child = _mut_design(rng, parent.genome, use_inf)
 		offer.call(child, use_inf)
 		if iters % 5 == 0:
-			_fievo_save(jpath, feasible, infeasible, st.evals, iters, st.migrated, st.born_inf)
-	_fievo_save(jpath, feasible, infeasible, st.evals, iters, st.migrated, st.born_inf)
-	_fievo_report(feasible, infeasible, st.evals, iters, st.migrated, st.born_inf)
+			_fievo_save(jpath, feasible, infeasible, base_evals + st.evals, st.migrated, st.born_inf)
+	_fievo_save(jpath, feasible, infeasible, base_evals + st.evals, st.migrated, st.born_inf)
+	_fievo_report(feasible, infeasible, base_evals + st.evals, st.migrated, st.born_inf)
 
 
 func _fievo_save(jpath: String, feasible: Dictionary, infeasible: Dictionary,
-		evals: int, iters: int, migrated: int, born_inf: int) -> void:
+		evals: int, migrated: int, born_inf: int) -> void:
 	var f := FileAccess.open(jpath, FileAccess.WRITE)
 	if f == null:
 		return
 	var feas := []
 	for e in feasible.values():
 		var c: Dictionary = (e as Dictionary).duplicate()
+		c["genome"] = _genome_json(e.genome)
 		feas.append(c)
-	f.store_string(JSON.stringify({"evals": evals, "iters": iters, "migrated": migrated,
+	var infeas := []
+	for e in infeasible.values():
+		var c: Dictionary = (e as Dictionary).duplicate()
+		c["genome"] = _genome_json(e.genome)
+		infeas.append(c)
+	f.store_string(JSON.stringify({"evals": evals, "migrated": migrated,
 			"born_infeasible": born_inf, "feasible_niches": feasible.size(),
-			"infeasible_niches": infeasible.size(), "feasible": feas}))
+			"infeasible_niches": infeasible.size(), "feasible": feas, "infeasible": infeas}))
 	f.close()
 
 
-func _fievo_report(feasible: Dictionary, infeasible: Dictionary, evals: int, iters: int,
+func _fievo_report(feasible: Dictionary, infeasible: Dictionary, evals: int,
 		migrated: int, born_inf: int) -> void:
 	var els: Array = feasible.values()
 	els.sort_custom(func(a, b): return a.sweep > b.sweep)
-	print("\n=== FI-MAP-ELITES (mutable genome) : %d feasible evals, %d iters ===" % [evals, iters])
+	print("\n=== FI-MAP-ELITES (mutable genome) : %d feasible evals ===" % evals)
 	print("  feasible niches %d | infeasible niches %d | born-infeasible %d | REPAIRED->feasible %d" % [
 			feasible.size(), infeasible.size(), born_inf, migrated])
 	print("  [A/B/C] feasible elites (by sweep):")
-	print("  %-4s %-8s %-5s %-5s %-5s %-5s %s" % ["room", "tier", "sweep", "adept", "exprt", "diff", "cargo/atr/pen  comp"])
+	print("  %-4s %-8s %-5s %-5s %-5s %-5s %-4s %s" % ["room", "tier", "sweep", "adept", "exprt", "diff", "blk", "cargo/atr/pen  comp"])
 	for e in els:
-		print("  %-4d %-8s %-5.0f %-5.0f %-5.0f %-5.2f %d/%d/%d  %s" % [
+		print("  %-4d %-8s %-5.0f %-5.0f %-5.0f %-5.2f %-4d %d/%d/%d  %s" % [
 				e.nrooms, e.tier, e.sweep, e.adept, e.expert, e.difficulty,
-				e.cargo, e.atrium, e.penth, e.sig])
+				int(e.get("nblocks", 0)), e.cargo, e.atrium, e.penth, e.sig])
 
 
 func _routes_json(routes: Array) -> Array:
@@ -1241,7 +1338,8 @@ func _initialize() -> void:
 		var outer := int(args[1])
 		var expert_b := int(args[2]) if args.size() > 2 else 400
 		var jp := str(args[3]) if args.size() > 3 else "fievo.json"
-		_fievo(outer, expert_b, jp)
+		var soff := int(args[4]) if args.size() > 4 else 0
+		_fievo(outer, expert_b, jp, soff)
 		quit(); return
 	if mode == "dump":
 		_dump(int(args[1]), int(args[2]), str(args[3]), str(args[4]), str(args[5]))
