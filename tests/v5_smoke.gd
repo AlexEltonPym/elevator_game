@@ -313,7 +313,11 @@ func _delivery_test() -> bool:
 			for j in range(q.size() - 1):
 				var a = q[j]
 				var b = q[j + 1]
-				var expect_sep: float = (a.width + b.width) * 0.5 * 22.0
+				# Only the VISIBLE part of the queue is width-spaced; extras beyond the
+				# visible cap wait invisibly, clamped at the back (main5._place_in_queue).
+				if not (a.visible and b.visible):
+					continue
+				var expect_sep: float = (a.width + b.width) * 0.5 * 15.0
 				var got: float = absf(a.stand_pos.x - b.stand_pos.x)
 				if absf(got - expect_sep) > 1.0:
 					pack_ok = false

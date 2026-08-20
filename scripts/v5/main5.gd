@@ -951,7 +951,7 @@ func queue_join(p) -> void:
 	arr.append(p)
 	queues[p.cur_room] = arr
 	p.queue_slot = arr.size() - 1
-	p.set_stand(_queue_slot_pos(p.cur_room, p.queue_slot))
+	_place_in_queue(p, p.cur_room, p.queue_slot)
 
 
 ## A passenger left the queue (boarded, expired, or removed). Everyone BEHIND it
@@ -968,32 +968,53 @@ func queue_leave(p) -> void:
 	p.queue_slot = -1
 	for j in range(idx, arr.size()):
 		arr[j].queue_slot = j
-		arr[j].set_stand(_queue_slot_pos(rid, j))
+		_place_in_queue(arr[j], rid, j)
 
 
-## World position of queue slot `idx` in a room: a straight line on the floor from
-## the queue tile (slot 0, at the dock) extending back into the room. WIDTH-AWARE:
-## each waiting figure reserves width * SPACING of linear space, so a width-3
-## delivery man occupies a 3-wide gap and never overlaps his neighbours; a figure
-## sits CENTRED in its own reserved span. An all-width-1 queue reduces EXACTLY to
-## idx * SPACING (the shipped levels are unchanged).
-func _queue_slot_pos(rid: int, idx: int) -> Vector2:
-	const SPACING := 22.0
-	const FLOOR_OFFSET := 31.0 # cell bottom - 31 = the one floor line (car front-row height)
+const QUEUE_SPACING := 15.0     # px per unit-width (tight stack)
+const QUEUE_FLOOR_OFFSET := 31.0 # cell bottom - 31 = the one floor line (car front-row height)
+## Extras beyond this many unit-widths of queue wait INVISIBLY, stacked at the back, so a
+## long line never spills across the building. Width-aware: a cargo room (width-3 carts)
+## shows fewer figures than a passenger room, both bounded to the same physical span.
+const QUEUE_MAX_VISIBLE_UNITS := 7.0
+
+
+## World position for a figure whose reserved-span CENTRE is at `center_units` of linear
+## queue depth: a straight line on the floor from the queue tile (unit 0, at the dock)
+## extending back into the room.
+func _pos_at_units(rid: int, center_units: float) -> Vector2:
 	var qcell := Grid5.room_queue(rid)
 	var qc := Grid5.cell_center(qcell)
 	var toward := Grid5.cell_center(qcell + Grid5.room_queue_dir(rid)) - qc
 	var tx := signf(toward.x) if absf(toward.x) > 0.01 else 1.0
-	var floor_y := Grid5.cell_rect(qcell).end.y - FLOOR_OFFSET
+	var floor_y := Grid5.cell_rect(qcell).end.y - QUEUE_FLOOR_OFFSET
+	# Pull the whole line one SPACING toward the dock so the front waits right at the doors.
+	return Vector2(qc.x - tx * (center_units - 1.0) * QUEUE_SPACING, floor_y)
+
+
+## Unit-widths of queue AHEAD of slot `idx` (its front edge). WIDTH-AWARE: a width-3
+## delivery man reserves a 3-wide span so waiting figures never overlap.
+func _queue_units_before(rid: int, idx: int) -> float:
 	var arr: Array = queues.get(rid, [])
-	var units := 0.0
+	var u := 0.0
 	for j in mini(idx, arr.size()):
-		units += float(arr[j].width)
-	var self_w := float(arr[idx].width) if idx >= 0 and idx < arr.size() else 1.0
-	units += (self_w - 1.0) * 0.5
-	# Pull the whole line one SPACING toward the dock so the front waits right at the
-	# doors (a shorter board step), not one tile back.
-	return Vector2(qc.x - tx * (units - 1.0) * SPACING, floor_y)
+		u += float(arr[j].width)
+	return u
+
+
+## Stand a queued figure at its slot AND set its visibility: within the visible span it
+## shows at its slot; beyond it, it waits invisibly clamped just behind the last visible
+## figure (so it eases in smoothly when the queue advances). An all-width-1 queue inside
+## the cap reduces EXACTLY to idx * SPACING (short queues render as before, just tighter).
+func _place_in_queue(p, rid: int, idx: int) -> void:
+	var before := _queue_units_before(rid, idx)
+	var half := (float(p.width) - 1.0) * 0.5
+	if before < QUEUE_MAX_VISIBLE_UNITS:
+		p.visible = true
+		p.set_stand(_pos_at_units(rid, before + half))
+	else:
+		p.visible = false
+		p.set_stand(_pos_at_units(rid, QUEUE_MAX_VISIBLE_UNITS + half))
 
 
 # ---------------------------------------------------------------- corridors
