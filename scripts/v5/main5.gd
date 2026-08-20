@@ -26,6 +26,19 @@ var CARDS: Array = []
 var QUOTA := 12
 var MAX_LOST := 8
 
+# SHIFT / TIP model (opt-in via level.shift > 0). A level with a shift runs for that many
+# seconds spawning arrivals, then LAST ORDERS: spawning stops and it plays on until every
+# remaining passenger is served or times out. The score is the accumulated TIP TOTAL —
+# each served rider tips more the faster they were served; each lost rider is a penalty.
+# Stars are a later UI layer over this total; the sim only tracks the raw tips.
+const TIP_MAX := 10.0     # tip for an instantly-served rider
+const TIP_RATE := 0.18    # tip lost per second waited (spawn -> delivery)
+const TIP_FLOOR := 1.0    # a slow but completed trip still tips this
+const LOST_TIP := 8.0     # penalty per lost rider
+var shift_len := 0.0      # 0 = classic quota/max-lost level; >0 = shift/tip level
+var shift_closed := false # true once the doors close (last orders)
+var tips := 0.0           # running tip total (the score)
+
 var state: int = State.PLAN
 var time_scale := 1.0
 var served := 0
@@ -113,6 +126,7 @@ func _ready() -> void:
 	CARDS = level.cards
 	QUOTA = level.quota
 	MAX_LOST = level.max_lost
+	shift_len = float(level.get("shift", 0.0))
 	_build_cover(level)
 	routes = []
 	cars = []
@@ -161,6 +175,14 @@ func advance(dt: float) -> void:
 			if p.active:
 				keep.append(p)
 		active_passengers = keep
+	# SHIFT model: at the bell, stop spawning (last orders); end once everyone still in
+	# the building has been served or timed out.
+	if shift_len > 0.0 and state == State.PLAYING:
+		if not shift_closed and elapsed >= shift_len:
+			shift_closed = true
+			auto_spawn = false
+		if shift_closed and not _any_active_pax():
+			_shift_end()
 
 
 func current_interval() -> float:
@@ -247,6 +269,9 @@ func _reset_spawner() -> void:
 	burst_timer = 0.0
 	_cover_idx = 0
 	_served_rooms = {}
+	tips = 0.0
+	shift_closed = false
+	auto_spawn = true
 
 
 ## Precompute the round-robin demand rooms for coverage spawning (opt-in). A no-op that
@@ -281,6 +306,24 @@ func _build_cover(lv: Dictionary) -> void:
 	for rid in _cover_rooms:
 		if not _cover_by_room.has(rid) or (_cover_by_room[rid] as Array).is_empty():
 			_cover_by_room[rid] = to_map.get(rid, [])
+
+
+func _tip_of(wait: float) -> float:
+	return maxf(TIP_FLOOR, TIP_MAX - TIP_RATE * wait)
+
+
+func _any_active_pax() -> bool:
+	for p in active_passengers:
+		if p.active:
+			return true
+	return false
+
+
+## Shift complete: freeze the run on the tip total. Reuses the WIN state (there is no
+## lose in a shift — you always finish; the tip total is the score, stars come later).
+func _shift_end() -> void:
+	state = State.WIN
+	hud.show_win(served, lost)
 
 
 ## True unless this is a coverage level with a demand room not yet served.
@@ -811,13 +854,15 @@ func on_served(p) -> void:
 		waiting[p.cur_room].erase(p)
 	log_served.append({"type": p.ptype, "wait": p.wait_time, "rides": p.rides})
 	served += 1
+	tips += _tip_of(p.wait_time)
 	if _cover_on:
 		_served_rooms[p.cur_room] = true
 	p.begin_between()
 	# Coverage levels also require EVERY demand room to have been served: hitting the
 	# passenger quota while abandoning a room is not a win (the room keeps spawning and
-	# eventually loses you the run). Non-cover levels keep the plain quota check.
-	if state == State.PLAYING and not endless and served >= QUOTA and _rooms_covered():
+	# eventually loses you the run). Non-cover levels keep the plain quota check. SHIFT
+	# levels ignore quota entirely — the shift clock ends the run (see advance).
+	if shift_len <= 0.0 and state == State.PLAYING and not endless and served >= QUOTA and _rooms_covered():
 		_win()
 
 
@@ -889,7 +934,8 @@ func on_expired(p) -> void:
 	log_lost.append({"type": p.ptype, "wait": p.wait_time, "rides": p.rides})
 	p.queue_free()
 	lost += 1
-	if state == State.PLAYING and not endless and lost >= MAX_LOST:
+	tips -= LOST_TIP
+	if shift_len <= 0.0 and state == State.PLAYING and not endless and lost >= MAX_LOST:
 		_lose()
 
 

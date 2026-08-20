@@ -29,6 +29,7 @@ var rng := RandomNumberGenerator.new()
 var cache := {}   # genome_key#nseeds -> score
 var archive := [] # every distinct candidate: {"key","genome","routes","score"}
 var e1 := -1      # sim.runs at the FIRST winning median-train evaluation (-1 = none)
+var e1_score := NEG_INF # median-train score of that first win (its quality/win-time)
 
 
 func setup(sim_api, li: int, lv: Dictionary, train_seeds: Array, search_step: float,
@@ -56,12 +57,24 @@ func evaluate(genome: Array, use_seeds: Array = []) -> float:
 		cache[key] = NEG_INF
 		return NEG_INF
 	var r: Dictionary = sim.score_seeds(level_index, dec.routes, sd, step)
-	cache[key] = r.score
+	var sc: float = r.score
+	# SMOOTHNESS TIEBREAKER: among winning plans, prefer FEWER total route cells so the
+	# EA straightens win-time-neutral kinks (cosmetic detours the pure win-time fitness is
+	# blind to). Tiny weight: 0.01/cell can't outweigh even a 0.1s win-time gain, so a
+	# kink that genuinely helps throughput is kept; only free kinks get pruned. Wins here
+	# clear WIN_BONUS by 100+ (fast levels), so this never reclassifies a win as a loss.
+	if r.score >= SimApi5.WIN_BONUS:
+		var tot := 0
+		for rt in dec.routes:
+			tot += (rt.cells as Array).size()
+		sc -= 0.01 * float(tot)
+	cache[key] = sc
 	if sd.size() == seeds.size():
 		archive.append({"key": key, "genome": RG.clone(genome),
-				"routes": dec.routes, "score": r.score})
-		if e1 < 0 and r.score >= SimApi5.WIN_BONUS:
+				"routes": dec.routes, "score": sc})
+		if e1 < 0 and sc >= SimApi5.WIN_BONUS:
 			e1 = sim.runs
+			e1_score = sc
 	return r.score
 
 

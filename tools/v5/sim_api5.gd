@@ -49,6 +49,16 @@ const SEEDS_TEST := [8903, 9011, 9121, 9229, 9343, 9457, 9559, 9671]
 
 const NEG_INF := -1.0e18
 
+## TIP scoring (prototype, Overcooked-style). Each SERVED passenger pays a tip that
+## decays with how long they waited (spawn->delivery): fast service = full tip, slow =
+## floor. Each LOST trip is a negative hit. The total (summed over the run) is a
+## CONTINUOUS efficiency score sensitive to EVERY lift's waits — not just the bottleneck
+## that decides win-time — so a kink anywhere lowers it. Stars come from thresholds.
+const TIP_MAX := 10.0     # tip for an instantly-served passenger
+const TIP_RATE := 0.18    # tip lost per second waited
+const TIP_FLOOR := 1.0    # a very slow but completed trip still pays this
+const LOST_TIP := 8.0     # penalty subtracted per lost passenger
+
 var tree: SceneTree
 var scene: PackedScene = load("res://scenes/v5_main.tscn")
 
@@ -155,7 +165,7 @@ func run(level_index: int, routes: Array, seed_v: int, step: float,
 	var out := {"valid": true, "err": "", "served": 0, "lost": 0,
 			"avg_wait": 0.0, "p90_wait": 0.0, "transfers": 0, "avg_transfers": 0.0,
 			"reactivations": 0, "waiting_end": 0, "no_path_end": 0,
-			"gate_wait": 0.0, "gate_transits": 0, "score": NEG_INF,
+			"gate_wait": 0.0, "gate_transits": 0, "score": NEG_INF, "tips": 0.0,
 			"seed": seed_v, "step": step, "result": "timeout",
 			"t_end": TIMEOUT, "time_to_quota": TIMEOUT}
 	# Validate the whole route-set (geometry + per-card corridor width + the
@@ -200,6 +210,68 @@ func run(level_index: int, routes: Array, seed_v: int, step: float,
 		_cache_dirty += 1
 		flush_cache()
 	return out
+
+
+## Overcooked-style SHIFT run (prototype). Spawn for `shift_secs`, then LAST ORDERS: stop
+## spawning and drain until every remaining passenger is served or times out. `endless` so
+## quota/max-lost never cut it short — the score is the accumulated TIPS. Anyone still
+## stuck when the doors close is counted as a fail.
+func run_shift(level_index: int, routes: Array, seed_v: int, shift_secs: float, step: float,
+		injected = null) -> Dictionary:
+	Levels5.current = level_index
+	Levels5.injected = injected
+	Levels5.headless = true
+	var game = scene.instantiate()
+	game.headless = true
+	tree.root.add_child(game)
+	tree.root.remove_child(game)
+	var out := {"valid": true, "err": "", "served": 0, "lost": 0,
+			"avg_wait": 0.0, "p90_wait": 0.0, "transfers": 0, "avg_transfers": 0.0,
+			"reactivations": 0, "waiting_end": 0, "no_path_end": 0,
+			"gate_wait": 0.0, "gate_transits": 0, "score": NEG_INF, "tips": 0.0,
+			"seed": seed_v, "step": step, "result": "shift", "t_end": shift_secs}
+	var verr := validate_routes(game, routes)
+	if verr != "":
+		out.valid = false
+		out.err = verr
+		_teardown(game)
+		return out
+	game.rng.seed = seed_v
+	game.to_plan()
+	for i in mini(routes.size(), game.CARDS.size()):
+		if routes[i] != null:
+			if not game.commit_route(i, routes[i].cells, routes[i].get("closed", false)):
+				out.valid = false
+				out.err = "card %d: commit refused" % i
+				_teardown(game)
+				return out
+	game.endless = true                 # no quota-win / max-lost stop; the shift is the clock
+	game.start_run()
+	var t0 := Time.get_ticks_usec()
+	var t := 0.0
+	while t < shift_secs and game.state == game.State.PLAYING:
+		game.advance(step)
+		t += step
+	game.auto_spawn = false             # LAST ORDERS: doors close, no new arrivals
+	var drain := 0.0
+	while _any_active(game) and drain < 100.0 and game.state == game.State.PLAYING:
+		game.advance(step)
+		drain += step
+	sim_usec += Time.get_ticks_usec() - t0
+	sim_seconds += t + drain
+	runs += 1
+	out.t_end = t + drain
+	_harvest(game, out)
+	out.tips -= LOST_TIP * float(out.waiting_end)   # anyone still stuck at close = a fail
+	_teardown(game)
+	return out
+
+
+func _any_active(game) -> bool:
+	for p in game.active_passengers:
+		if p.active:
+			return true
+	return false
 
 
 ## "" when the route-set is legal on the loaded level, else a reason. Mirrors
@@ -261,6 +333,7 @@ func _harvest(game, out: Dictionary) -> void:
 			gt += c.gate_transits
 	out.gate_wait = gw
 	out.gate_transits = gt
+	out.tips = game.tips   # authoritative running total the game itself tracks
 	if not waits.is_empty():
 		var s := 0.0
 		for w in waits:

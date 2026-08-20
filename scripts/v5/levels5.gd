@@ -610,8 +610,10 @@ corridor, on to D.",
 			{"name": "CARGO", "type": "cargo", "color": COL_C, "speed": 100.0, "accel": 80.0},
 		],
 		"quota": 20, "max_lost": 12,
-		# cover: round-robin demand so EVERY room gets passengers; combined with the
-		# all-rooms-served win rule, abandoning any room forfeits the run.
+		# shift/tip scoring: run a 90s shift, then last orders; the score is the tip total.
+		# cover: round-robin demand so every room gets riders (abandon one and its riders
+		# time out, costing tips) — the soft version of the old all-served rule.
+		"shift": 90.0,
 		"spawn": {"interval_start": 2.2, "interval_end": 1.7, "ramp": 40.0,
 				"burst_min": 1, "burst_max": 2, "gap": 0.9, "cover": true},
 		"mix": {"visitor": 0.6, "shopper": 0.25, "patient": 0.15},
