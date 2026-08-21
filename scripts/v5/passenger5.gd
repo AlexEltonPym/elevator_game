@@ -59,6 +59,11 @@ const STAND_EASE := 130.0
 ## base_y), so ALL standing figures share one grounded floor and boarding is a
 ## horizontal step into the car (no vertical pop). = CELL - (CELL/2 + car base_y).
 const FLOOR_OFF := 31.0
+## A RIDING figure draws its feet at position+12; a WALKING one at position+(FLOOR_OFF-6).
+## When stepping off a car (alight/transfer) or onto one (board), shift the walk endpoint by
+## this delta so the visible FEET stay continuous — the figure walks the whole car<->floor
+## drop/climb instead of the feet snapping when `riding` flips.
+const RIDE_TO_FLOOR_DY := 12.0 - (FLOOR_OFF - 6.0)   # = -13
 
 # PixelSpaces side-NPC animation. The pre-made NPC sheet is a 4x3 grid of 16x16 frames;
 # FRONT idle/walk on columns {0,2}, side (RIGHT) walk on {1,3}; LEFT is RIGHT mirrored.
@@ -287,7 +292,11 @@ func start_board_walk() -> void:
 	walk_total = Grid5.manhattan(queue_cell, board) * Grid5.WALK_PER_TILE * walk_mult
 	walk_left = walk_total
 	walk_from = position
-	walk_to = Vector2(Grid5.cell_center(board).x, Grid5.cell_rect(board).end.y - FLOOR_OFF)
+	# Walk ACROSS the floor to the doors, THEN UP to the car's rider height (its position),
+	# so boarding is a climb rather than a snap; feet stay continuous into the ride.
+	var car = legs[0].car
+	var top_y: float = car.position.y if car != null else (Grid5.cell_rect(board).end.y - FLOOR_OFF)
+	walk_to = Vector2(Grid5.cell_center(board).x, top_y)
 	_face_toward(walk_to)
 	if walk_left <= 0.0:
 		walk_left = 0.0
@@ -309,7 +318,7 @@ func start_transfer_walk(alight_cell: Vector2i) -> void:
 	walk_kind = Walk.TRANSFER
 	walk_total = Grid5.manhattan(alight_cell, queue_cell) * Grid5.WALK_PER_TILE * walk_mult
 	walk_left = walk_total
-	walk_from = position
+	walk_from = position + Vector2(0, RIDE_TO_FLOOR_DY)   # step off the car (down) then across to queue
 	walk_to = stand_pos
 	_face_toward(stand_pos)
 	if walk_left <= 0.0:
@@ -328,7 +337,7 @@ func start_alight_walk(alight_cell: Vector2i, room: int) -> void:
 	walk_kind = Walk.ALIGHT
 	walk_total = Grid5.manhattan(alight_cell, queue_cell) * Grid5.WALK_PER_TILE * walk_mult
 	walk_left = walk_total
-	walk_from = position
+	walk_from = position + Vector2(0, RIDE_TO_FLOOR_DY)   # start at the car-feet height, walk DOWN
 	walk_to = back_pos
 	_face_toward(back_pos)
 	riding = null
@@ -445,8 +454,11 @@ func _process(delta: float) -> void:
 	queue_redraw()
 
 
-## Right-angle path from a to b: X axis first, then Y, constant pace over the whole
-## Manhattan length. Deterministic axis order.
+## Right-angle path from a to b at a constant pace over the whole Manhattan length. AXIS
+## ORDER by walk kind so the vertical (car<->floor) leg happens at the elevator, not out in
+## the room: ALIGHT/TRANSFER go DOWN first (step off the car to the floor, THEN walk across —
+## no jumping down later); BOARD/MILL go ACROSS first (walk over the floor, THEN up to board).
+## Render-only (WHERE it is drawn along the leg); the leg's TIME is untouched.
 func _ortho_point(a: Vector2, b: Vector2, f: float) -> Vector2:
 	var dx := b.x - a.x
 	var dy := b.y - a.y
@@ -454,7 +466,11 @@ func _ortho_point(a: Vector2, b: Vector2, f: float) -> Vector2:
 	if total <= 0.001:
 		return b
 	var d := f * total
-	if d <= absf(dx):
+	if walk_kind == Walk.ALIGHT or walk_kind == Walk.TRANSFER:   # Y first (down), then X
+		if d <= absf(dy):
+			return Vector2(a.x, a.y + signf(dy) * d)
+		return Vector2(a.x + signf(dx) * (d - absf(dy)), b.y)
+	if d <= absf(dx):                                            # X first (across), then Y
 		return Vector2(a.x + signf(dx) * d, a.y)
 	return Vector2(b.x, a.y + signf(dy) * (d - absf(dx)))
 
