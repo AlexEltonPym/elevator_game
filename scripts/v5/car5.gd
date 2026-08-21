@@ -583,7 +583,7 @@ func _release_boarders() -> void:
 ## right. per_row = max(car width, 2), so width-1 riders reduce EXACTLY to the old
 ## two-per-row packing in every car (pods and width-2 cars alike) — width-1 unchanged.
 func slot_position(p) -> Vector2:
-	const SLOT_PX := 20.0
+	const SLOT_PX := 18.0
 	const ROW_PX := 9.0     # back rows lift a little; the depth read comes mostly from scale
 	const CART_LEAN := 13.0 # loaded (width>=3) riders sit left so the cart stays centred
 	var per_row := maxi(width, 2)

@@ -468,9 +468,10 @@ func _draw() -> void:
 	# layered instead of a flat overlapping clump. Only while riding; on the floor everyone is
 	# full size. The car floor line stays put, so the shrink pulls their heads down (behind).
 	var rs := 1.0
-	if riding != null and _ride_row > 0:
-		rs = maxf(0.72, 1.0 - 0.14 * float(_ride_row))
-		col = col.darkened(0.16 * float(_ride_row))
+	if riding != null:
+		rs = maxf(0.7, 0.92 - 0.14 * float(_ride_row))   # snug in the body; back rows recede
+		if _ride_row > 0:
+			col = col.darkened(0.16 * float(_ride_row))
 	var side := 16.0 * Grid5.ART_K * rs   # uniform art scale — same K as the furniture
 	# FEET position. Standing/walking in a room, drop the figure onto the actual FLOOR
 	# (FLOOR_OFF-6 below its centre) so it isn't floating; riding keeps the car-slot feet.
@@ -481,7 +482,8 @@ func _draw() -> void:
 	# it) so it never flips into the car wall.
 	if width >= 3:
 		var fx := -1.0 if (_facing < 0 and riding == null) else 1.0
-		draw_set_transform(Vector2(0, feet - 12.0), 0.0, Vector2(fx * rs, rs))
+		# raise the cart so its wheels rest ON the floor line (feet) rather than dipping below.
+		draw_set_transform(Vector2(0, feet - 16.0 * rs), 0.0, Vector2(fx * rs, rs))
 		_draw_cart(col)
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	var tex: Texture2D = _npc_tex[_sheet] if _sheet < _npc_tex.size() else null
