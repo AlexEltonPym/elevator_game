@@ -1547,6 +1547,15 @@ func _dump_level(lv: Dictionary, id: String, name: String, expert_routes: Array)
 		var ty: String = (", \"type\": \"%s\"" % tr.type) if tr.has("type") else ""
 		print("\t\t\t{\"w\": %.2f, \"from\": \"%s\", \"to\": \"%s\"%s}," % [tr.w, tr.from, tr.to, ty])
 	print("\t\t],")
+	# embed the expert plan so the select screen's SOLUTION button can pre-draw it in-game.
+	if not expert_routes.is_empty():
+		var sols := []
+		for r in expert_routes:
+			var cc2 := []
+			for xy in r.cells:
+				cc2.append("[%d, %d]" % [int(xy[0]), int(xy[1])])
+			sols.append("[%s]" % ", ".join(cc2))
+		print("\t\t\"solution\": [%s]," % ", ".join(sols))
 	print("\t},")
 	if not expert_routes.is_empty():
 		print("\t\t\t\"%s\":" % id)

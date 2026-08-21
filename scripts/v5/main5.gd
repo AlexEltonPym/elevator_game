@@ -148,6 +148,21 @@ func _ready() -> void:
 	# No BRIEFING phase: land straight in PLAN so picking a level is immediately
 	# playable. to_plan() hides any overlay and refreshes the card chips (the roster).
 	to_plan()
+	# "Solution" launch (select screen button): pre-draw the level's stored expert plan so
+	# you can inspect it / press RUN to watch it, then compare to your own. One-shot.
+	if not headless and Levels5.autosolve:
+		_commit_solution()
+	Levels5.autosolve = false
+
+
+## Pre-commit the level's stored `solution` (a list of routes, each a list of [x,y] cells).
+func _commit_solution() -> void:
+	var sol: Array = level.get("solution", [])
+	for i in mini(sol.size(), cars.size()):
+		var cells: Array = []
+		for xy in sol[i]:
+			cells.append(Vector2i(int(xy[0]), int(xy[1])))
+		commit_route(i, cells, false)
 
 
 func _process(delta: float) -> void:

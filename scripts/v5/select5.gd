@@ -114,10 +114,13 @@ func _rebuild() -> void:
 	for k in items.size():
 		var index: int = items[k].index
 		var lv: Dictionary = items[k].lv
+		var idx: int = index
+		var has_sol: bool = (lv.get("solution", []) as Array).size() > 0
+		var sol_w := 96.0 if has_sol else 0.0
 		var b := Button.new()
 		b.text = "%s  %s\n%s" % [lv.id, str(lv.name).to_upper(), lv.thesis]
 		b.position = Vector2(20, top + k * (h + gap))
-		b.size = Vector2(vp.x - 40, h)
+		b.size = Vector2(vp.x - 40 - sol_w, h)
 		b.clip_text = true
 		b.add_theme_font_size_override("font_size", 19)
 		var sb := StyleBoxFlat.new()
@@ -128,11 +131,29 @@ func _rebuild() -> void:
 		sb.content_margin_left = 16
 		sb.content_margin_right = 16
 		b.add_theme_stylebox_override("normal", sb)
-		var idx: int = index
 		b.pressed.connect(func():
+			Levels5.autosolve = false
 			Levels5.current = idx
 			get_tree().change_scene_to_file("res://scenes/v5_main.tscn"))
 		add_child(b)
+		# "Solution" launch: opens the level with the expert plan already drawn, to compare.
+		if has_sol:
+			var sbtn := Button.new()
+			sbtn.text = "SOL\nUTION"
+			sbtn.position = Vector2(vp.x - 20 - sol_w + 6, top + k * (h + gap))
+			sbtn.size = Vector2(sol_w - 6, h)
+			sbtn.add_theme_font_size_override("font_size", 15)
+			var ss := StyleBoxFlat.new()
+			ss.bg_color = accent.darkened(0.35)
+			ss.border_color = accent.lightened(0.2)
+			ss.set_border_width_all(3)
+			ss.set_corner_radius_all(10)
+			sbtn.add_theme_stylebox_override("normal", ss)
+			sbtn.pressed.connect(func():
+				Levels5.autosolve = true
+				Levels5.current = idx
+				get_tree().change_scene_to_file("res://scenes/v5_main.tscn"))
+			add_child(sbtn)
 
 
 func _flip(dir: int) -> void:
