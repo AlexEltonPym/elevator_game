@@ -274,8 +274,12 @@ func _wrap(cols: int, rows: int, rooms: Array, blocks := []) -> Dictionary:
 		var cf_i: int = int(letter_of["cafe"][0].unicode_at(0)) - 65
 		var st_i: int = int(letter_of["delivery"][0].unicode_at(0)) - 65
 		if not _rooms_abut(rooms, cellowner, st_i, cf_i):
-			trips.append({"w": 0.14, "from": char(65 + st_i), "to": char(65 + cf_i), "type": "delivery"})
-			trips.append({"w": 0.06, "from": char(65 + cf_i), "to": char(65 + st_i), "type": "delivery"})
+			# ONE-WAY cargo run: a delivery man spawns ONLY at storage and wheels a cart to
+			# the cafe. There is NO reverse cargo trip (cargo never spawns at the cafe). After
+			# dropping off he sheds the cart and LEAVES as a normal person toward the lobby
+			# (the `return` itinerary), then vanishes -- he never re-launches as cargo.
+			trips.append({"w": 0.14, "from": char(65 + st_i), "to": char(65 + cf_i),
+					"type": "delivery", "return": lobby})
 	# caps
 	var occ := {}
 	for rm in rooms:
@@ -1544,8 +1548,12 @@ func _dump_level(lv: Dictionary, id: String, name: String, expert_routes: Array)
 	print("\t\t\"mix\": {\"visitor\": 0.6, \"shopper\": 0.25, \"patient\": 0.15},")
 	print("\t\t\"trips\": [")
 	for tr in lv.trips:
-		var ty: String = (", \"type\": \"%s\"" % tr.type) if tr.has("type") else ""
-		print("\t\t\t{\"w\": %.2f, \"from\": \"%s\", \"to\": \"%s\"%s}," % [tr.w, tr.from, tr.to, ty])
+		var extra := ""
+		if tr.has("type"):
+			extra += ", \"type\": \"%s\"" % tr.type
+		if tr.has("return"):
+			extra += ", \"return\": \"%s\"" % str(tr.get("return"))
+		print("\t\t\t{\"w\": %.2f, \"from\": \"%s\", \"to\": \"%s\"%s}," % [tr.w, tr.from, tr.to, extra])
 	print("\t\t],")
 	# embed the expert plan so the select screen's SOLUTION button can pre-draw it in-game.
 	if not expert_routes.is_empty():
