@@ -223,6 +223,15 @@ func _reachable_all(cols: int, rows: int, occ: Dictionary, docks: Array) -> bool
 	return true
 
 
+## Do rooms `a` and `b` orthogonally touch (a person could walk between them without a lift)?
+func _rooms_abut(rooms: Array, cellowner: Dictionary, a: int, b: int) -> bool:
+	for c in rooms[a].cells:
+		for d in RG.NEIGHBORS:
+			if int(cellowner.get(c + d, -1)) == b:
+				return true
+	return false
+
+
 ## Wrap placed rooms into a full level: caps, cards, cover trips. `blocks` are 1x1
 ## impassable "window" cells routes must detour around (Grid5.passable is false for them).
 func _wrap(cols: int, rows: int, rooms: Array, blocks := []) -> Dictionary:
@@ -238,26 +247,35 @@ func _wrap(cols: int, rows: int, rooms: Array, blocks := []) -> Dictionary:
 		cards.append({"name": "EXPRESS", "type": "express", "color": Color(0.80,0.55,0.92), "speed": 1500.0, "accel": 1200.0})
 	if has.has("cafe") and has.has("delivery"):
 		cards.append({"name": "CARGO", "type": "cargo", "color": Color(0.98,0.68,0.2), "speed": 100.0, "accel": 80.0})
-	# lobby letter
-	var lobby := "A"
+	# cell -> owning room index, + the lobby index (for abutment: a trip between two ABUTTING
+	# rooms would be a walk, not a lift ride, so we never generate it -- for now).
+	var cellowner := {}
+	var lobby_i := 0
 	for i in rooms.size():
+		for c in rooms[i].cells:
+			cellowner[c] = i
 		if rooms[i].type == "lobby":
-			lobby = char(65 + i)
-	# trips: lobby <-> every non-atrium/non-lobby room; storage<->cafe if both.
+			lobby_i = i
+	var lobby := char(65 + lobby_i)
+	# trips: lobby <-> every non-atrium/non-lobby room it does NOT abut; storage<->cafe if
+	# both present and not abutting.
 	var trips := []
 	for i in rooms.size():
 		var lt := char(65 + i)
 		var ty: String = rooms[i].type
 		if ty == "lobby" or ty == "atrium":
 			continue
+		if _rooms_abut(rooms, cellowner, i, lobby_i):
+			continue   # walkable straight from the lobby -> no lift trip
 		var w := 0.16 if ty == "penthouse" else 0.10
 		trips.append({"w": w, "from": lobby, "to": lt})
 		trips.append({"w": w * 0.6, "from": lt, "to": lobby})
 	if has.has("cafe") and has.has("delivery"):
-		var cf: String = letter_of["cafe"][0]
-		var st: String = letter_of["delivery"][0]
-		trips.append({"w": 0.14, "from": st, "to": cf, "type": "delivery"})
-		trips.append({"w": 0.06, "from": cf, "to": st, "type": "delivery"})
+		var cf_i: int = int(letter_of["cafe"][0].unicode_at(0)) - 65
+		var st_i: int = int(letter_of["delivery"][0].unicode_at(0)) - 65
+		if not _rooms_abut(rooms, cellowner, st_i, cf_i):
+			trips.append({"w": 0.14, "from": char(65 + st_i), "to": char(65 + cf_i), "type": "delivery"})
+			trips.append({"w": 0.06, "from": char(65 + cf_i), "to": char(65 + st_i), "type": "delivery"})
 	# caps
 	var occ := {}
 	for rm in rooms:
@@ -735,9 +753,24 @@ func _assess_design(genome: Dictionary) -> Dictionary:
 				top = maxi(top, c.y)
 			if top < rows - 2:
 				viol += 1
-	var out := {"feasible": viol == 0, "distance": viol, "level": {}}
+	var out := {"feasible": false, "distance": viol, "level": {}}
 	if viol == 0:
-		out.level = _wrap(cols, rows, built, blockset.keys())
+		var lvl := _wrap(cols, rows, built, blockset.keys())
+		# Every demand room (non-lobby, non-atrium) must keep a lift trip. A room that ABUTS
+		# the lobby loses its trip (people walk straight in) and would be a demand-less red
+		# herring -- reject, so evolution never parks a demand room against the lobby.
+		var has_trip := {}
+		for tr in lvl.trips:
+			has_trip[str(tr.from)] = true
+			has_trip[str(tr.to)] = true
+		for i in built.size():
+			var ty2: String = str(built[i].type)
+			if ty2 != "lobby" and ty2 != "atrium" and not has_trip.has(Levels5.ROOM_LETTERS[i]):
+				viol += 1
+		if viol == 0:
+			out.level = lvl
+	out.feasible = viol == 0
+	out.distance = viol
 	return out
 
 
