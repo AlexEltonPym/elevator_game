@@ -258,9 +258,19 @@ func _activate() -> void:
 	walk_left = walk_total
 	walk_from = position
 	walk_to = stand_pos
+	_face_toward(stand_pos)
 	if walk_left <= 0.0:
 		walk_left = 0.0
 		_on_walk_done()
+
+
+## Seed the sticky horizontal facing toward `target` (called at each walk start so a figure
+## doesn't spawn/board facing the wrong way and immediately flip). Only sets it when there is
+## real horizontal distance; a purely vertical move leaves the existing facing unchanged.
+func _face_toward(target: Vector2) -> void:
+	var dx := target.x - position.x
+	if absf(dx) > 0.5:
+		_facing = 1 if dx >= 0.0 else -1
 
 
 ## Board walk (called by the assigning car): leave the queue line (so those behind
@@ -277,6 +287,7 @@ func start_board_walk() -> void:
 	walk_left = walk_total
 	walk_from = position
 	walk_to = Vector2(Grid5.cell_center(board).x, Grid5.cell_rect(board).end.y - FLOOR_OFF)
+	_face_toward(walk_to)
 	if walk_left <= 0.0:
 		walk_left = 0.0
 		_on_walk_done()
@@ -299,6 +310,7 @@ func start_transfer_walk(alight_cell: Vector2i) -> void:
 	walk_left = walk_total
 	walk_from = position
 	walk_to = stand_pos
+	_face_toward(stand_pos)
 	if walk_left <= 0.0:
 		walk_left = 0.0
 		_on_walk_done()
@@ -317,6 +329,7 @@ func start_alight_walk(alight_cell: Vector2i, room: int) -> void:
 	walk_left = walk_total
 	walk_from = position
 	walk_to = back_pos
+	_face_toward(back_pos)
 	riding = null
 	if walk_left <= 0.0:
 		walk_left = 0.0
@@ -402,10 +415,12 @@ func _process(delta: float) -> void:
 	else:
 		# Standing: ease toward the stable target (a smooth step when it changes).
 		position = position.move_toward(stand_pos, STAND_EASE * delta)
-	# Facing + walk animation from actual velocity (render-only). Riding = stand front;
-	# moving horizontally = side walk facing travel; moving vertically = front walk.
+	# Walk animation + sheet from velocity (render-only). Riding/vertical/idle use the FRONT
+	# sheet; horizontal uses the SIDE sheet. `_facing` (the left/right flip) is STICKY: it
+	# only changes when the figure actually moves the OTHER way horizontally, so boarding,
+	# riding, and vertical steps never reset it (no spurious flips / cart swaps). Seeded at
+	# each walk start (_face_toward) so a fresh figure already faces its target.
 	if riding != null:
-		_facing = 0
 		_cols = NPC_FRONT
 		_anim_i = 0
 	else:
@@ -419,11 +434,9 @@ func _process(delta: float) -> void:
 				_facing = 1 if vel.x >= 0.0 else -1
 				_cols = NPC_SIDE
 			else:
-				_facing = 0
 				_cols = NPC_FRONT
 		else:
 			_anim_i = 0
-			_facing = 0
 			_cols = NPC_FRONT
 	_prev_pos = position
 	# Depth sort: figures lower on screen (larger y) draw in front. Render-only.
