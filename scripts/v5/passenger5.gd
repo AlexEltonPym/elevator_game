@@ -455,9 +455,12 @@ func _draw() -> void:
 	# (FLOOR_OFF-6 below its centre) so it isn't floating; riding keeps the car-slot feet.
 	var feet := 12.0 if riding != null else FLOOR_OFF - 6.0
 	# The delivery man (width >= 3) pushes his programmer-art 2-box cart (drawn first,
-	# under the body), translated down with the figure so it stays at his feet.
+	# under the body), translated down with the figure so it stays at his feet. Mirror it
+	# with his FACING so the cart is always PUSHED (in front), never dragged behind -- else a
+	# left-walking delivery man (e.g. serving a flipped storage) looks like he's reversing.
 	if width >= 3:
-		draw_set_transform(Vector2(0, feet - 12.0), 0.0, Vector2.ONE)
+		var fx := -1.0 if _facing < 0 else 1.0
+		draw_set_transform(Vector2(0, feet - 12.0), 0.0, Vector2(fx, 1.0))
 		_draw_cart(col)
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	var tex: Texture2D = _npc_tex[_sheet] if _sheet < _npc_tex.size() else null
