@@ -84,6 +84,7 @@ var _anim_i := 0
 var _anim_t := 0.0
 var _facing := 0        # 0 front, 1 right, -1 left
 var _cols: Array = NPC_FRONT
+var _ride_row := 0      # which row this figure occupies in the car (set by Car5.slot_position)
 var _prev_pos := Vector2.ZERO
 
 var game = null # main5.gd
@@ -463,24 +464,31 @@ func _draw() -> void:
 	# ~14 x 24, on the floor. Normal colour always (no recolour); the impatience bar
 	# shows only while patience is running.
 	var col: Color = PTYPES.get(ptype, PTYPES.visitor).color
-	var side := 16.0 * Grid5.ART_K   # uniform art scale — same K as the furniture
+	# DEPTH: back rows in a car recede — a touch smaller and dimmer — so a full car reads as
+	# layered instead of a flat overlapping clump. Only while riding; on the floor everyone is
+	# full size. The car floor line stays put, so the shrink pulls their heads down (behind).
+	var rs := 1.0
+	if riding != null and _ride_row > 0:
+		rs = maxf(0.72, 1.0 - 0.14 * float(_ride_row))
+		col = col.darkened(0.16 * float(_ride_row))
+	var side := 16.0 * Grid5.ART_K * rs   # uniform art scale — same K as the furniture
 	# FEET position. Standing/walking in a room, drop the figure onto the actual FLOOR
 	# (FLOOR_OFF-6 below its centre) so it isn't floating; riding keeps the car-slot feet.
 	var feet := 12.0 if riding != null else FLOOR_OFF - 6.0
-	# The delivery man (width >= 3) pushes his programmer-art 2-box cart (drawn first,
-	# under the body), translated down with the figure so it stays at his feet. Mirror it
-	# with his FACING so the cart is always PUSHED (in front), never dragged behind -- else a
-	# left-walking delivery man (e.g. serving a flipped storage) looks like he's reversing.
+	# The delivery man (width >= 3) pushes his 2-box cart. On the floor it mirrors with his
+	# FACING so it is always PUSHED in front (a left-walking man serving a flipped storage
+	# doesn't look like he's reversing). RIDING, keep it on the lean side (CART_LEAN centres
+	# it) so it never flips into the car wall.
 	if width >= 3:
-		var fx := -1.0 if _facing < 0 else 1.0
-		draw_set_transform(Vector2(0, feet - 12.0), 0.0, Vector2(fx, 1.0))
+		var fx := -1.0 if (_facing < 0 and riding == null) else 1.0
+		draw_set_transform(Vector2(0, feet - 12.0), 0.0, Vector2(fx * rs, rs))
 		_draw_cart(col)
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	var tex: Texture2D = _npc_tex[_sheet] if _sheet < _npc_tex.size() else null
 	if tex != null:
 		var dest := Rect2(-side / 2.0, feet - side, side, side)  # feet on the floor line
 		var src := Rect2(_cols[_anim_i] * 16, 0, 16, 16)
-		if _facing < 0:
+		if _facing < 0 and riding == null:   # only mirror while WALKING; riding faces the doors
 			draw_set_transform(Vector2.ZERO, 0.0, Vector2(-1, 1))
 			draw_texture_rect_region(tex, dest, src)
 			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
