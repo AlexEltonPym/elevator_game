@@ -11,6 +11,7 @@ const SimApi5 = preload("res://tools/v5/sim_api5.gd")
 const Opt = preload("res://tools/v5/optimizers5.gd")
 const ME = preload("res://tools/v5/mapelites5.gd")
 const RG = preload("res://tools/v5/routegen5.gd")
+const Demand5 = preload("res://scripts/v5/demand5.gd")
 const R := Vector2i(1, 0)
 const L := Vector2i(-1, 0)
 
@@ -1577,6 +1578,10 @@ func _round_down_clean(v: float) -> int:
 ## Solve a level for the four skill tiers (median held-out tips). Returns raw floats +
 ## the expert route-set (the pre-drawable solution). budgets = [adept, expert, optimal].
 func _solve_four(lv: Dictionary, budgets: Array) -> Dictionary:
+	# Derive demand the same way main5 does (rooms + fixed seed) so RG's primitives and the
+	# sim agree with live play; shipped levels store no trips.
+	if (lv.get("trips", []) as Array).is_empty():
+		lv["trips"] = Demand5.derive(lv.rooms, hash(str(lv.get("id", ""))))
 	Levels5.injected = lv
 	Levels5.headless = true
 	SimApi5.load_maze(lv)

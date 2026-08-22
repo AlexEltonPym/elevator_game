@@ -655,3 +655,36 @@ func _draw() -> void:
 	if waiting_gate:
 		var pulse := 0.5 + 0.5 * sin(vis_t * 6.0)
 		draw_rect(body.grow(3.0), Color(0.95, 0.8, 0.3, 0.35 + 0.4 * pulse), false, 3.0)
+	_draw_speed(body, half)
+
+
+## Express SPEED viz: afterimage ghosts + motion streaks at top speed (the "it's flying"
+## read). EXPRESS-only, top-speed-only. The warm top-speed GLOW ("heatmap") was cut per
+## request; the motion streaks stay.
+func _draw_speed(body: Rect2, half: float) -> void:
+	if not running() or speed <= STANDARD_SPEED:
+		return
+	var spd := clampf(vel / speed, 0.0, 1.0)
+	var hot := clampf((spd - 0.85) / 0.15, 0.0, 1.0)
+	if hot <= 0.0:
+		return
+	# Travel direction in world space (the node isn't rotated, so world == local here).
+	var seg_from := Grid5.cell_center(route.cells[idx])
+	var seg_to := Grid5.cell_center(route.cells[_wrap_idx(idx + dir)])
+	var tdir := seg_to - seg_from
+	tdir = tdir.normalized() if tdir.length() > 0.01 else Vector2(0.0, -1.0)
+	var back := -tdir # trails OPPOSITE travel
+	# Afterimage ghosts: fading copies of the car trailing behind, spread wider the faster.
+	var spread := 16.0 + 52.0 * hot
+	for i in [3, 2, 1]:
+		var t := float(i) / 3.0
+		var off := back * spread * t
+		draw_rect(Rect2(body.position + off, body.size),
+				Color(color.lightened(0.35), 0.34 * hot * (1.0 - 0.55 * t)))
+	# Bold motion streaks flanking the car.
+	var perp := Vector2(-back.y, back.x)
+	var col_s := Color(color.lightened(0.6), 0.35 + 0.55 * hot)
+	var slen := 22.0 + 46.0 * hot
+	for k in 3:
+		var base := perp * (half - 2.0) * float(k - 1)
+		draw_line(base, base + back * slen, col_s, 4.0)

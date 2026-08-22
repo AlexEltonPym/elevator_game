@@ -17,6 +17,8 @@ extends Node2D
 ##     no "every one of three cards must be drawn" assumption.
 ##   * No recall/redeploy, no gates, no home cells (prototype scope).
 
+const Demand5 := preload("res://scripts/v5/demand5.gd")
+
 enum State { PLAN, PLAYING, WIN, LOSE }
 
 const MAX_STROKE_WALK := 256
@@ -118,7 +120,13 @@ var reject_stop := Vector2i(-1, -1)
 func _ready() -> void:
 	if headless:
 		set_process(false)
-	level = Levels5.get_level(Levels5.current)
+	level = Levels5.get_level(Levels5.current).duplicate(true)
+	# DERIVE demand from the rooms + fixed seed when the level ships no trips of its own
+	# (shipped levels never store trips — see Demand5). Explicit-trip fixtures (the smoke's
+	# delivery/injected levels) keep theirs. The solver drives this same main5, so its
+	# thresholds match live play.
+	if (level.get("trips", []) as Array).is_empty():
+		level["trips"] = Demand5.derive(level.rooms, level_seed())
 	Grid5.load_level(level)
 	if not headless:
 		for n in [grid, cars_node, passengers_node]:
