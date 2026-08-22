@@ -6,8 +6,27 @@ extends CanvasLayer
 ## straight in PLAN. RUN gates on the level's ACTUAL roster.
 
 const StarBar5 := preload("res://scripts/v5/starbar5.gd")
+const Ui5 := preload("res://scripts/v5/ui5.gd")
 
 var game = null # main5.gd
+
+
+## Nearest Kenney button colour for a card's route colour (chips read as their lift colour).
+func _knearest(c: Color) -> String:
+	var h := c.h
+	if c.s < 0.2:
+		return "Grey"
+	if h < 0.05 or h > 0.92:
+		return "Red"
+	if h < 0.12:
+		return "Yellow"
+	if h < 0.20:
+		return "Yellow"
+	if h < 0.45:
+		return "Green"
+	if h < 0.70:
+		return "Blue"
+	return "Blue"  # purples map to blue (no purple in the pack)
 
 var level_label: Label
 var served_label: Label
@@ -52,21 +71,19 @@ func _build_top() -> void:
 	level_label.text = "R-1"
 	served_label = _make_label(Vector2(110, 12), 24, Color(0.45, 0.95, 0.55))
 	lost_label = _make_label(Vector2(110, 52), 24, Color(1.0, 0.5, 0.45))
-	menu_btn = Button.new()
-	menu_btn.text = "LEVELS"
-	menu_btn.position = Vector2(330, 4)
-	menu_btn.size = Vector2(100, 90)
-	menu_btn.add_theme_font_size_override("font_size", 20)
+	menu_btn = Ui5.make_button("LEVELS", "Grey", 18)
+	menu_btn.position = Vector2(330, 6)
+	menu_btn.size = Vector2(100, 86)
 	menu_btn.pressed.connect(func():
 		if game != null:
 			game.to_level_select())
 	add_child(menu_btn)
 	for i in SPEEDS.size():
-		var btn := Button.new()
-		btn.text = SPEEDS[i][1]
-		btn.position = Vector2(438 + i * 94, 4)
-		btn.size = Vector2(88, 90)
-		btn.add_theme_font_size_override("font_size", 30)
+		var btn := Ui5.make_button(SPEEDS[i][1], "Grey", 30)
+		# Kenney Future mangles "5x"/"1x" (5->S, x->H); keep the crisp default font here.
+		btn.add_theme_font_override("font", ThemeDB.fallback_font)
+		btn.position = Vector2(438 + i * 94, 6)
+		btn.size = Vector2(88, 86)
 		var s: float = SPEEDS[i][0]
 		btn.pressed.connect(func(): _on_speed(s))
 		add_child(btn)
@@ -84,23 +101,18 @@ func _build_panel() -> void:
 	bg.position = Vector2(0, 1010)
 	bg.size = Vector2(720, 270)
 	add_child(bg)
-	hint_label = _make_label(Vector2(14, 1016), 20, Color(1, 1, 1, 0.6))
-	clear_btn = Button.new()
-	clear_btn.text = "CLEAR"
+	hint_label = _make_label(Vector2(14, 1016), 18, Color(1, 1, 1, 0.6))
+	# prose hint reads better (and fits) in the default font, not the wide Kenney one.
+	hint_label.add_theme_font_override("font", ThemeDB.fallback_font)
+	clear_btn = Ui5.make_button("CLEAR", "Red", 24)
 	clear_btn.size = Vector2(150, 116)
 	clear_btn.position = Vector2(546, 1046)
-	clear_btn.add_theme_font_size_override("font_size", 24)
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color(0.55, 0.18, 0.16)
-	sb.set_corner_radius_all(8)
-	clear_btn.add_theme_stylebox_override("normal", sb)
 	clear_btn.visible = false
 	clear_btn.pressed.connect(_on_clear)
 	add_child(clear_btn)
-	action_btn = Button.new()
+	action_btn = Ui5.make_button("RUN", "Green", 32)
 	action_btn.position = Vector2(14, 1174)
 	action_btn.size = Vector2(692, 96)
-	action_btn.add_theme_font_size_override("font_size", 32)
 	action_btn.pressed.connect(_on_action)
 	add_child(action_btn)
 
@@ -120,6 +132,9 @@ func _ensure_chips() -> void:
 		btn.position = Vector2(14 + i * 172, 1046)
 		btn.size = Vector2(cw, 116)
 		btn.add_theme_font_size_override("font_size", 18)
+		var cf = Ui5.font()
+		if cf != null:
+			btn.add_theme_font_override("font", cf)
 		var idx: int = i
 		btn.pressed.connect(func(): game.select_card(idx))
 		add_child(btn)
@@ -159,17 +174,10 @@ func _refresh_action() -> void:
 	var ready: bool = running or game.ready_to_run()
 	action_btn.text = "ABORT - BACK TO PLAN" if running else "RUN"
 	action_btn.disabled = not ready
-	var col := Color(0.55, 0.18, 0.16) if running else Color(0.16, 0.45, 0.26)
-	if not ready:
-		col = Color(0.22, 0.22, 0.26)
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = col
-	sb.set_corner_radius_all(10)
-	sb.border_color = col.lightened(0.35)
-	sb.set_border_width_all(3)
-	for s in ["normal", "hover", "pressed", "disabled"]:
-		action_btn.add_theme_stylebox_override(s, sb)
-	action_btn.add_theme_color_override("font_disabled_color", Color(1, 1, 1, 0.35))
+	var kcol := "Red" if running else ("Green" if ready else "Grey")
+	Ui5.skin_button(action_btn, kcol, 32)
+	action_btn.add_theme_stylebox_override("disabled", action_btn.get_theme_stylebox("normal"))
+	action_btn.add_theme_color_override("font_disabled_color", Color(1, 1, 1, 0.4))
 
 
 func refresh_cards() -> void:
@@ -384,5 +392,8 @@ func _make_label(pos: Vector2, size: int, col: Color) -> Label:
 	l.position = pos
 	l.add_theme_font_size_override("font_size", size)
 	l.add_theme_color_override("font_color", col)
+	var f = Ui5.font()
+	if f != null:
+		l.add_theme_font_override("font", f)
 	add_child(l)
 	return l

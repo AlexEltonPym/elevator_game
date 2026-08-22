@@ -17,8 +17,16 @@ const WORLD_COL := {
 }
 
 const StarBar5 := preload("res://scripts/v5/starbar5.gd")
+const Ui5 := preload("res://scripts/v5/ui5.gd")
+const WORLD_KCOL := {"TUTORIAL": "Blue", "CROSSLINK": "Green"}
 
 var page := 0 # index into Levels5.WORLDS
+
+
+func _kfont(l: Control) -> void:
+	var f = Ui5.font()
+	if f != null:
+		l.add_theme_font_override("font", f)
 
 
 func _ready() -> void:
@@ -58,53 +66,54 @@ func _rebuild() -> void:
 	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
 
 	var title := Label.new()
-	title.text = "ELEVATORS - ROOMS"
-	title.position = Vector2(0, 20)
-	title.size = Vector2(vp.x, 40)
-	title.add_theme_font_size_override("font_size", 30)
+	title.text = "ELEVATORS"
+	title.position = Vector2(0, 18)
+	title.size = Vector2(vp.x, 44)
+	title.add_theme_font_size_override("font_size", 34)
 	title.add_theme_color_override("font_color", Color(0.85, 0.9, 1.0))
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_kfont(title)
 	add_child(title)
 
-	# World pager: < WORLD (n/3) >
-	var prev := Button.new()
-	prev.text = "<"
-	prev.position = Vector2(16, 72)
-	prev.size = Vector2(64, 64)
-	prev.add_theme_font_size_override("font_size", 32)
+	# World pager: < WORLD (n/2) > with Kenney arrow buttons.
+	var prev := Ui5.make_button("", "Grey", 20)
+	prev.icon = Ui5.arrow_tex("w")
+	prev.position = Vector2(16, 70)
+	prev.size = Vector2(72, 70)
 	prev.pressed.connect(func(): _flip(-1))
 	add_child(prev)
 
-	var next := Button.new()
-	next.text = ">"
-	next.position = Vector2(vp.x - 80, 72)
-	next.size = Vector2(64, 64)
-	next.add_theme_font_size_override("font_size", 32)
+	var next := Ui5.make_button("", "Grey", 20)
+	next.icon = Ui5.arrow_tex("e")
+	next.position = Vector2(vp.x - 88, 70)
+	next.size = Vector2(72, 70)
 	next.pressed.connect(func(): _flip(1))
 	add_child(next)
 
 	var wlabel := Label.new()
 	wlabel.text = "%s   (%d/%d)" % [world, page + 1, Levels5.WORLDS.size()]
-	wlabel.position = Vector2(88, 76)
-	wlabel.size = Vector2(vp.x - 176, 34)
+	wlabel.position = Vector2(96, 74)
+	wlabel.size = Vector2(vp.x - 192, 34)
 	wlabel.add_theme_font_size_override("font_size", 26)
 	wlabel.add_theme_color_override("font_color", accent)
 	wlabel.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_kfont(wlabel)
 	add_child(wlabel)
 
 	var blurb := Label.new()
 	blurb.text = str(WORLD_BLURB.get(world, ""))
-	blurb.position = Vector2(24, 112)
+	blurb.position = Vector2(24, 150)
 	blurb.size = Vector2(vp.x - 48, 40)
-	blurb.add_theme_font_size_override("font_size", 16)
-	blurb.add_theme_color_override("font_color", Color(1, 1, 1, 0.55))
+	blurb.add_theme_font_size_override("font_size", 15)
+	blurb.add_theme_color_override("font_color", Color(1, 1, 1, 0.6))
 	blurb.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	blurb.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_kfont(blurb)
 	add_child(blurb)
 
 	# Level buttons for this world.
 	var items := _levels_in_page()
-	var top := 168.0
+	var top := 204.0
 	var gap := 16.0
 	var n: int = maxi(1, items.size())
 	var h := (vp.y - top - 40.0 - gap * (n - 1)) / float(n)
@@ -115,20 +124,11 @@ func _rebuild() -> void:
 		var idx: int = index
 		var has_sol: bool = (lv.get("solution", []) as Array).size() > 0
 		var sol_w := 96.0 if has_sol else 0.0
-		var b := Button.new()
-		b.text = "%s   %s" % [lv.id, str(lv.name).to_upper()]
+		var kcol: String = WORLD_KCOL.get(world, "Blue")
+		var b := Ui5.make_button("%s   %s" % [lv.id, str(lv.name).to_upper()], kcol, 22)
 		b.position = Vector2(20, top + k * (h + gap))
 		b.size = Vector2(vp.x - 40 - sol_w, h)
 		b.clip_text = true
-		b.add_theme_font_size_override("font_size", 19)
-		var sb := StyleBoxFlat.new()
-		sb.bg_color = accent.darkened(0.6)
-		sb.border_color = accent
-		sb.set_border_width_all(3)
-		sb.set_corner_radius_all(10)
-		sb.content_margin_left = 16
-		sb.content_margin_right = 16
-		b.add_theme_stylebox_override("normal", sb)
 		b.pressed.connect(func():
 			Levels5.autosolve = false
 			Levels5.current = idx
@@ -143,17 +143,9 @@ func _rebuild() -> void:
 			add_child(sbar)
 		# "Solution" launch: opens the level with the expert plan already drawn, to compare.
 		if has_sol:
-			var sbtn := Button.new()
-			sbtn.text = "SOL\nUTION"
+			var sbtn := Ui5.make_button("SOLVE", "Yellow", 16)
 			sbtn.position = Vector2(vp.x - 20 - sol_w + 6, top + k * (h + gap))
 			sbtn.size = Vector2(sol_w - 6, h)
-			sbtn.add_theme_font_size_override("font_size", 15)
-			var ss := StyleBoxFlat.new()
-			ss.bg_color = accent.darkened(0.35)
-			ss.border_color = accent.lightened(0.2)
-			ss.set_border_width_all(3)
-			ss.set_corner_radius_all(10)
-			sbtn.add_theme_stylebox_override("normal", ss)
 			sbtn.pressed.connect(func():
 				Levels5.autosolve = true
 				Levels5.current = idx

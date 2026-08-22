@@ -78,8 +78,11 @@ static func skin_button(b: Button, color := "Grey", font_size := 24) -> Button:
 	b.add_theme_stylebox_override("pressed", _box(color, "flat", 20, 20, 22, 22))
 	b.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
 	b.add_theme_font_size_override("font_size", font_size)
-	b.add_theme_color_override("font_color", Color(1, 1, 1))
-	b.add_theme_color_override("font_hover_color", Color(1, 1, 1))
+	# Light Kenney buttons (grey/yellow) need DARK text; saturated ones take white.
+	var fg := Color(0.18, 0.20, 0.26) if color in ["Grey", "Yellow"] else Color(1, 1, 1)
+	b.add_theme_color_override("font_color", fg)
+	b.add_theme_color_override("font_hover_color", fg)
+	b.add_theme_color_override("font_pressed_color", fg)
 	var f = font()
 	if f != null:
 		b.add_theme_font_override("font", f)
