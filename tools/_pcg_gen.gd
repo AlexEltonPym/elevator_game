@@ -12,6 +12,9 @@ const Opt = preload("res://tools/v5/optimizers5.gd")
 const ME = preload("res://tools/v5/mapelites5.gd")
 const RG = preload("res://tools/v5/routegen5.gd")
 const Demand5 = preload("res://scripts/v5/demand5.gd")
+const MainScript = preload("res://scripts/v5/main5.gd")
+const GAME_DT := 0.1    # the game's fixed sim step — tiers are scored here so play matches
+const SEARCH_DT := 0.2  # coarser step for the ME search (faster; final tiers re-scored at GAME_DT)
 const R := Vector2i(1, 0)
 const L := Vector2i(-1, 0)
 
@@ -1597,14 +1600,18 @@ func _solve_four(lv: Dictionary, budgets: Array) -> Dictionary:
 	var b_op: int = int(budgets[2])
 	var me = ME.new()
 	me.setup(sim, 0, lv, test, STEP, 40404)
+	MainScript.SIM_DT = SEARCH_DT   # coarse fixed step: fast search
 	var res: Dictionary = me.run(b_op, 0, [b_ad, b_ex, b_op])
 	var ck: Dictionary = res.get("checkpoint_routes", {})
 	var ad_routes: Array = ck.get(b_ad, res.best_routes)
 	var ex_routes: Array = ck.get(b_ex, res.best_routes)
 	var op_routes: Array = ck.get(b_op, res.best_routes)
-	var adept: float = sim.score_seeds(0, ad_routes, test, 0.25).score
-	var expert: float = sim.score_seeds(0, ex_routes, test, 0.25).score
-	var optimal: float = sim.score_seeds(0, op_routes, test, 0.25).score
+	# Score every tier at the GAME's fixed step, so the thresholds are exactly what live play
+	# reproduces (the emitted OPTIMAL plan therefore always earns the 4th star).
+	MainScript.SIM_DT = GAME_DT
+	var adept: float = sim.score_seeds(0, ad_routes, test, GAME_DT).score
+	var expert: float = sim.score_seeds(0, ex_routes, test, GAME_DT).score
+	var optimal: float = sim.score_seeds(0, op_routes, test, GAME_DT).score
 	# NOVICE: representative clumsy-but-working plan = median of the POSITIVE random plans.
 	var widths := RG.card_widths(lv)
 	var all_docks := RG.docks()
@@ -1618,7 +1625,7 @@ func _solve_four(lv: Dictionary, budgets: Array) -> Dictionary:
 		var dec := RG.decode_genome(g, widths)
 		if dec.err != "":
 			continue
-		cands.append(sim.score_seeds(0, dec.routes, test, 0.25).score)
+		cands.append(sim.score_seeds(0, dec.routes, test, GAME_DT).score)
 	cands.sort()
 	var pos: Array = cands.filter(func(x): return x > 0.0)
 	var novice: float = 0.0

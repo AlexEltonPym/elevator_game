@@ -181,9 +181,32 @@ func _process(delta: float) -> void:
 	hud.refresh_stats()
 
 
+# FIXED-TIMESTEP sim. The renderer calls advance() with the frame's (speed-scaled, and
+# possibly spiky) dt, but the sim only ever integrates in SIM_DT chunks: a big frame just
+# runs more chunks. This makes the outcome DETERMINISTIC regardless of framerate or speed
+# (so the same plan always scores the same tips → the same stars), and immune to a large
+# first-frame delta. The headless solver drives this same advance(), so its thresholds are
+# exactly what the game reproduces. SIM_DT is a static so the solver can search coarse for
+# speed then score at the game's step; the game leaves it at the fine default.
+static var SIM_DT := 0.1
+var _sim_accum := 0.0
+
 func advance(dt: float) -> void:
 	if dt <= 0.0:
 		return
+	_sim_accum += dt
+	var guard := 0
+	while _sim_accum >= SIM_DT - 1.0e-9 and guard < 100000:
+		guard += 1
+		_sim_accum -= SIM_DT
+		_step(SIM_DT)
+		if state != State.PLAYING:
+			_sim_accum = 0.0
+			return
+
+
+## One fixed sim step (the old advance body).
+func _step(dt: float) -> void:
 	elapsed += dt
 	if auto_spawn:
 		_spawn_tick(dt)
@@ -270,6 +293,7 @@ func to_plan() -> void:
 
 func start_run() -> void:
 	hud.hide_overlay()
+	_sim_accum = 0.0
 	state = State.PLAYING
 	# FIXED per-level passenger seed: a level always spawns the identical arrival
 	# sequence, so you can't re-run hoping for an easier crowd — the plan is the only
