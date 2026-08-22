@@ -7,10 +7,6 @@ extends Control
 ## world of the level you last played (Levels5.current), so returning lands you where
 ## you were.
 
-const WORLD_BLURB := {
-	"TUTORIAL": "One new idea per level: transfers, cargo, express, the atrium - then combine.",
-	"CROSSLINK": "Numberlink for lifts: thread disjoint routes past each other. Many weavings fit.",
-}
 const WORLD_COL := {
 	"TUTORIAL": Color(0.42, 0.62, 0.88),
 	"CROSSLINK": Color(0.35, 0.74, 0.72),
@@ -65,55 +61,35 @@ func _rebuild() -> void:
 	add_child(bg)
 	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
 
-	var title := Label.new()
-	title.text = "ELEVATORS"
-	title.position = Vector2(0, 18)
-	title.size = Vector2(vp.x, 44)
-	title.add_theme_font_size_override("font_size", 34)
-	title.add_theme_color_override("font_color", Color(0.85, 0.9, 1.0))
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_kfont(title)
-	add_child(title)
-
-	# World pager: < WORLD (n/2) > with Kenney arrow buttons.
+	# World pager: < WORLD (n/2) > with Kenney arrow buttons (dark arrows on grey via skin).
 	var prev := Ui5.make_button("", "Grey", 20)
 	prev.icon = Ui5.arrow_tex("w")
-	prev.position = Vector2(16, 70)
-	prev.size = Vector2(72, 70)
+	prev.position = Vector2(16, 26)
+	prev.size = Vector2(80, 76)
 	prev.pressed.connect(func(): _flip(-1))
 	add_child(prev)
 
 	var next := Ui5.make_button("", "Grey", 20)
 	next.icon = Ui5.arrow_tex("e")
-	next.position = Vector2(vp.x - 88, 70)
-	next.size = Vector2(72, 70)
+	next.position = Vector2(vp.x - 96, 26)
+	next.size = Vector2(80, 76)
 	next.pressed.connect(func(): _flip(1))
 	add_child(next)
 
 	var wlabel := Label.new()
-	wlabel.text = "%s   (%d/%d)" % [world, page + 1, Levels5.WORLDS.size()]
-	wlabel.position = Vector2(96, 74)
-	wlabel.size = Vector2(vp.x - 192, 34)
-	wlabel.add_theme_font_size_override("font_size", 26)
+	wlabel.text = "%s   %d/%d" % [world, page + 1, Levels5.WORLDS.size()]
+	wlabel.position = Vector2(104, 34)
+	wlabel.size = Vector2(vp.x - 208, 60)
+	wlabel.add_theme_font_size_override("font_size", 40)
 	wlabel.add_theme_color_override("font_color", accent)
 	wlabel.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	wlabel.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_kfont(wlabel)
 	add_child(wlabel)
 
-	var blurb := Label.new()
-	blurb.text = str(WORLD_BLURB.get(world, ""))
-	blurb.position = Vector2(24, 150)
-	blurb.size = Vector2(vp.x - 48, 40)
-	blurb.add_theme_font_size_override("font_size", 15)
-	blurb.add_theme_color_override("font_color", Color(1, 1, 1, 0.6))
-	blurb.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	blurb.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_kfont(blurb)
-	add_child(blurb)
-
 	# Level buttons for this world.
 	var items := _levels_in_page()
-	var top := 204.0
+	var top := 122.0
 	var gap := 16.0
 	var n: int = maxi(1, items.size())
 	var h := (vp.y - top - 40.0 - gap * (n - 1)) / float(n)
@@ -125,7 +101,7 @@ func _rebuild() -> void:
 		var has_sol: bool = (lv.get("solution", []) as Array).size() > 0
 		var sol_w := 96.0 if has_sol else 0.0
 		var kcol: String = WORLD_KCOL.get(world, "Blue")
-		var b := Ui5.make_button("%s   %s" % [lv.id, str(lv.name).to_upper()], kcol, 22)
+		var b := Ui5.make_button("%s   %s" % [lv.id, str(lv.name).to_upper()], kcol, 30)
 		b.position = Vector2(20, top + k * (h + gap))
 		b.size = Vector2(vp.x - 40 - sol_w, h)
 		b.clip_text = true
@@ -141,9 +117,11 @@ func _rebuild() -> void:
 			sbar.setup(got, 20.0)
 			sbar.position = Vector2(vp.x - 40 - sol_w - 96.0, top + k * (h + gap) + h * 0.5 - 11.0)
 			add_child(sbar)
-		# "Solution" launch: opens the level with the expert plan already drawn, to compare.
+		# "Solution" launch: a play-arrow button that opens the level with the expert plan
+		# pre-drawn, to compare.
 		if has_sol:
-			var sbtn := Ui5.make_button("SOLVE", "Yellow", 16)
+			var sbtn := Ui5.make_button("", "Green", 16)
+			sbtn.icon = Ui5.arrow_tex("e")
 			sbtn.position = Vector2(vp.x - 20 - sol_w + 6, top + k * (h + gap))
 			sbtn.size = Vector2(sol_w - 6, h)
 			sbtn.pressed.connect(func():

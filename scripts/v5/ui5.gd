@@ -92,6 +92,10 @@ static func skin_button(b: Button, color := "Grey", font_size := 24) -> Button:
 	b.add_theme_color_override("font_color", fg)
 	b.add_theme_color_override("font_hover_color", fg)
 	b.add_theme_color_override("font_pressed_color", fg)
+	b.add_theme_color_override("font_disabled_color", Color(fg, 0.55))
+	b.add_theme_color_override("icon_normal_color", fg)
+	b.add_theme_color_override("icon_hover_color", fg)
+	b.add_theme_color_override("icon_pressed_color", fg)
 	var f = font()
 	if f != null:
 		b.add_theme_font_override("font", f)

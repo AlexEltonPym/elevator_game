@@ -113,7 +113,7 @@ func _ensure_chips() -> void:
 		var btn := Button.new()
 		btn.position = Vector2(14 + i * 172, 1046)
 		btn.size = Vector2(cw, 116)
-		btn.add_theme_font_size_override("font_size", 18)
+		btn.add_theme_font_size_override("font_size", 26)
 		var cf = Ui5.font()
 		if cf != null:
 			btn.add_theme_font_override("font", cf)
@@ -157,9 +157,8 @@ func _refresh_action() -> void:
 	action_btn.text = "ABORT - BACK TO PLAN" if running else "RUN"
 	action_btn.disabled = not ready
 	var kcol := "Red" if running else ("Green" if ready else "Grey")
-	Ui5.skin_button(action_btn, kcol, 32)
+	Ui5.skin_button(action_btn, kcol, 34)
 	action_btn.add_theme_stylebox_override("disabled", action_btn.get_theme_stylebox("normal"))
-	action_btn.add_theme_color_override("font_disabled_color", Color(1, 1, 1, 0.4))
 
 
 func refresh_cards() -> void:
@@ -173,7 +172,7 @@ func refresh_cards() -> void:
 		var served := 0
 		if route != null:
 			served = route.served_rooms().size()
-		btn.text = "%s\nserves %d" % [card.name, served]
+		btn.text = str(card.name)
 		var pip: ColorRect = chip_pips[i]
 		if route == null:
 			pip.color = Color(0.42, 0.42, 0.48)
