@@ -8,15 +8,11 @@ extends Control
 ## you were.
 
 const WORLD_BLURB := {
-	"LEARN": "One new idea per level. Forgiving - you can't really lose by trying.",
-	"MECHANICS": "One new piece per level: cargo, express, the atrium - then combine them.",
-	"GENERIC": "Open optimization. Many legal plans - the craft is finding a good one.",
+	"TUTORIAL": "One new idea per level: transfers, cargo, express, the atrium - then combine.",
 	"CROSSLINK": "Numberlink for lifts: thread disjoint routes past each other. Many weavings fit.",
 }
 const WORLD_COL := {
-	"LEARN": Color(0.42, 0.62, 0.88),
-	"MECHANICS": Color(0.86, 0.62, 0.30),
-	"GENERIC": Color(0.55, 0.78, 0.52),
+	"TUTORIAL": Color(0.42, 0.62, 0.88),
 	"CROSSLINK": Color(0.35, 0.74, 0.72),
 }
 
@@ -120,7 +116,7 @@ func _rebuild() -> void:
 		var has_sol: bool = (lv.get("solution", []) as Array).size() > 0
 		var sol_w := 96.0 if has_sol else 0.0
 		var b := Button.new()
-		b.text = "%s  %s\n%s" % [lv.id, str(lv.name).to_upper(), lv.thesis]
+		b.text = "%s   %s" % [lv.id, str(lv.name).to_upper()]
 		b.position = Vector2(20, top + k * (h + gap))
 		b.size = Vector2(vp.x - 40 - sol_w, h)
 		b.clip_text = true

@@ -124,14 +124,12 @@ const COL_D := Color(0.80, 0.55, 0.92)
 ##   LEARN     — forgiving tutorial ramp, one concept per level
 ##   MECHANICS — thesis levels that prove/feature one mechanic
 ##   GENERIC   — middleground optimization: many legal plans, only some good
-const WORLDS := ["LEARN", "MECHANICS", "GENERIC", "CROSSLINK"]
+const WORLDS := ["TUTORIAL", "CROSSLINK"]
 
 const LEVELS := [
-	# ===================== LEARN (basics) =====================
+	# ===================== TUTORIAL =====================
 	{
-		"id": "T-1", "world": "LEARN", "name": "First Run",
-		"thesis": "draw one route past the rooms - one cell between two offices serves both",
-		"intro": "Rooms are areas, not dots. A lift never enters a room; it runs\nin the open cells BESIDE it. Draw one line up from the lobby: it\npasses the door marks and drops people off. The top cell sits\nBETWEEN two offices, so that single cell serves BOTH at once.",
+		"id": "T-1", "world": "TUTORIAL", "name": "First Run",
 		"cols": 5, "rows": 5,
 		"rooms": [
 			{"type": "lobby", "cells": [Vector2i(0, 0), Vector2i(1, 0)],
@@ -160,9 +158,7 @@ const LEVELS := [
 		],
 	},
 	{
-		"id": "T-2", "world": "LEARN", "name": "Handoff",
-		"thesis": "two wings joined only by an atrium - cross by getting off and walking to the other lift",
-		"intro": "An apartment wing and an office wing, joined only by the ATRIUM\nin the middle. BLUE works the left, GREEN the right. A resident\ncommuting across gets off at the atrium, walks to the far side,\nand catches the other lift - a handoff. A lift can't cross the\natrium, but people can.",
+		"id": "T-2", "world": "TUTORIAL", "name": "Handoff",
 		"cols": 8, "rows": 3,
 		"blocked": [Vector2i(3, 0), Vector2i(4, 0), Vector2i(3, 2), Vector2i(4, 2)],
 		"rooms": [
@@ -190,11 +186,8 @@ const LEVELS := [
 			{"w": 0.45, "from": "C", "to": "A"},
 		],
 	},
-	# ===================== MECHANICS (one palette piece each) =====================
 	{
-		"id": "T-3", "world": "MECHANICS", "name": "Freight",
-		"thesis": "wide carts fit only the cargo lift - wheel them up to the cafe; commuters take the local",
-		"intro": "The delivery BAY A is bottom-left; the CAFE B tops the middle\nstack with the LOBBY C and offices D, E. DELIVERY MEN wheel wide\ncarts (width 3) that ONLY fit the CARGO lift - run it up the left\npast the bay and drop the load at the cafe, then they head back\ndown EMPTY on any lift. Commuters are width-1: run the LOCAL up\nthe right for the office and lunch trips. The local can't take a cart.",
+		"id": "T-3", "world": "TUTORIAL", "name": "Freight",
 		"cols": 7, "rows": 7,
 		"rooms": [
 			{"type": "delivery", "cells": [
@@ -243,9 +236,7 @@ const LEVELS := [
 		],
 	},
 	{
-		"id": "T-4", "world": "MECHANICS", "name": "Express Line",
-		"thesis": "give the express its own long channel to the penthouse; the local does the office stops",
-		"intro": "Two channels. The left shaft is a clean non-stop run to the\nPENTHOUSE B - put the EXPRESS there (double speed, chevrons):\nexecutives want the lobby-to-top haul fast. The right shaft is\nstop-heavy - the LOCAL serves the office floors off the lobby A.\nLong haul = express; lots of stops = local.",
+		"id": "T-4", "world": "TUTORIAL", "name": "Express Line",
 		"cols": 7, "rows": 11,
 		"rooms": [
 			{"type": "lobby", "cells": [Vector2i(2, 0), Vector2i(3, 0)],
@@ -286,9 +277,7 @@ const LEVELS := [
 		],
 	},
 	{
-		"id": "T-5", "world": "MECHANICS", "name": "Relay",
-		"thesis": "a wall splits the building - one atrium joins them, so lifts hand off there",
-		"intro": "A wall splits the building; the only way across is the ATRIUM C\nin the middle. BLUE works the left, GREEN the right. A rider\ncrossing sides gets off at C and walks to the other lift - a\nrelay. A lift can't cross the atrium, but people can.",
+		"id": "T-5", "world": "TUTORIAL", "name": "Relay",
 		"cols": 8, "rows": 5,
 		"blocked": [Vector2i(3, 0), Vector2i(4, 0), Vector2i(3, 1), Vector2i(4, 1),
 				Vector2i(3, 3), Vector2i(4, 3), Vector2i(3, 4), Vector2i(4, 4)],
@@ -328,9 +317,7 @@ const LEVELS := [
 		],
 	},
 	{
-		"id": "T-6", "world": "MECHANICS", "name": "Loading & Lift",
-		"thesis": "three lifts, three jobs at once: cargo to the cafe, express to the penthouse, local for the rest",
-		"intro": "Now all three lifts together. CARGO wheels the wide carts up\nfrom STORAGE to the CAFE. EXPRESS runs the long haul to the\nPENTHOUSE up top. LOCAL mops up the apartment and lobby stops.\nEach lift has its lane - give every room a door.",
+		"id": "T-6", "world": "TUTORIAL", "name": "Loading & Lift",
 		"cols": 9, "rows": 9, "blocked": [],
 		"overlaps": [
 			{"cells": [Vector2i(0, 1), Vector2i(0, 2), Vector2i(0, 3), Vector2i(0, 4), Vector2i(0, 6), Vector2i(0, 7), Vector2i(0, 8), Vector2i(1, 2), Vector2i(1, 3), Vector2i(1, 4), Vector2i(1, 6), Vector2i(1, 8), Vector2i(2, 2), Vector2i(2, 6), Vector2i(3, 2), Vector2i(3, 5), Vector2i(3, 6), Vector2i(4, 0), Vector2i(4, 1), Vector2i(4, 2), Vector2i(4, 5), Vector2i(4, 6), Vector2i(4, 8), Vector2i(5, 0), Vector2i(5, 1), Vector2i(5, 2), Vector2i(5, 5), Vector2i(5, 6), Vector2i(5, 8), Vector2i(6, 0), Vector2i(6, 1), Vector2i(6, 2), Vector2i(6, 3), Vector2i(6, 4), Vector2i(6, 5), Vector2i(6, 7), Vector2i(6, 8), Vector2i(7, 0), Vector2i(7, 1), Vector2i(7, 2), Vector2i(7, 3), Vector2i(7, 4), Vector2i(7, 5), Vector2i(7, 8), Vector2i(8, 0), Vector2i(8, 1), Vector2i(8, 2), Vector2i(8, 3), Vector2i(8, 4), Vector2i(8, 5), Vector2i(8, 8)], "max": 3},
@@ -365,9 +352,7 @@ const LEVELS := [
 		],
 	},
 	{
-		"id": "T-7", "world": "MECHANICS", "name": "Squeeze",
-		"thesis": "a capped shaft that steps across - split it and hand off at the atrium in the bend",
-		"intro": "The finale. One shaft, but it STEPS from the lower-left stack to\nthe upper-right one, and its pips cap it at 2 - two lifts can't\nboth run the whole thing. LIFT 1 works the lower-left, LIFT 2 the\nupper-right; they meet only at the cap-4 ATRIUM C in the bend, so\ncross-building riders change there. One lift can't do it alone.",
+		"id": "T-7", "world": "TUTORIAL", "name": "Squeeze",
 		"cols": 6, "rows": 9,
 		"overlaps": [
 			{"cells": [Vector2i(2, 0), Vector2i(2, 1), Vector2i(2, 2), Vector2i(2, 3),
@@ -409,50 +394,6 @@ const LEVELS := [
 			{"w": 0.11, "from": "E", "to": "B"},
 		],
 	},
-	# ===================== GENERIC =====================
-	{
-		"id": "R-10",
-		"world": "GENERIC",
-		"name": "Rounds",
-		"thesis": "residents keep cycling home->work->cafe - the return trips are the real load",
-		"intro": "A live-work block: apartments A, B on the left, office C and\ncafe D on the right, open courtyard between. People don't take\none trip - they cycle (home to work, out for coffee, back\nagain), so a served rider usually sets off again. Run LIFT 1\nas a big horseshoe past all four; add LIFT 2 where the churn\npiles up. The return trips are half the work.",
-		"cols": 6, "rows": 7,
-		"rooms": [
-			{"type": "apartment", "cells": [Vector2i(0, 1), Vector2i(1, 1)],
-					"drops": [{"cell": Vector2i(1, 1), "dir": R}]},
-			{"type": "apartment", "cells": [Vector2i(0, 5), Vector2i(1, 5)],
-					"drops": [{"cell": Vector2i(1, 5), "dir": R}]},
-			{"type": "office", "cells": [Vector2i(4, 1), Vector2i(5, 1)],
-					"drops": [{"cell": Vector2i(4, 1), "dir": L}]},
-			{"type": "cafe", "cells": [Vector2i(4, 5), Vector2i(5, 5)],
-					"drops": [{"cell": Vector2i(4, 5), "dir": L}]},
-		],
-		"cards": [
-			{"name": "LIFT 1", "type": "standard", "color": COL_A},
-			{"name": "LIFT 2", "type": "standard", "color": COL_B},
-		],
-		"quota": 20, "max_lost": 12,
-		"shift": 90.0,
-		"stars": [320, 460, 580, 640],
-		"solution": [[[2, 5], [3, 5], [3, 4], [3, 3], [3, 2], [3, 1], [2, 1]], [[2, 1], [3, 1], [3, 2], [3, 3], [3, 4], [3, 5], [2, 5], [2, 4], [2, 3], [2, 2]]],
-		"reactivate": 0.55,
-		"spawn": {"interval_start": 2.6, "interval_end": 2.2, "ramp": 60.0,
-				"burst_min": 1, "burst_max": 2, "gap": 0.8},
-		"mix": {"visitor": 1.0},
-		# Residents cycle: home (A/B) <-> office C, and everyone visits the cafe D. High
-		# reactivation makes the return legs the bulk of the demand.
-		"trips": [
-			{"w": 0.14, "from": "A", "to": "C"},
-			{"w": 0.10, "from": "C", "to": "A"},
-			{"w": 0.12, "from": "B", "to": "C"},
-			{"w": 0.10, "from": "C", "to": "B"},
-			{"w": 0.10, "from": "A", "to": "D"},
-			{"w": 0.08, "from": "D", "to": "A"},
-			{"w": 0.10, "from": "B", "to": "D"},
-			{"w": 0.08, "from": "D", "to": "B"},
-			{"w": 0.08, "from": "C", "to": "D"},
-		],
-	},
 	# ===================== CROSSLINK =====================
 	# Numberlink / snake-fitting: disjoint routes threaded past each other. Open cells
 	# cap at 3 (a width-2 LOCAL/EXPRESS can't share; a width-3 CARGO exactly fits), so
@@ -461,11 +402,9 @@ const LEVELS := [
 	# EXPRESS is very fast + hard-accelerating so its long run banks momentum, and exec
 	# demand (A<->D) is dominant so the express is essential.
 	{
-		"id": "XLINK",
+		"id": "XL1",
 		"world": "CROSSLINK",
 		"name": "Crosslink",
-		"thesis": "thread three disjoint snakes past each other",
-		"intro": "",
 		"cols": 10, "rows": 9,
 		"blocked": [],
 		"overlaps": [
@@ -517,7 +456,7 @@ const LEVELS := [
 		# cover: round-robin demand so every room gets riders (abandon one and its riders
 		# time out, costing tips) — the soft version of the old all-served rule.
 		"shift": 90.0,
-		"stars": [230, 340, 420, 470],
+		"stars": [240, 350, 430, 480],
 		"solution": [[[2, 8], [2, 7], [2, 6], [2, 5], [2, 4], [2, 3], [3, 3], [3, 2], [3, 1], [3, 0]], [[7, 7], [7, 6], [8, 6], [8, 5], [8, 4], [7, 4], [7, 3], [6, 3], [6, 2], [6, 1], [6, 0], [5, 0], [4, 0], [3, 0]], [[4, 4], [4, 3], [5, 3], [5, 2], [5, 1], [6, 1]]],
 		"spawn": {"interval_start": 2.2, "interval_end": 1.7, "ramp": 40.0,
 				"burst_min": 1, "burst_max": 2, "gap": 0.9, "cover": true},
@@ -533,7 +472,7 @@ const LEVELS := [
 		],
 	},
 	{
-		"id": "XL2", "world": "CROSSLINK", "name": "Foyer", "thesis": "", "intro": "",
+		"id": "XL2", "world": "CROSSLINK", "name": "Foyer",
 		"cols": 9, "rows": 9, "blocked": [],
 		"overlaps": [
 			{"cells": [Vector2i(0, 0), Vector2i(0, 1), Vector2i(0, 2), Vector2i(0, 3), Vector2i(0, 4), Vector2i(0, 5), Vector2i(0, 7), Vector2i(0, 8), Vector2i(1, 0), Vector2i(1, 1), Vector2i(1, 2), Vector2i(1, 3), Vector2i(1, 4), Vector2i(1, 5), Vector2i(1, 8), Vector2i(2, 0), Vector2i(2, 1), Vector2i(2, 2), Vector2i(2, 3), Vector2i(2, 4), Vector2i(2, 5), Vector2i(2, 8), Vector2i(3, 0), Vector2i(3, 1), Vector2i(3, 2), Vector2i(3, 4), Vector2i(3, 5), Vector2i(3, 7), Vector2i(3, 8), Vector2i(4, 2), Vector2i(4, 4), Vector2i(4, 5), Vector2i(4, 7), Vector2i(4, 8), Vector2i(5, 2), Vector2i(5, 4), Vector2i(5, 5), Vector2i(5, 6), Vector2i(6, 2), Vector2i(6, 3), Vector2i(6, 4), Vector2i(6, 5), Vector2i(6, 6), Vector2i(7, 1), Vector2i(7, 2), Vector2i(7, 3), Vector2i(7, 4), Vector2i(7, 5), Vector2i(7, 6), Vector2i(8, 0), Vector2i(8, 1), Vector2i(8, 2), Vector2i(8, 3), Vector2i(8, 4), Vector2i(8, 5), Vector2i(8, 6)], "max": 3},
@@ -564,7 +503,7 @@ const LEVELS := [
 		],
 	},
 	{
-		"id": "XL3", "world": "CROSSLINK", "name": "Dumbwaiter", "thesis": "", "intro": "",
+		"id": "XL3", "world": "CROSSLINK", "name": "Dumbwaiter",
 		"cols": 9, "rows": 9, "blocked": [],
 		"overlaps": [
 			{"cells": [Vector2i(0, 0), Vector2i(0, 1), Vector2i(0, 2), Vector2i(0, 3), Vector2i(0, 4), Vector2i(0, 5), Vector2i(0, 6), Vector2i(0, 7), Vector2i(0, 8), Vector2i(1, 0), Vector2i(1, 1), Vector2i(1, 2), Vector2i(1, 4), Vector2i(1, 7), Vector2i(1, 8), Vector2i(2, 0), Vector2i(2, 1), Vector2i(2, 2), Vector2i(2, 4), Vector2i(2, 7), Vector2i(2, 8), Vector2i(3, 0), Vector2i(3, 1), Vector2i(3, 2), Vector2i(3, 4), Vector2i(3, 6), Vector2i(3, 7), Vector2i(3, 8), Vector2i(4, 2), Vector2i(4, 3), Vector2i(4, 4), Vector2i(4, 5), Vector2i(4, 6), Vector2i(5, 2), Vector2i(5, 3), Vector2i(5, 4), Vector2i(5, 5), Vector2i(5, 6), Vector2i(6, 2), Vector2i(6, 3), Vector2i(6, 4), Vector2i(6, 5), Vector2i(6, 6), Vector2i(7, 1), Vector2i(7, 2), Vector2i(7, 3), Vector2i(7, 4), Vector2i(7, 5), Vector2i(7, 6), Vector2i(8, 0), Vector2i(8, 1), Vector2i(8, 2), Vector2i(8, 3), Vector2i(8, 4), Vector2i(8, 5), Vector2i(8, 6), Vector2i(8, 7), Vector2i(8, 8)], "max": 3},
@@ -596,7 +535,7 @@ const LEVELS := [
 		],
 	},
 	{
-		"id": "XL4", "world": "CROSSLINK", "name": "Loading Dock", "thesis": "", "intro": "",
+		"id": "XL4", "world": "CROSSLINK", "name": "Loading Dock",
 		"cols": 9, "rows": 11, "blocked": [],
 		"overlaps": [
 			{"cells": [Vector2i(0, 0), Vector2i(0, 1), Vector2i(0, 2), Vector2i(0, 3), Vector2i(0, 4), Vector2i(0, 5), Vector2i(0, 6), Vector2i(0, 8), Vector2i(0, 9), Vector2i(0, 10), Vector2i(1, 2), Vector2i(1, 3), Vector2i(1, 4), Vector2i(1, 5), Vector2i(1, 6), Vector2i(1, 8), Vector2i(1, 9), Vector2i(1, 10), Vector2i(2, 2), Vector2i(2, 3), Vector2i(2, 5), Vector2i(2, 6), Vector2i(2, 8), Vector2i(2, 9), Vector2i(2, 10), Vector2i(3, 2), Vector2i(3, 3), Vector2i(3, 5), Vector2i(3, 6), Vector2i(3, 7), Vector2i(3, 8), Vector2i(4, 1), Vector2i(4, 2), Vector2i(4, 3), Vector2i(4, 5), Vector2i(4, 6), Vector2i(5, 0), Vector2i(5, 1), Vector2i(5, 2), Vector2i(5, 3), Vector2i(5, 4), Vector2i(5, 5), Vector2i(5, 6), Vector2i(6, 0), Vector2i(6, 1), Vector2i(6, 2), Vector2i(6, 3), Vector2i(6, 4), Vector2i(6, 5), Vector2i(6, 6), Vector2i(6, 8), Vector2i(7, 0), Vector2i(7, 1), Vector2i(7, 2), Vector2i(7, 3), Vector2i(7, 4), Vector2i(7, 5), Vector2i(7, 6), Vector2i(7, 7), Vector2i(7, 8), Vector2i(7, 9), Vector2i(7, 10), Vector2i(8, 0), Vector2i(8, 1), Vector2i(8, 2), Vector2i(8, 3), Vector2i(8, 4), Vector2i(8, 5), Vector2i(8, 6), Vector2i(8, 7), Vector2i(8, 8), Vector2i(8, 9), Vector2i(8, 10)], "max": 3},
@@ -630,7 +569,7 @@ const LEVELS := [
 		],
 	},
 	{
-		"id": "XL5", "world": "CROSSLINK", "name": "Skybridge", "thesis": "", "intro": "",
+		"id": "XL5", "world": "CROSSLINK", "name": "Skybridge",
 		"cols": 9, "rows": 11, "blocked": [],
 		"overlaps": [
 			{"cells": [Vector2i(0, 0), Vector2i(0, 1), Vector2i(0, 2), Vector2i(0, 3), Vector2i(0, 4), Vector2i(0, 5), Vector2i(0, 6), Vector2i(0, 7), Vector2i(0, 8), Vector2i(0, 9), Vector2i(0, 10), Vector2i(1, 0), Vector2i(1, 1), Vector2i(1, 2), Vector2i(1, 3), Vector2i(1, 4), Vector2i(1, 5), Vector2i(1, 6), Vector2i(1, 7), Vector2i(1, 8), Vector2i(1, 9), Vector2i(1, 10), Vector2i(2, 0), Vector2i(2, 1), Vector2i(2, 2), Vector2i(2, 3), Vector2i(2, 5), Vector2i(2, 6), Vector2i(2, 7), Vector2i(2, 8), Vector2i(2, 9), Vector2i(2, 10), Vector2i(3, 0), Vector2i(3, 1), Vector2i(3, 2), Vector2i(3, 3), Vector2i(3, 5), Vector2i(3, 6), Vector2i(3, 7), Vector2i(3, 8), Vector2i(4, 0), Vector2i(4, 1), Vector2i(4, 3), Vector2i(4, 5), Vector2i(4, 6), Vector2i(5, 3), Vector2i(5, 4), Vector2i(5, 5), Vector2i(5, 6), Vector2i(6, 3), Vector2i(6, 4), Vector2i(6, 5), Vector2i(6, 6), Vector2i(6, 8), Vector2i(7, 3), Vector2i(7, 4), Vector2i(7, 5), Vector2i(7, 6), Vector2i(7, 7), Vector2i(7, 8), Vector2i(7, 9), Vector2i(7, 10), Vector2i(8, 1), Vector2i(8, 3), Vector2i(8, 4), Vector2i(8, 5), Vector2i(8, 6), Vector2i(8, 7), Vector2i(8, 8), Vector2i(8, 9), Vector2i(8, 10)], "max": 3},
@@ -662,7 +601,7 @@ const LEVELS := [
 		],
 	},
 	{
-		"id": "XL6", "world": "CROSSLINK", "name": "Bay Window", "thesis": "", "intro": "",
+		"id": "XL6", "world": "CROSSLINK", "name": "Bay Window",
 		"cols": 9, "rows": 11, "blocked": [Vector2i(2, 5)],
 		"overlaps": [
 			{"cells": [Vector2i(0, 0), Vector2i(0, 1), Vector2i(0, 2), Vector2i(0, 3), Vector2i(0, 4), Vector2i(0, 5), Vector2i(0, 6), Vector2i(0, 7), Vector2i(0, 8), Vector2i(0, 9), Vector2i(0, 10), Vector2i(1, 0), Vector2i(1, 1), Vector2i(1, 2), Vector2i(1, 3), Vector2i(1, 4), Vector2i(1, 5), Vector2i(1, 6), Vector2i(1, 7), Vector2i(1, 9), Vector2i(1, 10), Vector2i(2, 0), Vector2i(2, 1), Vector2i(2, 2), Vector2i(2, 7), Vector2i(2, 9), Vector2i(2, 10), Vector2i(3, 0), Vector2i(3, 1), Vector2i(3, 2), Vector2i(3, 5), Vector2i(3, 7), Vector2i(4, 0), Vector2i(4, 1), Vector2i(4, 2), Vector2i(4, 5), Vector2i(4, 7), Vector2i(5, 2), Vector2i(5, 5), Vector2i(5, 6), Vector2i(5, 7), Vector2i(5, 9), Vector2i(6, 2), Vector2i(6, 3), Vector2i(6, 4), Vector2i(6, 5), Vector2i(6, 6), Vector2i(6, 7), Vector2i(6, 8), Vector2i(6, 9), Vector2i(6, 10), Vector2i(7, 2), Vector2i(7, 3), Vector2i(7, 4), Vector2i(7, 5), Vector2i(7, 6), Vector2i(7, 7), Vector2i(7, 8), Vector2i(7, 9), Vector2i(7, 10), Vector2i(8, 1), Vector2i(8, 2), Vector2i(8, 3), Vector2i(8, 4), Vector2i(8, 5), Vector2i(8, 6), Vector2i(8, 7), Vector2i(8, 8), Vector2i(8, 9), Vector2i(8, 10)], "max": 3},
@@ -696,7 +635,7 @@ const LEVELS := [
 		],
 	},
 	{
-		"id": "XL7", "world": "CROSSLINK", "name": "Crosswinds", "thesis": "", "intro": "",
+		"id": "XL7", "world": "CROSSLINK", "name": "Crosswinds",
 		"cols": 9, "rows": 11, "blocked": [Vector2i(7, 4), Vector2i(7, 6)],
 		"overlaps": [
 			{"cells": [Vector2i(0, 0), Vector2i(0, 1), Vector2i(0, 2), Vector2i(0, 3), Vector2i(0, 4), Vector2i(0, 5), Vector2i(0, 6), Vector2i(0, 8), Vector2i(0, 9), Vector2i(0, 10), Vector2i(1, 2), Vector2i(1, 3), Vector2i(1, 4), Vector2i(1, 5), Vector2i(1, 6), Vector2i(1, 8), Vector2i(1, 9), Vector2i(1, 10), Vector2i(2, 2), Vector2i(2, 3), Vector2i(2, 5), Vector2i(2, 6), Vector2i(2, 8), Vector2i(2, 9), Vector2i(2, 10), Vector2i(3, 2), Vector2i(3, 3), Vector2i(3, 5), Vector2i(3, 6), Vector2i(3, 7), Vector2i(3, 8), Vector2i(4, 1), Vector2i(4, 3), Vector2i(4, 5), Vector2i(4, 6), Vector2i(5, 0), Vector2i(5, 1), Vector2i(5, 3), Vector2i(5, 4), Vector2i(5, 5), Vector2i(5, 6), Vector2i(6, 0), Vector2i(6, 1), Vector2i(6, 3), Vector2i(6, 4), Vector2i(6, 5), Vector2i(6, 6), Vector2i(6, 8), Vector2i(7, 0), Vector2i(7, 1), Vector2i(7, 3), Vector2i(7, 5), Vector2i(7, 7), Vector2i(7, 8), Vector2i(7, 9), Vector2i(7, 10), Vector2i(8, 0), Vector2i(8, 1), Vector2i(8, 3), Vector2i(8, 4), Vector2i(8, 5), Vector2i(8, 6), Vector2i(8, 7), Vector2i(8, 8), Vector2i(8, 9), Vector2i(8, 10)], "max": 3},
@@ -731,7 +670,7 @@ const LEVELS := [
 		],
 	},
 	{
-		"id": "XL8", "world": "CROSSLINK", "name": "Rush Hour", "thesis": "", "intro": "",
+		"id": "XL8", "world": "CROSSLINK", "name": "Rush Hour",
 		"cols": 9, "rows": 11, "blocked": [],
 		"overlaps": [
 			{"cells": [Vector2i(0, 1), Vector2i(0, 2), Vector2i(0, 3), Vector2i(0, 4), Vector2i(0, 7), Vector2i(0, 8), Vector2i(0, 9), Vector2i(0, 10), Vector2i(1, 1), Vector2i(1, 2), Vector2i(1, 3), Vector2i(1, 4), Vector2i(1, 7), Vector2i(1, 8), Vector2i(1, 9), Vector2i(1, 10), Vector2i(2, 1), Vector2i(2, 2), Vector2i(2, 3), Vector2i(2, 4), Vector2i(2, 6), Vector2i(2, 7), Vector2i(2, 8), Vector2i(2, 10), Vector2i(3, 0), Vector2i(3, 1), Vector2i(3, 2), Vector2i(3, 3), Vector2i(3, 4), Vector2i(3, 5), Vector2i(3, 6), Vector2i(3, 7), Vector2i(3, 8), Vector2i(4, 2), Vector2i(4, 3), Vector2i(4, 4), Vector2i(4, 5), Vector2i(4, 6), Vector2i(4, 7), Vector2i(4, 8), Vector2i(5, 2), Vector2i(5, 3), Vector2i(5, 4), Vector2i(5, 7), Vector2i(5, 8), Vector2i(5, 10), Vector2i(6, 2), Vector2i(6, 3), Vector2i(6, 4), Vector2i(6, 7), Vector2i(6, 8), Vector2i(6, 10), Vector2i(7, 1), Vector2i(7, 2), Vector2i(7, 3), Vector2i(7, 4), Vector2i(7, 7), Vector2i(7, 8), Vector2i(7, 9), Vector2i(7, 10), Vector2i(8, 0), Vector2i(8, 1), Vector2i(8, 2), Vector2i(8, 3), Vector2i(8, 4), Vector2i(8, 7), Vector2i(8, 8), Vector2i(8, 9), Vector2i(8, 10)], "max": 3},
@@ -767,7 +706,7 @@ const LEVELS := [
 		],
 	},
 	{
-		"id": "XL9", "world": "CROSSLINK", "name": "Gridlock", "thesis": "", "intro": "",
+		"id": "XL9", "world": "CROSSLINK", "name": "Gridlock",
 		"cols": 9, "rows": 11, "blocked": [],
 		"overlaps": [
 			{"cells": [Vector2i(0, 0), Vector2i(0, 1), Vector2i(0, 2), Vector2i(0, 3), Vector2i(0, 4), Vector2i(0, 5), Vector2i(0, 6), Vector2i(0, 7), Vector2i(0, 8), Vector2i(0, 9), Vector2i(0, 10), Vector2i(1, 0), Vector2i(1, 1), Vector2i(1, 2), Vector2i(1, 3), Vector2i(1, 4), Vector2i(1, 5), Vector2i(1, 6), Vector2i(1, 7), Vector2i(1, 9), Vector2i(1, 10), Vector2i(2, 0), Vector2i(2, 1), Vector2i(2, 2), Vector2i(2, 5), Vector2i(2, 7), Vector2i(2, 9), Vector2i(2, 10), Vector2i(3, 0), Vector2i(3, 1), Vector2i(3, 2), Vector2i(3, 5), Vector2i(3, 7), Vector2i(4, 0), Vector2i(4, 1), Vector2i(4, 2), Vector2i(4, 5), Vector2i(4, 7), Vector2i(5, 2), Vector2i(5, 5), Vector2i(5, 6), Vector2i(5, 7), Vector2i(5, 9), Vector2i(6, 2), Vector2i(6, 3), Vector2i(6, 6), Vector2i(6, 7), Vector2i(6, 8), Vector2i(6, 9), Vector2i(6, 10), Vector2i(7, 2), Vector2i(7, 3), Vector2i(7, 6), Vector2i(7, 7), Vector2i(7, 8), Vector2i(7, 9), Vector2i(7, 10), Vector2i(8, 1), Vector2i(8, 2), Vector2i(8, 3), Vector2i(8, 5), Vector2i(8, 6), Vector2i(8, 7), Vector2i(8, 8), Vector2i(8, 9), Vector2i(8, 10)], "max": 3},
@@ -805,7 +744,7 @@ const LEVELS := [
 		],
 	},
 	{
-		"id": "XL10", "world": "CROSSLINK", "name": "The Tower", "thesis": "", "intro": "",
+		"id": "XL10", "world": "CROSSLINK", "name": "The Tower",
 		"cols": 9, "rows": 11, "blocked": [],
 		"overlaps": [
 			{"cells": [Vector2i(0, 0), Vector2i(0, 1), Vector2i(0, 2), Vector2i(0, 3), Vector2i(0, 4), Vector2i(0, 5), Vector2i(0, 6), Vector2i(0, 7), Vector2i(0, 8), Vector2i(0, 9), Vector2i(0, 10), Vector2i(1, 1), Vector2i(1, 2), Vector2i(1, 4), Vector2i(1, 5), Vector2i(1, 8), Vector2i(1, 9), Vector2i(2, 1), Vector2i(2, 2), Vector2i(2, 5), Vector2i(2, 8), Vector2i(2, 9), Vector2i(3, 1), Vector2i(3, 2), Vector2i(3, 5), Vector2i(3, 8), Vector2i(3, 9), Vector2i(4, 0), Vector2i(4, 1), Vector2i(4, 2), Vector2i(4, 3), Vector2i(4, 4), Vector2i(4, 5), Vector2i(4, 8), Vector2i(4, 10), Vector2i(5, 2), Vector2i(5, 3), Vector2i(5, 4), Vector2i(5, 6), Vector2i(5, 7), Vector2i(5, 8), Vector2i(6, 2), Vector2i(6, 3), Vector2i(6, 4), Vector2i(6, 6), Vector2i(6, 7), Vector2i(6, 8), Vector2i(7, 2), Vector2i(7, 3), Vector2i(7, 4), Vector2i(7, 6), Vector2i(7, 7), Vector2i(7, 8), Vector2i(7, 10), Vector2i(8, 1), Vector2i(8, 2), Vector2i(8, 3), Vector2i(8, 4), Vector2i(8, 5), Vector2i(8, 6), Vector2i(8, 7), Vector2i(8, 8), Vector2i(8, 10)], "max": 3},
@@ -873,7 +812,7 @@ static func room_id_of_letter(level: Dictionary, ch: String) -> int:
 ## Briefing body: thesis + intro + the roster + which rooms exist, all straight
 ## from the level data so it can never drift from what the sim runs.
 static func briefing_body(level: Dictionary) -> String:
-	var lines: Array = [level.intro, ""]
+	var lines: Array = [str(level.get("intro", "")), ""]
 	var roster: Array = []
 	for c in level.cards:
 		roster.append(str(c.name))
