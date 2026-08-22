@@ -9,7 +9,7 @@ extends Control
 
 const WORLD_BLURB := {
 	"LEARN": "One new idea per level. Forgiving - you can't really lose by trying.",
-	"MECHANICS": "Each level proves one mechanic: transfers, corridors, caps, express, cargo.",
+	"MECHANICS": "One new piece per level: cargo, express, the atrium - then combine them.",
 	"GENERIC": "Open optimization. Many legal plans - the craft is finding a good one.",
 	"CROSSLINK": "Numberlink for lifts: thread disjoint routes past each other. Many weavings fit.",
 }
