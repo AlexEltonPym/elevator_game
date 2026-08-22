@@ -117,10 +117,14 @@ func max_served() -> int:
 ## `adept_at` (>0): also captures the best tips + coverage found after that many sims (an
 ## ADEPT tier — a player who thinks only briefly), so the caller gets the anytime
 ## optimization curve (adept -> expert) for free, no extra simulations.
-func run(budget: int, adept_at := 0) -> Dictionary:
+func run(budget: int, adept_at := 0, checkpoints := []) -> Dictionary:
 	var start: int = sim.runs
 	var adept_score := SimApi5.NEG_INF
 	var adept_cover := 0
+	# Optional route snapshots at given sim counts (ascending): lets one solve yield a whole
+	# skill ladder (adept -> expert -> optimal plans) for free. checkpoint_routes[b] = routes.
+	var ckpt := {}
+	var ck_i := 0
 	# Seed the archive: capacity-aware primitives, then random legal draws.
 	var init: Array = RG.primitive_genomes(level, widths, rng, INIT_SEEDS)
 	var guard := 0
@@ -137,6 +141,9 @@ func run(budget: int, adept_at := 0) -> Dictionary:
 			var ab := best()
 			adept_score = ab.get("fitness", SimApi5.NEG_INF)
 			adept_cover = ab.get("served", 0)
+		while ck_i < checkpoints.size() and sim.runs - start >= int(checkpoints[ck_i]):
+			ckpt[int(checkpoints[ck_i])] = best().get("routes", [])
+			ck_i += 1
 	# Illuminate: pick a (biased) elite, vary it, file the child.
 	var iter_cap := budget * 40 + 10000
 	iters = 0
@@ -157,13 +164,21 @@ func run(budget: int, adept_at := 0) -> Dictionary:
 			var ab2 := best()
 			adept_score = ab2.get("fitness", SimApi5.NEG_INF)
 			adept_cover = ab2.get("served", 0)
+		while ck_i < checkpoints.size() and sim.runs - start >= int(checkpoints[ck_i]):
+			ckpt[int(checkpoints[ck_i])] = best().get("routes", [])
+			ck_i += 1
 	var b := best()
+	# Any checkpoints not reached (budget too small) resolve to the final best.
+	while ck_i < checkpoints.size():
+		ckpt[int(checkpoints[ck_i])] = b.get("routes", [])
+		ck_i += 1
 	if adept_score <= SimApi5.NEG_INF:   # budget never reached the checkpoint
 		adept_score = b.get("fitness", SimApi5.NEG_INF)
 		adept_cover = b.get("served", 0)
 	return {"best_score": b.get("fitness", SimApi5.NEG_INF),
 			"best_genome": b.get("genome", []), "best_routes": b.get("routes", []),
 			"adept_score": adept_score, "adept_cover": adept_cover,
+			"checkpoint_routes": ckpt,
 			"niches": archive.size(), "iters": iters, "runs": sim.runs - start,
 			"full_cover_niches": _full_cover_niches()}
 

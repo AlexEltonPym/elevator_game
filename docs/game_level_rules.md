@@ -97,7 +97,7 @@ If a rule here seems wrong for a task, ask — do not silently violate it.
 
 ## Process / verification (engineering rules)
 
-- **Fingerprint discipline.** `FINGERPRINT5-ALL 795467658` must stay byte-identical for any
+- **Fingerprint discipline.** `FINGERPRINT5-ALL 3886201949` must stay byte-identical for any
   RENDERING-only change (verify with `tools/v5/run_fingerprint5.gd`). A SIM change
   legitimately rebaselines it — flag that explicitly and keep `V5 SMOKE ALL PASS`.
 - **Parse-check headless first** (`godot --headless ... scenes/v5_main.tscn --quit-after N`)

@@ -263,7 +263,10 @@ func _wrap(cols: int, rows: int, rooms: Array, blocks := []) -> Dictionary:
 	for i in rooms.size():
 		var lt := char(65 + i)
 		var ty: String = rooms[i].type
-		if ty == "lobby" or ty == "atrium":
+		# lobby/atrium are hubs (no direct demand of their own); a delivery room is
+		# FREIGHT-ONLY (people never commute to a storage bay) -- its sole demand is the
+		# storage->cafe cargo run added below, so skip it here too.
+		if ty == "lobby" or ty == "atrium" or ty == "delivery":
 			continue
 		if _rooms_abut(rooms, cellowner, i, lobby_i):
 			continue   # walkable straight from the lobby -> no lift trip
@@ -841,6 +844,38 @@ func _draw_gen(jpath: String, selector: String, png: String) -> void:
 	root.get_texture().get_image().save_png(png)
 	print("drew %s r%d sweep=%.0f blocks=%d (%s) -> %s" % [pick.get("tier", "?"), int(pick.get("nrooms", 0)),
 			float(pick.get("sweep", 0)), (genome.blocks as Array).size(), pick.get("sig", ""), png])
+
+
+## Render a specific archive niche (by descriptor key) and print its rooms as a GDScript
+## literal, so a good generated LAYOUT can be lifted into a hand-authored tutorial entry.
+func _draw_gen_key(master: String, key: String, png: String) -> void:
+	var pick := _find_by_key(master, key)
+	if pick.is_empty():
+		print("no niche '%s' in %s" % [key, master]); return
+	var genome := _genome_parse(pick.genome)
+	var a := _assess_design(genome)
+	if not a.feasible:
+		print("niche '%s' infeasible (dist %d)" % [key, a.distance]); return
+	var lv: Dictionary = a.level
+	print("=== %s  r%d  %s  (tier %s sweep %.0f) ===" % [key, int(pick.get("nrooms", 0)),
+			pick.get("sig", ""), pick.get("tier", "?"), float(pick.get("sweep", 0))])
+	print("cols=%d rows=%d blocked=[%s]" % [lv.cols, lv.rows, _vecs(lv.get("blocked", []))])
+	for i in lv.rooms.size():
+		var rm = lv.rooms[i]
+		var drops := []
+		for dr in rm.drops:
+			drops.append("{cell(%d,%d) %s}" % [dr.cell.x, dr.cell.y, _dir(dr.dir)])
+		print("  %s %-9s cells=[%s] drops=[%s]" % [char(65 + i), rm.type, _vecs(rm.cells), ", ".join(drops)])
+	Levels5.injected = lv
+	Levels5.headless = false
+	Levels5.current = 0
+	var scene: Node = load("res://scenes/v5_main.tscn").instantiate()
+	root.add_child(scene)
+	for _i in 6:
+		await process_frame
+	await RenderingServer.frame_post_draw
+	root.get_texture().get_image().save_png(png)
+	print("-> %s" % png)
 
 
 ## Pick one design from a fievo archive: integer index into feasible-by-sweep, or "block".
@@ -1511,9 +1546,277 @@ func _dir(d: Vector2i) -> String:
 
 func _colname(c: Color) -> String:
 	if c.is_equal_approx(Color(0.45, 0.68, 0.95)): return "COL_A"
+	if c.is_equal_approx(Color(0.5, 0.88, 0.55)): return "COL_B"
 	if c.is_equal_approx(Color(0.80, 0.55, 0.92)): return "COL_D"
 	if c.is_equal_approx(Color(0.98, 0.68, 0.2)): return "COL_C"
 	return "Color(%.2f, %.2f, %.2f)" % [c.r, c.g, c.b]
+
+
+# ============================ TUTORIAL SUITE TOOLING ============================
+# Star thresholds come from the MAP-Elites solve: a level is solved at THREE budgets in
+# one pass (adept / expert / optimal plans via checkpoint routes) plus a NOVICE random
+# median. The four tip totals become the 1/2/3/secret-4 star thresholds, rounded UP to a
+# clean number. `tutgen` builds a mechanic level from an archive niche + config overrides;
+# `tutstars` solves an already-authored LEVELS entry. Both emit the entry with stars.
+
+## Round a tip total UP to a clean number (nearest 5 under 100, nearest 10 at/over 100).
+func _round_up_clean(v: float) -> int:
+	v = maxf(v, 0.0)
+	var step: float = 5.0 if v < 100.0 else 10.0
+	return int(ceil(v / step) * step)
+
+
+## Round DOWN to a clean number — used for the EARNABLE tiers so the threshold never
+## exceeds the score that earns it (a threshold above the achievable optimum is a bug).
+func _round_down_clean(v: float) -> int:
+	v = maxf(v, 0.0)
+	var step: float = 5.0 if v < 100.0 else 10.0
+	return int(floor(v / step) * step)
+
+
+## Solve a level for the four skill tiers (median held-out tips). Returns raw floats +
+## the expert route-set (the pre-drawable solution). budgets = [adept, expert, optimal].
+func _solve_four(lv: Dictionary, budgets: Array) -> Dictionary:
+	Levels5.injected = lv
+	Levels5.headless = true
+	SimApi5.load_maze(lv)
+	var sim := InjSim.new(self)
+	sim.inj = lv
+	sim.tip_mode = true
+	sim.shift = float(lv.get("shift", 90.0))
+	var test: Array = SimApi5.SEEDS_TEST
+	var b_ad: int = int(budgets[0])
+	var b_ex: int = int(budgets[1])
+	var b_op: int = int(budgets[2])
+	var me = ME.new()
+	me.setup(sim, 0, lv, SimApi5.SEEDS_TRAIN.slice(0, 3), STEP, 40404)
+	var res: Dictionary = me.run(b_op, 0, [b_ad, b_ex, b_op])
+	var ck: Dictionary = res.get("checkpoint_routes", {})
+	var ad_routes: Array = ck.get(b_ad, res.best_routes)
+	var ex_routes: Array = ck.get(b_ex, res.best_routes)
+	var op_routes: Array = ck.get(b_op, res.best_routes)
+	var adept: float = sim.score_seeds(0, ad_routes, test, 0.25).score
+	var expert: float = sim.score_seeds(0, ex_routes, test, 0.25).score
+	var optimal: float = sim.score_seeds(0, op_routes, test, 0.25).score
+	# NOVICE: representative clumsy-but-working plan = median of the POSITIVE random plans.
+	var widths := RG.card_widths(lv)
+	var all_docks := RG.docks()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 999
+	var cands: Array = []
+	for _i in 60:
+		var g := RG.random_genome(rng, all_docks, widths)
+		if g.is_empty():
+			continue
+		var dec := RG.decode_genome(g, widths)
+		if dec.err != "":
+			continue
+		cands.append(sim.score_seeds(0, dec.routes, test, 0.25).score)
+	cands.sort()
+	var pos: Array = cands.filter(func(x): return x > 0.0)
+	var novice: float = 0.0
+	if pos.size() >= 1:
+		novice = pos[pos.size() / 2]
+	elif not cands.is_empty():
+		novice = cands[cands.size() - 1]
+	return {"novice": novice, "adept": adept, "expert": expert, "optimal": optimal,
+			"expert_routes": ex_routes, "optimal_routes": op_routes}
+
+
+## Turn four raw tip totals into ASCENDING, cleanly-rounded, ACHIEVABLE star thresholds.
+## 1 star = a rough-but-working plan; 3 = expert (top of the reasonable-solution range);
+## 4 = the SECRET optimal star (rounded UP, just past expert). t1..t3 are floored so they
+## never sit above the score that earns them; strict ascending with >=5 gaps.
+func _star_thresholds(s: Dictionary) -> Array:
+	var e: float = s.expert
+	var o: float = maxf(s.optimal, e)
+	var gap: int = 10 if e >= 100.0 else 5
+	var t3: int = _round_down_clean(e)
+	var t1: int = clampi(_round_down_clean(0.40 * e), gap, t3 - 2 * gap)
+	var t2: int = clampi(_round_down_clean(minf(s.adept, 0.78 * e)), t1 + gap, t3 - gap)
+	var t4: int = maxi(_round_up_clean(o), t3 + gap)
+	return [t1, t2, t3, t4]
+
+
+func _find_by_key(master: String, key: String) -> Dictionary:
+	var f := FileAccess.open(master, FileAccess.READ)
+	if f == null:
+		return {}
+	var data = JSON.parse_string(f.get_as_text())
+	f.close()
+	for e in data.get("feasible", []):
+		if str(e.get("key", "")) == key:
+			return e
+	return {}
+
+
+## Merge tutorial config overrides into a wrapped level dict (name/pacing/flavour).
+func _apply_cfg(lv: Dictionary, cfg: Dictionary) -> void:
+	for k in ["id", "world", "name", "thesis", "intro", "shift", "reactivate", "quota", "max_lost"]:
+		if cfg.has(k):
+			lv[k] = cfg[k]
+	if cfg.has("spawn"):
+		lv.spawn = cfg.spawn
+	if cfg.has("mix"):
+		lv.mix = cfg.mix
+	if cfg.has("patience"):
+		lv.patience = cfg.patience
+
+
+func _emit_numdict(d: Dictionary) -> String:
+	var toks: Array = []
+	var int_keys := {"burst_min": true, "burst_max": true}
+	for k in d:
+		var v = d[k]
+		if v is bool:
+			toks.append("\"%s\": %s" % [k, "true" if v else "false"])
+		elif v is int or int_keys.has(k):
+			toks.append("\"%s\": %d" % [k, int(v)])
+		else:
+			toks.append("\"%s\": %.2f" % [k, float(v)])
+	return ", ".join(toks)
+
+
+## Emit a full tutorial LEVELS entry (with stars + solution) and its smoke case.
+func _dump_tut(lv: Dictionary, stars: Array, expert_routes: Array) -> void:
+	var id: String = str(lv.get("id", "T-?"))
+	print("\t{")
+	print("\t\t\"id\": \"%s\", \"world\": \"%s\", \"name\": \"%s\"," % [id, lv.get("world", "MECHANICS"), lv.get("name", "")])
+	print("\t\t\"thesis\": \"%s\"," % str(lv.get("thesis", "")))
+	print("\t\t\"intro\": \"%s\"," % str(lv.get("intro", "")).replace("\n", "\\n"))
+	print("\t\t\"cols\": %d, \"rows\": %d, \"blocked\": [%s]," % [lv.cols, lv.rows, _vecs(lv.get("blocked", []))])
+	if lv.has("overlaps") and lv.overlaps.size() >= 2:
+		print("\t\t\"overlaps\": [")
+		print("\t\t\t{\"cells\": [%s], \"max\": 3}," % _vecs(lv.overlaps[0].cells))
+		print("\t\t\t{\"cells\": [%s], \"max\": 6}," % _vecs(lv.overlaps[1].cells))
+		print("\t\t],")
+	print("\t\t\"rooms\": [")
+	for rm in lv.rooms:
+		var lbl: String = (", \"label\": \"%s\"" % rm.label) if rm.has("label") else ""
+		var drops := []
+		for dr in rm.drops:
+			drops.append("{\"cell\": Vector2i(%d, %d), \"dir\": %s}" % [dr.cell.x, dr.cell.y, _dir(dr.dir)])
+		print("\t\t\t{\"type\": \"%s\"%s, \"cells\": [%s], \"drops\": [%s]}," % [rm.type, lbl, _vecs(rm.cells), ", ".join(drops)])
+	print("\t\t],")
+	print("\t\t\"cards\": [")
+	for cd in lv.cards:
+		var extra := ""
+		if cd.has("speed"):
+			extra = ", \"speed\": %.1f, \"accel\": %.1f" % [cd.speed, cd.accel]
+		print("\t\t\t{\"name\": \"%s\", \"type\": \"%s\", \"color\": %s%s}," % [cd.name, cd.type, _colname(cd.color), extra])
+	print("\t\t],")
+	print("\t\t\"quota\": %d, \"max_lost\": %d, \"shift\": %.1f," % [lv.get("quota", 20), lv.get("max_lost", 8), lv.get("shift", 90.0)])
+	print("\t\t\"stars\": [%d, %d, %d, %d]," % [stars[0], stars[1], stars[2], stars[3]])
+	print("\t\t\"spawn\": {%s}," % _emit_numdict(lv.spawn))
+	print("\t\t\"mix\": {%s}," % _emit_numdict(lv.mix))
+	if lv.has("patience"):
+		print("\t\t\"patience\": {%s}," % _emit_numdict(lv.patience))
+	if lv.has("reactivate"):
+		print("\t\t\"reactivate\": %.2f," % float(lv.reactivate))
+	print("\t\t\"trips\": [")
+	for tr in lv.trips:
+		var extra := ""
+		if tr.has("type"):
+			extra += ", \"type\": \"%s\"" % tr.type
+		if tr.has("return"):
+			extra += ", \"return\": \"%s\"" % str(tr.get("return"))
+		print("\t\t\t{\"w\": %.2f, \"from\": \"%s\", \"to\": \"%s\"%s}," % [tr.w, tr.from, tr.to, extra])
+	print("\t\t],")
+	if not expert_routes.is_empty():
+		var sols := []
+		for r in expert_routes:
+			var cc2 := []
+			for xy in r.cells:
+				cc2.append("[%d, %d]" % [int(xy[0]), int(xy[1])])
+			sols.append("[%s]" % ", ".join(cc2))
+		print("\t\t\"solution\": [%s]," % ", ".join(sols))
+	print("\t},")
+	# smoke case
+	if not expert_routes.is_empty():
+		print("\t\t\t\"%s\":" % id)
+		var parts := []
+		for r in expert_routes:
+			var cc := []
+			for xy in r.cells:
+				cc.append("[%d,%d]" % [int(xy[0]), int(xy[1])])
+			parts.append("_c([%s])" % ",".join(cc))
+		print("\t\t\t\treturn [%s]" % ",\n\t\t\t\t\t\t".join(parts))
+
+
+## tutgen: build a mechanic level from an archive niche, apply config overrides, solve the
+## four skill tiers, emit the entry + smoke + a report line.
+func _tutgen(master: String, key: String, cfgpath: String) -> void:
+	var pick := _find_by_key(master, key)
+	if pick.is_empty():
+		print("no niche '%s' in %s" % [key, master]); return
+	var genome := _genome_parse(pick.genome)
+	var a := _assess_design(genome)
+	if not a.feasible:
+		print("niche '%s' infeasible" % key); return
+	var lv: Dictionary = a.level
+	var cf := FileAccess.open(cfgpath, FileAccess.READ)
+	var cfg: Dictionary = JSON.parse_string(cf.get_as_text()) if cf != null else {}
+	if cf != null:
+		cf.close()
+	_apply_cfg(lv, cfg)
+	var budgets: Array = cfg.get("budgets", [150, 600, 1400])
+	var s := _solve_four(lv, budgets)
+	var stars := _star_thresholds(s)
+	print("REPORT %s (%s): novice=%.0f adept=%.0f expert=%.0f optimal=%.0f -> stars=%s" % [
+			lv.get("id", "?"), pick.get("sig", ""), s.novice, s.adept, s.expert, s.optimal, str(stars)])
+	_dump_tut(lv, stars, s.expert_routes)
+
+
+## tutseed: build a level from the current-rules SEED SAMPLER (_generate), apply config
+## overrides, solve the four skill tiers, emit the entry + smoke + report. Used for the
+## fresh combo tutorial levels (the stale fievo archive fails today's assess rules).
+func _tutseed(seed_v: int, nr: int, cfgpath: String) -> void:
+	var lv := _generate(seed_v, nr)
+	if lv.is_empty():
+		print("seed %d nr%d: generation failed" % [seed_v, nr]); return
+	var cf := FileAccess.open(cfgpath, FileAccess.READ)
+	var cfg: Dictionary = JSON.parse_string(cf.get_as_text()) if cf != null else {}
+	if cf != null:
+		cf.close()
+	_apply_cfg(lv, cfg)
+	var budgets: Array = cfg.get("budgets", [150, 600, 1400])
+	var s := _solve_four(lv, budgets)
+	var stars := _star_thresholds(s)
+	print("REPORT %s (seed %d nr%d): novice=%.0f adept=%.0f expert=%.0f optimal=%.0f -> stars=%s" % [
+			lv.get("id", "?"), seed_v, nr, s.novice, s.adept, s.expert, s.optimal, str(stars)])
+	_dump_tut(lv, stars, s.expert_routes)
+
+
+## tutstars: solve an already-authored LEVELS entry (by id) for its star thresholds and
+## emit just the `stars:` + `solution:` lines (paste into the hand-authored entry) + report.
+func _tutstars(id: String, budgets: Array) -> void:
+	var lv: Dictionary = {}
+	for e in Levels5.LEVELS:
+		if str(e.get("id", "")) == id:
+			lv = e.duplicate(true); break
+	if lv.is_empty():
+		print("no level id '%s'" % id); return
+	var s := _solve_four(lv, budgets)
+	var stars := _star_thresholds(s)
+	print("REPORT %s: novice=%.0f adept=%.0f expert=%.0f optimal=%.0f -> stars=%s" % [
+			id, s.novice, s.adept, s.expert, s.optimal, str(stars)])
+	print("\t\t\"stars\": [%d, %d, %d, %d]," % [stars[0], stars[1], stars[2], stars[3]])
+	var sols := []
+	for r in s.expert_routes:
+		var cc2 := []
+		for xy in r.cells:
+			cc2.append("[%d, %d]" % [int(xy[0]), int(xy[1])])
+		sols.append("[%s]" % ", ".join(cc2))
+	print("\t\t\"solution\": [%s]," % ", ".join(sols))
+	# smoke case
+	print("\t\t\t\"%s\":" % id)
+	var parts := []
+	for r in s.expert_routes:
+		var cc := []
+		for xy in r.cells:
+			cc.append("[%d,%d]" % [int(xy[0]), int(xy[1])])
+		parts.append("_c([%s])" % ",".join(cc))
+	print("\t\t\t\treturn [%s]" % ",\n\t\t\t\t\t\t".join(parts))
 
 
 ## Emit a level dict as a GDScript LEVELS entry (blocked included) + its smoke _solution
@@ -1653,6 +1956,38 @@ func _initialize() -> void:
 		quit(); return
 	if mode == "dumpgen":
 		_dumpgen(str(args[1]), str(args[2]), str(args[3]))
+		quit(); return
+	if mode == "tutgen":
+		_tutgen(str(args[1]), str(args[2]), str(args[3]))
+		quit(); return
+	if mode == "tutseed":
+		_tutseed(int(args[1]), int(args[2]), str(args[3]))
+		quit(); return
+	if mode == "tutstars":
+		var buds: Array = [150, 600, 1400]
+		if args.size() > 2:
+			buds = [int(args[2]), int(args[3]), int(args[4])]
+		_tutstars(str(args[1]), buds)
+		quit(); return
+	if mode == "showgen":
+		await _draw_gen_key(str(args[1]), str(args[2]), str(args[3]))
+		quit(); return
+	if mode == "surv":
+		var slo := int(args[1])
+		var shi := int(args[2])
+		var snr := int(args[3]) if args.size() > 3 else 0
+		for sv in range(slo, shi + 1):
+			var l := _generate(sv, snr)
+			if l.is_empty():
+				continue
+			var sig := {}
+			for rm in l.rooms:
+				sig[rm.type] = int(sig.get(rm.type, 0)) + 1
+			var parts := []
+			for t in sig:
+				parts.append("%s%d" % [t, sig[t]])
+			parts.sort()
+			print("seed %-4d r%d %dx%d cards=%d  %s" % [sv, l.rooms.size(), l.cols, l.rows, l.cards.size(), " ".join(parts)])
 		quit(); return
 	if mode == "gate" or mode == "batch":
 		var lo := int(args[1])
