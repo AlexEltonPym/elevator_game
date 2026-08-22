@@ -69,6 +69,16 @@ If a rule here seems wrong for a task, ask — do not silently violate it.
 
 7. **People stand on the floor** (grounded), not floating.
 
+## Demand (trips)
+
+- **Trips are DERIVED, never hand-written.** Demand is generated at load from the map's
+  ROOM TYPES + the level's fixed seed (`scripts/v5/demand5.gd`, `Demand5.derive`). Don't
+  author a `trips` array on a shipped level — leave it off and the game derives it. This
+  structurally prevents the bugs hand-trips caused: no atrium destinations (atriums are
+  transfer bridges — zero demand), no dead rooms (every demand room is connected), no
+  lift trips between walkable-adjacent rooms. Tune demand by editing the type-affinity
+  model in `Demand5`, not per level. (Fixtures/tests may still set explicit trips.)
+
 ## Visual language
 
 - **Each room TYPE has a unique background colour + theme.** Once you learn a room, you
