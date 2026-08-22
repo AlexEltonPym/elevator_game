@@ -524,14 +524,15 @@ func _draw() -> void:
 		draw_rect(body, Color(0, 0, 0, 0.45), false, 2.0)
 		draw_rect(Rect2(Vector2(-bw / 2.0 + 1.0, feet - 21.0), Vector2(bw - 2.0, 13.0)),
 				Color(1, 1, 1, 0.85))
-	# Destination blob above the head: a disc in the DESTINATION room's colour — no
-	# letter (too little resolution for one, and the room colour already says where
-	# they're headed). Shown ONLY while standing in the queue. (Later: fade / flash /
-	# clock-wipe on this blob to signal dwindling patience.)
-	if is_waiting_to_board():
+	# Destination blob above the head: a disc in the (FINAL) DESTINATION room's colour — no
+	# letter (too little resolution for one, and the room colour already says where they're
+	# headed). Shown for the WHOLE trip — it appears when they first queue up (activated) and
+	# stays through boarding, riding and transfers, only vanishing once they ARRIVE (the
+	# between-dwell after being served) or the trip ends.
+	if active and activated and not between:
 		var badge_y := feet - side - 6.0
-		draw_circle(Vector2(0, badge_y), 9.0, Color(0.08, 0.08, 0.10, 0.95))  # dark border ring
-		draw_circle(Vector2(0, badge_y), 7.0, Grid5.room_color(dest_room))
+		draw_circle(Vector2(0, badge_y), 9.0 * rs, Color(0.08, 0.08, 0.10, 0.95))  # dark border ring
+		draw_circle(Vector2(0, badge_y), 7.0 * rs, Grid5.room_color(dest_room))
 	if no_path and activated and not between and riding == null:
 		var by := -32.0
 		draw_circle(Vector2(0, by), 9.0, Color(1, 1, 1, 0.92))
