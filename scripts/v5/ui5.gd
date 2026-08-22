@@ -5,6 +5,11 @@ extends RefCounted
 
 const BASE := "res://assets/ui/kenney/PNG/"
 const FONT_PATH := "res://assets/ui/kenney/Font/Kenney Future.ttf"
+# Drop a preferred UI font here (any .ttf/.otf renamed to ui.ttf) and it's used everywhere;
+# falls back to the Kenney font, then Godot's default.
+const USER_FONT_CANDIDATES := [
+	"res://assets/ui/font/ui.ttf", "res://assets/ui/font/ui.otf",
+]
 
 static var _cache := {}
 static var _font = null
@@ -24,6 +29,10 @@ static func tex(rel: String) -> Texture2D:
 static func font():
 	if not _font_loaded:
 		_font_loaded = true
+		for p in USER_FONT_CANDIDATES:
+			if ResourceLoader.exists(p):
+				_font = load(p)
+				return _font
 		if ResourceLoader.exists(FONT_PATH):
 			_font = load(FONT_PATH)
 	return _font
