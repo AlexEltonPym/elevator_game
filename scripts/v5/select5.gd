@@ -17,6 +17,7 @@ const Ui5 := preload("res://scripts/v5/ui5.gd")
 const WORLD_KCOL := {"TUTORIAL": "Blue", "CROSSLINK": "Green"}
 
 var page := 0 # index into Levels5.WORLDS
+var _hovered := -1  # LEVELS index currently moused-over (for the 1-4 tier shortcut)
 
 
 func _kfont(l: Control) -> void:
@@ -87,48 +88,68 @@ func _rebuild() -> void:
 	_kfont(wlabel)
 	add_child(wlabel)
 
-	# Level buttons for this world.
+	# Level buttons for this world (generous margins; the border was reading tight).
 	var items := _levels_in_page()
-	var top := 122.0
-	var gap := 16.0
+	var margin := 40.0
+	var top := 130.0
+	var gap := 20.0
 	var n: int = maxi(1, items.size())
-	var h := (vp.y - top - 40.0 - gap * (n - 1)) / float(n)
-	h = clampf(h, 96.0, 168.0)
+	var h := (vp.y - top - margin - gap * (n - 1)) / float(n)
+	h = clampf(h, 96.0, 176.0)
 	for k in items.size():
 		var index: int = items[k].index
 		var lv: Dictionary = items[k].lv
 		var idx: int = index
-		var has_sol: bool = (lv.get("solution", []) as Array).size() > 0
-		var sol_w := 96.0 if has_sol else 0.0
 		var kcol: String = WORLD_KCOL.get(world, "Blue")
 		var b := Ui5.make_button("%s   %s" % [lv.id, str(lv.name).to_upper()], kcol, 30)
-		b.position = Vector2(20, top + k * (h + gap))
-		b.size = Vector2(vp.x - 40 - sol_w, h)
+		b.position = Vector2(margin, top + k * (h + gap))
+		b.size = Vector2(vp.x - 2.0 * margin, h)
 		b.clip_text = true
 		b.pressed.connect(func():
 			Levels5.autosolve = false
 			Levels5.current = idx
 			get_tree().change_scene_to_file("res://scenes/v5_main.tscn"))
+		# Secret dev shortcut: hover a tile, press 1-4 to launch with that star-tier plan.
+		b.mouse_entered.connect(_on_hover.bind(idx))
+		b.mouse_exited.connect(_on_unhover.bind(idx))
 		add_child(b)
-		# Earned medals (Overcooked-style), bottom-right of the level tile.
+		# Earned medals, vertically centered on the right of the tile.
 		if not (lv.get("stars", []) as Array).is_empty():
 			var got: int = Levels5.best_stars(str(lv.id))
 			var sbar := StarBar5.new()
-			sbar.setup(got, 20.0)
-			sbar.position = Vector2(vp.x - 40 - sol_w - 96.0, top + k * (h + gap) + h * 0.5 - 11.0)
+			sbar.setup(got, 24.0)
+			sbar.position = Vector2(vp.x - margin - 118.0, top + k * (h + gap) + h * 0.5 - 13.0)
 			add_child(sbar)
-		# "Solution" launch: a play-arrow button that opens the level with the expert plan
-		# pre-drawn, to compare.
-		if has_sol:
-			var sbtn := Ui5.make_button("", "Green", 16)
-			sbtn.icon = Ui5.arrow_tex("e")
-			sbtn.position = Vector2(vp.x - 20 - sol_w + 6, top + k * (h + gap))
-			sbtn.size = Vector2(sol_w - 6, h)
-			sbtn.pressed.connect(func():
-				Levels5.autosolve = true
-				Levels5.current = idx
-				get_tree().change_scene_to_file("res://scenes/v5_main.tscn"))
-			add_child(sbtn)
+
+
+func _on_hover(idx: int) -> void:
+	_hovered = idx
+
+
+func _on_unhover(idx: int) -> void:
+	if _hovered == idx:
+		_hovered = -1
+
+
+## Secret dev shortcut: while hovering a level, press 1-4 to launch it pre-solved to that
+## star tier (1 = a 1-star plan ... 4 = the perfect plan).
+func _input(event: InputEvent) -> void:
+	if not (event is InputEventKey and event.pressed and not event.echo):
+		return
+	var tier := -1
+	match event.keycode:
+		KEY_1: tier = 1
+		KEY_2: tier = 2
+		KEY_3: tier = 3
+		KEY_4: tier = 4
+	if tier < 0 or _hovered < 0:
+		return
+	var lv: Dictionary = Levels5.LEVELS[_hovered]
+	if (lv.get("sols", []) as Array).size() >= tier:
+		Levels5.autosolve = true
+		Levels5.autosolve_tier = tier
+		Levels5.current = _hovered
+		get_tree().change_scene_to_file("res://scenes/v5_main.tscn")
 
 
 func _flip(dir: int) -> void:

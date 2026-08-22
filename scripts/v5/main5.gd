@@ -164,9 +164,16 @@ func _ready() -> void:
 	Levels5.autosolve = false
 
 
-## Pre-commit the level's stored `solution` (a list of routes, each a list of [x,y] cells).
+## Pre-commit a stored plan (list of routes, each a list of [x,y] cells). The secret 1-4
+## hover shortcut picks a star tier from the level's `sols` [1-star..4-star]; otherwise the
+## default is the perfect plan (tier 4 / the `solution` field).
 func _commit_solution() -> void:
 	var sol: Array = level.get("solution", [])
+	var sols: Array = level.get("sols", [])
+	var tier: int = clampi(Levels5.autosolve_tier, 1, 4)
+	if sols.size() >= tier and (sols[tier - 1] as Array).size() > 0:
+		sol = sols[tier - 1]
+	Levels5.autosolve_tier = 4  # reset to default for the next launch
 	for i in mini(sol.size(), cars.size()):
 		var cells: Array = []
 		for xy in sol[i]:

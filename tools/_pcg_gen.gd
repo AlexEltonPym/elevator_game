@@ -1625,17 +1625,23 @@ func _solve_four(lv: Dictionary, budgets: Array) -> Dictionary:
 		var dec := RG.decode_genome(g, widths)
 		if dec.err != "":
 			continue
-		cands.append(sim.score_seeds(0, dec.routes, test, GAME_DT).score)
-	cands.sort()
-	var pos: Array = cands.filter(func(x): return x > 0.0)
+		cands.append({"routes": dec.routes, "score": sim.score_seeds(0, dec.routes, test, GAME_DT).score})
+	cands.sort_custom(func(a, b): return a.score < b.score)
+	var pos: Array = cands.filter(func(c): return c.score > 0.0)
 	var novice: float = 0.0
+	var nov_routes: Array = op_routes  # fallback if no random plan worked
 	if pos.size() >= 1:
-		novice = pos[pos.size() / 2]
+		var pick: Dictionary = pos[pos.size() / 2]
+		novice = pick.score
+		nov_routes = pick.routes
 	elif not cands.is_empty():
-		novice = cands[cands.size() - 1]
-	# Emit the OPTIMAL plan as the level's `solution` (the SOLUTION button pre-draws the best).
+		novice = cands[cands.size() - 1].score
+		nov_routes = cands[cands.size() - 1].routes
+	# expert_routes = the OPTIMAL plan (the pre-drawable solution). tier_routes = the four
+	# skill-tier plans [1-star, 2-star, 3-star, 4-star] for the secret dev shortcut.
 	return {"novice": novice, "adept": adept, "expert": expert, "optimal": optimal,
-			"expert_routes": op_routes, "optimal_routes": op_routes}
+			"expert_routes": op_routes, "optimal_routes": op_routes,
+			"tier_routes": [nov_routes, ad_routes, ex_routes, op_routes]}
 
 
 ## Turn the solve into ASCENDING, cleanly-rounded, ACHIEVABLE star thresholds against the
@@ -1823,6 +1829,17 @@ func _tutstars(id: String, budgets: Array) -> void:
 			cc2.append("[%d, %d]" % [int(xy[0]), int(xy[1])])
 		sols.append("[%s]" % ", ".join(cc2))
 	print("\t\t\"solution\": [%s]," % ", ".join(sols))
+	# sols = the four skill-tier plans [1-star..4-star] for the secret dev shortcut.
+	var tiers := []
+	for tr in s.tier_routes:
+		var routestrs := []
+		for r in tr:
+			var cc := []
+			for xy in r.cells:
+				cc.append("[%d, %d]" % [int(xy[0]), int(xy[1])])
+			routestrs.append("[%s]" % ", ".join(cc))
+		tiers.append("[%s]" % ", ".join(routestrs))
+	print("\t\t\"sols\": [%s]," % ", ".join(tiers))
 	# smoke case
 	print("\t\t\t\"%s\":" % id)
 	var parts := []
