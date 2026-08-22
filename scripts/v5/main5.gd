@@ -40,7 +40,8 @@ var shift_closed := false # true once the doors close (last orders)
 var tips := 0.0           # running tip total (the score)
 
 var state: int = State.PLAN
-var time_scale := 1.0
+const DEFAULT_SPEED := 5.0  # 5x is the default pace (1x is an opt-in slow-down)
+var time_scale := DEFAULT_SPEED
 var served := 0
 var lost := 0
 var elapsed := 0.0
@@ -239,7 +240,7 @@ func _spawn_tick(dt: float) -> void:
 
 func to_plan() -> void:
 	state = State.PLAN
-	time_scale = 1.0
+	time_scale = DEFAULT_SPEED
 	drawing = false
 	stroke = []
 	stroke_closed = false
@@ -262,7 +263,17 @@ func to_plan() -> void:
 func start_run() -> void:
 	hud.hide_overlay()
 	state = State.PLAYING
+	# FIXED per-level passenger seed: a level always spawns the identical arrival
+	# sequence, so you can't re-run hoping for an easier crowd — the plan is the only
+	# variable. (The headless smoke sets its own seed before start_run, overriding this.)
+	if not headless:
+		rng.seed = level_seed()
 	_reset_spawner()
+
+
+## Deterministic per-level RNG seed (stable hash of the level id).
+func level_seed() -> int:
+	return hash(str(level.get("id", "")))
 
 
 func abort_run() -> void:

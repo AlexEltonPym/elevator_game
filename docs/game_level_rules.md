@@ -30,6 +30,11 @@ If a rule here seems wrong for a task, ask — do not silently violate it.
    a dock should serve only ONE room, do NOT sandwich it — leave the cell on its other side
    open. Never leave an ambiguous dock that touches two rooms but only serves one.
 
+2e. **Dropoffs are on the GROUND FLOOR of a room** (the room's lowest row of cells),
+   unless the room has a designed LADDER or STAIRCASE that visibly brings people up to a
+   higher dock. A dock on an upper row with no stair makes riders float up to it. (Enforced
+   by `tools/_pcg_gen.gd dropaudit`, which flags any dock above a room's min-y row.)
+
 3. **Rooms are non-standard shapes placed as ISLANDS, anywhere.** Use the shape catalogue
    below. Rooms are islands the routes weave *around*; they are **not required on the outer
    edge** (except the entry rooms, rule 3b), and the layout is **not** a central shaft with
@@ -97,7 +102,7 @@ If a rule here seems wrong for a task, ask — do not silently violate it.
 
 ## Process / verification (engineering rules)
 
-- **Fingerprint discipline.** `FINGERPRINT5-ALL 3886201949` must stay byte-identical for any
+- **Fingerprint discipline.** `FINGERPRINT5-ALL 4261061214` must stay byte-identical for any
   RENDERING-only change (verify with `tools/v5/run_fingerprint5.gd`). A SIM change
   legitimately rebaselines it — flag that explicitly and keep `V5 SMOKE ALL PASS`.
 - **Parse-check headless first** (`godot --headless ... scenes/v5_main.tscn --quit-after N`)

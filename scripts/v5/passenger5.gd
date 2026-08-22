@@ -172,12 +172,16 @@ func _r(k: float) -> float:
 
 ## Begin a trip's pre-board life: choose a loose BACK spot in the current room,
 ## stand there INACTIVE (no patience yet), and set the activation dwell.
-func begin_life() -> void:
+## `fresh` = a brand-new arrival (snap to the back spot). A REACTIVATING idle rider
+## (fresh=false) is already standing on screen, so it KEEPS its position and just eases
+## to the new back spot over the dwell — no teleport when it picks up a new trip.
+func begin_life(fresh := true) -> void:
 	queue_cell = Grid5.room_queue(cur_room)
 	spawn_cell = _pick_far()
 	back_pos = _pick_back()
 	stand_pos = back_pos
-	position = back_pos
+	if fresh:
+		position = back_pos
 	dwell_left = ACT_DWELL_MIN + (ACT_DWELL_MAX - ACT_DWELL_MIN) * _r(4.0)
 	activated = false
 	between = false
@@ -394,7 +398,7 @@ func reactivate(new_dest: int) -> void:
 	wait_time = 0.0
 	legs = []
 	no_path = false
-	begin_life()
+	begin_life(false)  # keep current position; ease to the new spot (no teleport)
 
 
 ## Called by main5.queue_join / queue_leave when this figure's stable target moves

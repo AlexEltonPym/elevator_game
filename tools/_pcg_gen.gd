@@ -1584,12 +1584,14 @@ func _solve_four(lv: Dictionary, budgets: Array) -> Dictionary:
 	sim.inj = lv
 	sim.tip_mode = true
 	sim.shift = float(lv.get("shift", 90.0))
-	var test: Array = SimApi5.SEEDS_TEST
+	# FIXED seed = the deterministic instance the player faces (main5.level_seed = hash(id)).
+	# Optimize AND score on that single seed so the thresholds match real play exactly.
+	var test: Array = [hash(str(lv.get("id", "")))]
 	var b_ad: int = int(budgets[0])
 	var b_ex: int = int(budgets[1])
 	var b_op: int = int(budgets[2])
 	var me = ME.new()
-	me.setup(sim, 0, lv, SimApi5.SEEDS_TRAIN.slice(0, 3), STEP, 40404)
+	me.setup(sim, 0, lv, test, STEP, 40404)
 	var res: Dictionary = me.run(b_op, 0, [b_ad, b_ex, b_op])
 	var ck: Dictionary = res.get("checkpoint_routes", {})
 	var ad_routes: Array = ck.get(b_ad, res.best_routes)
@@ -1619,22 +1621,23 @@ func _solve_four(lv: Dictionary, budgets: Array) -> Dictionary:
 		novice = pos[pos.size() / 2]
 	elif not cands.is_empty():
 		novice = cands[cands.size() - 1]
+	# Emit the OPTIMAL plan as the level's `solution` (the SOLUTION button pre-draws the best).
 	return {"novice": novice, "adept": adept, "expert": expert, "optimal": optimal,
-			"expert_routes": ex_routes, "optimal_routes": op_routes}
+			"expert_routes": op_routes, "optimal_routes": op_routes}
 
 
-## Turn four raw tip totals into ASCENDING, cleanly-rounded, ACHIEVABLE star thresholds.
-## 1 star = a rough-but-working plan; 3 = expert (top of the reasonable-solution range);
-## 4 = the SECRET optimal star (rounded UP, just past expert). t1..t3 are floored so they
-## never sit above the score that earns them; strict ascending with >=5 gaps.
+## Turn the solve into ASCENDING, cleanly-rounded, ACHIEVABLE star thresholds against the
+## level's FIXED seed (deterministic instance). 1-3 stars = the range of reasonable
+## solutions (50% / 72% / 90% of the optimum); the SECRET 4th = matching the optimum.
+## Everything is FLOORED so it never sits above the score that earns it (the 4th star must
+## be reachable — the user asked). Strict ascending with a min gap.
 func _star_thresholds(s: Dictionary) -> Array:
-	var e: float = s.expert
-	var o: float = maxf(s.optimal, e)
-	var gap: int = 10 if e >= 100.0 else 5
-	var t3: int = _round_down_clean(e)
-	var t1: int = clampi(_round_down_clean(0.40 * e), gap, t3 - 2 * gap)
-	var t2: int = clampi(_round_down_clean(minf(s.adept, 0.78 * e)), t1 + gap, t3 - gap)
-	var t4: int = maxi(_round_up_clean(o), t3 + gap)
+	var best: float = maxf(s.optimal, s.expert)
+	var gap: int = 10 if best >= 100.0 else 5
+	var t4: int = _round_down_clean(best)
+	var t3: int = mini(_round_down_clean(0.90 * best), t4 - gap)
+	var t2: int = mini(_round_down_clean(0.72 * best), t3 - gap)
+	var t1: int = clampi(_round_down_clean(0.50 * best), gap, t2 - gap)
 	return [t1, t2, t3, t4]
 
 
@@ -1971,6 +1974,21 @@ func _initialize() -> void:
 		quit(); return
 	if mode == "showgen":
 		await _draw_gen_key(str(args[1]), str(args[2]), str(args[3]))
+		quit(); return
+	if mode == "dropaudit":
+		# flag any dropoff whose cell is NOT on the room's lowest row (ground floor) — a
+		# dock on an upper floor makes riders float up to it (needs a ladder/stair instead).
+		for lv in Levels5.LEVELS:
+			for ri in lv.rooms.size():
+				var rm = lv.rooms[ri]
+				var miny := 9999
+				for c in rm.cells:
+					miny = mini(miny, c.y)
+				for dr in rm.drops:
+					if int(dr.cell.y) > miny:
+						print("  %s room %s (%s): dock %s on row %d, ground row %d **" % [
+								lv.id, char(65 + ri), rm.type, str(dr.cell), int(dr.cell.y), miny])
+		print("dropaudit done")
 		quit(); return
 	if mode == "surv":
 		var slo := int(args[1])

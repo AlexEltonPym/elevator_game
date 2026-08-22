@@ -648,19 +648,6 @@ func _draw() -> void:
 			draw_rect(Rect2(-half + 6.0, -hh + 10.0, leaf_w, BODY - 20.0), door_col)
 			draw_rect(Rect2(half - 6.0 - leaf_w, -hh + 10.0, leaf_w, BODY - 20.0), door_col)
 	draw_rect(body, Color(color, 0.4 if parked else 1.0), false, 4.0)
-	if speed > STANDARD_SPEED:
-		for i in 2:
-			var cy := 6.0 - i * 12.0
-			draw_polyline(PackedVector2Array([
-					Vector2(-11.0, cy), Vector2(0.0, cy - 9.0), Vector2(11.0, cy)]),
-					Color(color, 0.9), 4.0)
-	# Capacity pips along the roof, one per width-unit of capacity.
-	var used := used_slots()
-	var pitch := (body_w() - 12.0) / maxi(capacity, 1)
-	for i in capacity:
-		var px := -half + 6.0 + i * pitch
-		var pip := color if i < used else Color(1, 1, 1, 0.18)
-		draw_rect(Rect2(px, -hh + 5.0, maxf(4.0, pitch - 4.0), 5.0), pip)
 	if parked:
 		draw_string(ThemeDB.fallback_font, Vector2(-8.0, 7.0), "!",
 				HORIZONTAL_ALIGNMENT_CENTER, -1.0, 24, Color(0.9, 0.3, 0.25))

@@ -24,7 +24,8 @@ var overlay: Control = null
 var _chips_built := false
 var headless := false
 
-const SPEEDS := [[0.0, "II"], [1.0, "1x"], [3.0, "3x"]]
+# 5x is the default pace; 1x is a "slow down" for watching a tricky moment. No pause.
+const SPEEDS := [[5.0, "5x"], [1.0, "1x"]]
 
 
 func _ready() -> void:

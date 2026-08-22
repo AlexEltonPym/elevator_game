@@ -35,101 +35,76 @@ func _c(pairs: Array) -> Array:
 func _solution(id: String) -> Array:
 	match id:
 		"T-1":
-			# One route: A at the bottom, then the top cell (2,4) serves BOTH offices.
-			return [_c([[2,0],[2,1],[2,2],[2,3],[2,4]])]
+			return [_c([[2,4],[2,3],[2,2],[2,1],[2,0]])]
 		"T-2":
-			# Wall splits the towers: BLUE the left (A,B), GREEN the right (C,D).
-			return [_c([[2,0],[2,1],[2,2],[2,3],[2,4],[2,5]]),
-					_c([[4,0],[4,1],[4,2],[4,3],[4,4],[4,5]])]
+			return [_c([[5,1],[5,0]]),
+				_c([[2,0],[2,1]])]
 		"T-3":
-			# BLUE serves apartment A + lobby B; GREEN serves lobby B + office C.
-			return [_c([[2,0],[2,1]]),
-					_c([[5,0],[5,1]])]
+			return [_c([[2,0],[3,0],[3,1],[4,1],[5,1],[6,1],[6,2],[6,3],[6,4],[6,5],[6,6]]),
+				_c([[3,0],[3,1],[3,2],[3,3],[3,4],[3,5],[3,6]])]
 		"T-4":
-			# CARGO runs the wide freight shaft (delivery A -> cafe B); LOCAL the narrow
-			# people corridor (lobby C, offices D,E, up to cafe B for lunch).
-			return [_c([[2,1],[2,0],[3,0],[3,1],[3,2],[3,3],[3,4],[3,5],[3,6]]),
-					_c([[6,0],[6,1],[6,2],[6,3],[6,4],[6,5],[6,6]])]
+			return [_c([[4,0],[4,1],[4,2],[4,3],[4,4],[4,5],[4,6],[3,6],[3,5],[2,5],[1,5],[0,5],[0,6],[0,7],[0,8],[0,9],[0,10],[1,10]]),
+				_c([[4,0],[4,1],[4,2],[4,3],[4,4],[4,5],[4,6],[4,7],[4,8],[4,9],[3,9],[2,9],[1,9],[1,10]])]
 		"T-5":
-			# EXPRESS runs the left channel lobby->penthouse; LOCAL the right office stack.
-			return [_c([[1,0],[1,1],[1,2],[1,3],[1,4],[1,5],[1,6],[1,7],[1,8],[1,9],[1,10]]),
-					_c([[4,0],[4,1],[4,2],[4,3],[4,4],[4,5],[4,6],[4,7],[4,8]])]
+			return [_c([[2,4],[2,3],[2,2],[2,1],[2,0]]),
+				_c([[5,2],[5,1],[5,0]])]
 		"T-6":
-			# Relay: BLUE the left (A,B,atrium C), GREEN the right (C,D,E).
-			return [_c([[2,0],[2,1],[2,2],[2,3],[2,4]]),
-					_c([[5,0],[5,1],[5,2],[5,3],[5,4]])]
-		"T-7":
-			# Loading & Lift: LOCAL to the lobby, EXPRESS scoops apt+penthouse, CARGO storage->cafe.
 			return [_c([[2,3],[2,2],[1,2],[0,2],[0,1],[0,0]]),
-					_c([[2,3],[1,3],[1,4],[0,4],[0,5],[0,6],[1,6],[2,6],[3,6],[4,6],[5,6],[6,6],[6,7],[5,7]]),
-					_c([[6,6],[6,5],[6,4],[6,3],[6,2],[5,2],[5,3]])]
-		"T-8":
-			# Stepped capped shaft: LIFT 1 the lower-left (A,B,C), LIFT 2 the upper-
-			# right (C,D,E); they share only the cap-4 atrium C at (2,4) in the bend.
+				_c([[5,7],[6,7],[6,6],[5,6],[4,6],[3,6],[2,6],[1,6],[0,6],[0,5],[0,4],[1,4],[1,3],[2,3]]),
+				_c([[6,6],[6,5],[6,4],[6,3],[5,3]])]
+		"T-7":
 			return [_c([[2,0],[2,1],[2,2],[2,3],[2,4]]),
-					_c([[2,4],[3,4],[3,5],[3,6],[3,7],[3,8]])]
-		"R-9":
-			# Cross-dock: LIFT 1 weaves the bottom two pairs A>B, C>D; LIFT 2 the top
-			# two E>F, G>H. Disjoint under the cap-2 aisle; the lefts-vs-rights split loses.
-			return [_c([[2,0],[2,1],[2,2],[3,2],[4,2],[4,3],[4,4],[4,5],[4,6],[4,7]]),
-					_c([[2,3],[2,4],[3,4],[3,5],[3,6],[3,7],[3,8],[4,8],[4,9]])]
+				_c([[2,4],[2,5],[2,6],[3,6],[3,7],[3,8]])]
 		"R-10":
-			# LIFT 1 a horseshoe past all four; LIFT 2 doubles the busy apartment side.
-			return [_c([[2,1],[2,2],[2,3],[2,4],[2,5],[2,6],[3,6],[3,5],[3,4],[3,3],[3,2],[3,1]]),
-					_c([[2,1],[2,2],[2,3],[2,4],[2,5]])]
+			return [_c([[2,5],[3,5],[3,4],[3,3],[3,2],[3,1],[2,1]]),
+				_c([[2,1],[3,1],[3,2],[3,3],[3,4],[3,5],[2,5],[2,4],[2,3],[2,2]])]
 		"XLINK":
-			# Numberlink: three disjoint snakes. LOCAL the left cluster (A,F,G);
-			# EXPRESS the long right run scooping cafe on the way (A,B,C,D,E); CARGO
-			# the short bay<->cafe hop (B,C). They meet only on shared cap-6 docks.
-			return [_c([[3,0],[3,1],[3,2],[3,3],[2,3],[2,4],[2,5],[2,6],[2,7],[2,8]]),
-					_c([[7,7],[7,6],[8,6],[8,5],[8,4],[7,4],[7,3],[6,3],[6,2],[6,1],[6,0],[5,0],[4,0],[3,0]]),
-					_c([[4,4],[4,3],[5,3],[5,2],[5,1],[6,1]])]
+			return [_c([[2,8],[2,7],[2,6],[2,5],[2,4],[2,3],[3,3],[3,2],[3,1],[3,0]]),
+				_c([[7,7],[7,6],[8,6],[8,5],[8,4],[7,4],[7,3],[6,3],[6,2],[6,1],[6,0],[5,0],[4,0],[3,0]]),
+				_c([[4,4],[4,3],[5,3],[5,2],[5,1],[6,1]])]
 		"XL2":
-			return [_c([[7,0],[7,1],[7,2],[7,3],[6,3],[5,3]]),
-					_c([[5,7],[5,6],[4,6],[4,5],[5,5],[6,5],[7,5],[8,5],[8,4],[8,3],[8,2],[8,1],[8,0],[7,0]])]
+			return [_c([[5,3],[6,3],[7,3],[7,2],[7,1],[7,0]]),
+				_c([[5,7],[5,6],[4,6],[4,5],[5,5],[6,5],[7,5],[8,5],[8,4],[8,3],[8,2],[8,1],[8,0],[7,0]])]
 		"XL3":
-			return [_c([[3,5],[3,4],[3,3],[4,3],[5,3],[6,3],[7,3],[7,2],[7,1],[7,0]]),
-					_c([[3,5],[3,6],[3,7],[4,7],[4,6],[4,5]])]
+			return [_c([[7,7],[7,6],[7,5],[7,4],[7,3],[7,2],[7,1],[7,0],[8,0],[8,1],[8,2],[8,3],[8,4],[8,5],[8,6],[8,7]]),
+				_c([[3,3],[3,4],[3,5],[3,6],[3,7],[4,7],[4,6],[4,5],[4,4],[4,3]])]
 		"XL4":
-			return [_c([[2,7],[3,7],[3,6],[4,6],[4,5],[4,4],[4,3],[4,2],[4,1],[4,0]]),
-					_c([[4,0],[5,0],[5,1],[5,2],[5,3],[5,4],[5,5],[5,6],[6,6],[6,7],[6,8],[6,9]])]
+			return [_c([[6,9],[6,8],[6,7],[6,6],[6,5],[6,4],[6,3],[6,2],[6,1],[6,0],[5,0],[4,0]]),
+				_c([[4,0],[4,1],[4,2],[4,3],[4,4],[4,5],[4,6],[3,6],[3,7],[2,7]])]
 		"XL5":
 			return [_c([[8,0],[8,1],[8,2],[8,3],[8,4],[7,4],[6,4],[5,4],[4,4]]),
-					_c([[6,9],[6,8],[6,7],[6,6],[6,5],[5,5],[4,5],[4,4]])]
+				_c([[6,9],[6,8],[6,7],[6,6],[6,5],[5,5],[4,5],[4,4],[4,3],[4,2]])]
 		"XL6":
-			return [_c([[1,8],[1,7],[2,7],[3,7],[4,7],[4,6],[4,5],[5,5],[5,6],[5,7],[6,7],[6,8],[6,9],[6,10],[5,10]]),
-					_c([[1,8],[0,8],[0,7],[0,6],[1,6],[1,5],[1,4],[1,3],[2,3],[2,2],[3,2],[4,2],[5,2],[6,2],[7,2],[8,2],[8,1],[8,0]])]
+			return [_c([[5,10],[6,10],[6,9],[6,8],[6,7],[6,6],[5,6],[4,6],[4,7],[3,7],[2,7],[1,7],[1,8]]),
+				_c([[8,0],[8,1],[8,2],[7,2],[6,2],[5,2],[4,2],[3,2],[2,2],[2,3],[1,3],[1,4],[1,5],[1,6],[0,6],[0,7],[0,8],[1,8]])]
 		"XL7":
-			return [_c([[4,4],[4,5],[4,6],[5,6],[6,6],[6,7],[7,7],[8,7],[8,6],[8,5],[8,4],[8,3],[8,2],[8,1],[8,0],[7,0],[6,0],[5,0],[4,0]]),
-					_c([[3,9],[3,8],[3,7],[2,7],[2,6],[2,5],[1,5],[1,4],[1,3],[2,3],[3,3],[4,3],[4,2],[4,1],[4,0]])]
+			return [_c([[6,7],[6,8],[6,9],[7,9],[8,9],[8,8],[8,7],[8,6],[8,5],[8,4],[8,3],[8,2],[8,1],[8,0],[7,0],[6,0],[5,0],[4,0]]),
+				_c([[2,7],[3,7],[3,6],[4,6],[4,5],[4,4],[4,3],[4,2],[4,1],[4,0]])]
 		"XL8":
-			return [_c([[2,0],[3,0],[3,1],[3,2],[4,2],[5,2],[6,2],[7,2],[7,1],[7,0]]),
-					_c([[2,0],[2,1],[2,2],[2,3],[2,4],[2,5],[2,6],[2,7],[2,8],[3,8],[4,8],[5,8],[6,8],[7,8],[8,8],[8,9],[7,9],[6,9]]),
-					_c([[2,5],[3,5],[4,5],[5,5]])]
+			return [_c([[2,0],[2,1],[2,2],[2,3],[2,4],[2,5],[2,6],[2,7],[2,8],[3,8],[4,8],[5,8],[6,8],[6,9]]),
+				_c([[2,0],[3,0],[3,1],[3,2],[4,2],[5,2],[6,2],[7,2],[7,1],[7,0],[8,0],[8,1],[8,2],[8,3],[8,4],[8,5]]),
+				_c([[5,5],[4,5],[3,5],[2,5]])]
 		"XL9":
-			return [_c([[8,0],[8,1],[8,2],[8,3],[8,4]]),
-					_c([[8,4],[8,5],[8,6],[7,6],[6,6],[5,6],[4,6],[4,5],[3,5],[2,5],[1,5],[1,4],[1,3],[2,3]]),
-					_c([[2,3],[2,2],[1,2],[0,2],[0,3],[0,4],[0,5],[0,6],[0,7],[0,8],[0,9],[0,10],[1,10],[1,9],[1,8],[1,7],[2,7],[3,7],[4,7],[5,7],[6,7],[6,8],[6,9],[6,10],[5,10]])]
+			return [_c([[5,3],[6,3],[7,3],[8,3],[8,4],[8,5],[8,6],[8,7],[8,8],[8,9],[8,10],[7,10],[6,10],[5,10]]),
+				_c([[2,3],[2,2],[3,2],[4,2],[5,2],[6,2],[7,2],[8,2],[8,1],[8,0]]),
+				_c([[2,3],[1,3],[1,4],[1,5],[2,5],[3,5],[4,5],[4,6],[4,7],[3,7],[2,7],[1,7],[1,8]])]
 		"XL10":
-			return [_c([[7,5],[7,4],[7,3],[7,2],[8,2],[8,1],[8,0]]),
-					_c([[8,9],[8,8],[8,7],[8,6],[8,5],[7,5],[7,6],[6,6],[5,6],[4,6],[4,5],[4,4],[4,3],[4,2],[4,1],[4,0],[3,0]]),
-					_c([[1,3],[1,4],[1,5],[1,6],[0,6],[0,7],[0,8],[0,9],[1,9],[2,9],[3,9],[3,10]])]
+			return [_c([[8,9],[8,8],[8,7],[8,6],[8,5],[7,5]]),
+				_c([[8,0],[8,1],[8,2],[8,3],[8,4],[7,4],[7,5],[7,6],[6,6],[5,6],[4,6],[4,5],[4,4],[4,3],[4,2],[4,1],[4,0],[3,0]]),
+				_c([[3,0],[3,1],[3,2],[2,2],[1,2],[1,3],[1,4],[1,5],[1,6],[0,6],[0,7],[0,8],[0,9],[1,9],[2,9],[3,9],[3,10]])]
 	return []
-
-
-## Expected serve-count per car for a known route (assertion d). -1 = unchecked.
 func _expect_serves(id: String) -> Array:
 	match id:
 		"T-1":
 			return [3] # one lift serves A + both offices via the shared top dock
-		"T-8":
+		"T-7":
 			return [3, 3] # LIFT 1 serves A,B,C; LIFT 2 serves C,D,E
 	return []
 
 
 func _r6_index() -> int:
 	for i in Levels5.LEVELS.size():
-		if str(Levels5.LEVELS[i].id) == "T-8":
+		if str(Levels5.LEVELS[i].id) == "T-7":
 			return i
 	return -1
 
@@ -459,7 +434,7 @@ func _run_once(lv: Dictionary, i: int, seed: int) -> Dictionary:
 	# (cargo-only-while-loaded); the SAME figures reappear as w1 empty returners (the
 	# w3->w1 transition); commuters NEVER touch the bay. cargo = cars[0], first in the
 	# roster.
-	var r8: bool = lv.id == "T-4"
+	var r8: bool = lv.id == "T-3"
 	var r8_saw_delivery := false
 	var r8_delivery_on_cargo := false
 	var r8_loaded_seen := false # a width-3 loaded outbound man was observed
@@ -552,10 +527,10 @@ func _process(_delta: float) -> bool:
 			print("OVERLAP CAP  **FAIL**")
 		# R-6 must REQUIRE two cooperating lifts (one-lift + disjoint-two both fail).
 		if _cooperation_test():
-			print("T-8 COOPERATION: one-lift + disjoint-two both fail as required")
+			print("T-7 COOPERATION: one-lift + disjoint-two both fail as required")
 		else:
 			_fail += 1
-			print("T-8 COOPERATION  **FAIL**")
+			print("T-7 COOPERATION  **FAIL**")
 		# DELIVERY MAN (width-3, slow): cargo-only board (planner + sim), slower walk,
 		# width-aware packing. Injected fixture, so the shipped fingerprints are safe.
 		if _delivery_test():
@@ -598,14 +573,14 @@ func _process(_delta: float) -> bool:
 		notes.append("no-walk")
 	# Transfer levels must actually show a transfer (a rider changes lifts):
 	# R-3 Handoff, R-5 Relay, R-6 Squeeze all route cross trips through a shared room.
-	if (lv.id == "T-3" or lv.id == "T-6" or lv.id == "T-8") and a.transfers == 0:
+	if (lv.id == "T-2" or lv.id == "T-5" or lv.id == "T-7") and a.transfers == 0:
 		ok = false
 		notes.append("no-xfer")
 	# R-8 EXACT FICTION + ROUND TRIP: delivery men run a LOAD -> DELIVER -> RETURN-EMPTY
 	# itinerary. Loaded outbound men are WIDTH-3 and ride ONLY the CARGO lift (cargo-only
 	# while loaded); the SAME figures reappear as WIDTH-1 empty returners (the w3->w1
 	# transition); commuters never touch the bay (per-trip type binding).
-	if lv.id == "T-4":
+	if lv.id == "T-3":
 		if not a.r8_saw_delivery:
 			ok = false
 			notes.append("no-delivery")
@@ -641,8 +616,8 @@ func _process(_delta: float) -> bool:
 			"-",
 			"  ".join(a.serve_desc),
 			"OK" if ok else "**FAIL**", " ".join(notes)])
-	if lv.id == "T-4":
-		print("     T-4 round trip: loaded-w3 on CARGO=%s, empty-w1 return (w3->w1)=%s, binding clean=%s" % [
+	if lv.id == "T-3":
+		print("     T-3 round trip: loaded-w3 on CARGO=%s, empty-w1 return (w3->w1)=%s, binding clean=%s" % [
 				"Y" if (a.r8_loaded_seen and a.r8_delivery_on_cargo) else "N",
 				"Y" if a.r8_return_seen else "N",
 				"Y" if a.r8_fiction_ok else "N"])
