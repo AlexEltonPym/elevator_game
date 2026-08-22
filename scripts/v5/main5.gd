@@ -338,7 +338,14 @@ func _any_active_pax() -> bool:
 ## lose in a shift — you always finish; the tip total is the score, stars come later).
 func _shift_end() -> void:
 	state = State.WIN
+	if not headless:
+		Levels5.record_stars(str(level.get("id", "")), star_count())
 	hud.show_win(served, lost)
+
+
+## Stars earned this run for the current tip total (0..4; 4 = secret optimal).
+func star_count() -> int:
+	return Levels5.stars_for(level, tips)
 
 
 ## True unless this is a coverage level with a demand room not yet served.

@@ -5,6 +5,8 @@ extends CanvasLayer
 ## WIN / LOSE overlays. There is no BRIEFING screen — picking a level lands
 ## straight in PLAN. RUN gates on the level's ACTUAL roster.
 
+const StarBar5 := preload("res://scripts/v5/starbar5.gd")
+
 var game = null # main5.gd
 
 var level_label: Label
@@ -275,7 +277,11 @@ func show_win(served: int, lost: int) -> void:
 		buttons.append({"text": "NEXT LEVEL", "cb": func(): game.next_level()})
 	buttons.append({"text": "RETRY", "cb": func(): game.to_plan()})
 	buttons.append({"text": "LEVEL SELECT", "cb": func(): game.to_level_select()})
-	_show_overlay("SHIFT COMPLETE" if game.shift_len > 0.0 else "QUOTA MET", _result_body(served, lost), buttons)
+	var earned := -1
+	if game.shift_len > 0.0 and not (game.level.get("stars", []) as Array).is_empty():
+		earned = game.star_count()
+	_show_overlay("SHIFT COMPLETE" if game.shift_len > 0.0 else "QUOTA MET",
+			_result_body(served, lost), buttons, 23, earned)
 
 
 func show_lose(served: int, lost: int) -> void:
@@ -308,7 +314,7 @@ func hide_overlay() -> void:
 
 
 func _show_overlay(title_text: String, body_text: String, buttons: Array,
-		body_size := 23) -> void:
+		body_size := 23, earned := -1) -> void:
 	hide_overlay()
 	overlay = Control.new()
 	add_child(overlay)
@@ -331,6 +337,13 @@ func _show_overlay(title_text: String, body_text: String, buttons: Array,
 	title.add_theme_color_override("font_color", Color(0.95, 0.85, 0.5))
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(title)
+	if earned >= 0:
+		var stars := StarBar5.new()
+		stars.setup(earned, 56.0)
+		var wrap := CenterContainer.new()
+		wrap.custom_minimum_size.y = 60.0
+		wrap.add_child(stars)
+		box.add_child(wrap)
 	var body := Label.new()
 	body.text = body_text
 	body.add_theme_font_size_override("font_size", body_size)

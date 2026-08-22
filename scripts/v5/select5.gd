@@ -20,6 +20,8 @@ const WORLD_COL := {
 	"CROSSLINK": Color(0.35, 0.74, 0.72),
 }
 
+const StarBar5 := preload("res://scripts/v5/starbar5.gd")
+
 var page := 0 # index into Levels5.WORLDS
 
 
@@ -136,6 +138,13 @@ func _rebuild() -> void:
 			Levels5.current = idx
 			get_tree().change_scene_to_file("res://scenes/v5_main.tscn"))
 		add_child(b)
+		# Earned medals (Overcooked-style), bottom-right of the level tile.
+		if not (lv.get("stars", []) as Array).is_empty():
+			var got: int = Levels5.best_stars(str(lv.id))
+			var sbar := StarBar5.new()
+			sbar.setup(got, 20.0)
+			sbar.position = Vector2(vp.x - 40 - sol_w - 96.0, top + k * (h + gap) + h - 30.0)
+			add_child(sbar)
 		# "Solution" launch: opens the level with the expert plan already drawn, to compare.
 		if has_sol:
 			var sbtn := Button.new()

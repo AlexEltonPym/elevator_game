@@ -52,6 +52,59 @@ static var autosolve := false
 ## only an engine frame drains. Mirrors Levels3.headless.
 static var headless := false
 
+## STAR SYSTEM (Overcooked-style). A level's optional `stars` field is an ASCENDING
+## array of tip thresholds [t1, t2, t3, t4]: t1 = one star, t3 = three stars (the
+## range of reasonable solutions, novice->expert), and an optional t4 = the SECRET
+## fourth star for an optimal plan. Thresholds are derived from the MAP-Elites solve
+## (novice / adept / expert / optimal tips), rounded up to a clean number. Best result
+## per level is persisted to user:// so the select screen can show your medals.
+const STARS_PATH := "user://v5_stars.json"
+static var _stars_cache = null  # Dictionary id -> best earned int, lazily loaded
+
+
+## Stars earned for a tip total on a level: count of thresholds met (0..4, 4 = secret).
+static func stars_for(lv: Dictionary, tip_total: float) -> int:
+	var th: Array = lv.get("stars", [])
+	var n := 0
+	for t in th:
+		if tip_total >= float(t):
+			n += 1
+	return n
+
+
+static func _load_stars() -> void:
+	if _stars_cache != null:
+		return
+	_stars_cache = {}
+	if FileAccess.file_exists(STARS_PATH):
+		var f := FileAccess.open(STARS_PATH, FileAccess.READ)
+		if f != null:
+			var d = JSON.parse_string(f.get_as_text())
+			f.close()
+			if d is Dictionary:
+				for k in d:
+					_stars_cache[k] = int(d[k])
+
+
+## Best stars ever earned on a level id (0 if never cleared / no medal).
+static func best_stars(id: String) -> int:
+	_load_stars()
+	return int(_stars_cache.get(id, 0))
+
+
+## Record a run's stars, keeping only the best. Writes user:// on improvement.
+static func record_stars(id: String, n: int) -> void:
+	if id == "":
+		return
+	_load_stars()
+	if n <= int(_stars_cache.get(id, 0)):
+		return
+	_stars_cache[id] = n
+	var f := FileAccess.open(STARS_PATH, FileAccess.WRITE)
+	if f != null:
+		f.store_string(JSON.stringify(_stars_cache))
+		f.close()
+
 const ROOM_LETTERS := "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 ## Dropoff facing shorthands (dir points from the room cell into open space).
