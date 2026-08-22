@@ -270,19 +270,37 @@ func _refresh_hint() -> void:
 
 # ---------------------------------------------------------------- overlays
 
+const Victory5 := preload("res://scripts/v5/victory5.gd")
+const WORLD_ACCENT := {
+	"TUTORIAL": Color(0.42, 0.62, 0.88),
+	"CROSSLINK": Color(0.35, 0.74, 0.72),
+}
+
 func show_win(served: int, lost: int) -> void:
 	if headless:
 		return
+	# Shift levels with stars get the animated Overcooked-style victory overlay.
+	if game.shift_len > 0.0 and not (game.level.get("stars", []) as Array).is_empty():
+		hide_overlay()
+		var v := Victory5.new()
+		overlay = v
+		add_child(v)
+		v.show_result({
+			"game": game,
+			"accent": WORLD_ACCENT.get(str(game.level.get("world", "")), Color(0.5, 0.6, 0.8)),
+			"is_last": Levels5.current >= Levels5.LEVELS.size() - 1,
+			"on_next": func(): game.next_level(),
+			"on_retry": func(): game.to_plan(),
+			"on_menu": func(): game.to_level_select(),
+		})
+		return
+	# Fallback (classic quota mode, e.g. the smoke): the plain overlay.
 	var buttons: Array = []
 	if Levels5.current < Levels5.LEVELS.size() - 1:
 		buttons.append({"text": "NEXT LEVEL", "cb": func(): game.next_level()})
 	buttons.append({"text": "RETRY", "cb": func(): game.to_plan()})
 	buttons.append({"text": "LEVEL SELECT", "cb": func(): game.to_level_select()})
-	var earned := -1
-	if game.shift_len > 0.0 and not (game.level.get("stars", []) as Array).is_empty():
-		earned = game.star_count()
-	_show_overlay("SHIFT COMPLETE" if game.shift_len > 0.0 else "QUOTA MET",
-			_result_body(served, lost), buttons, 23, earned)
+	_show_overlay("QUOTA MET", _result_body(served, lost), buttons, 23)
 
 
 func show_lose(served: int, lost: int) -> void:
