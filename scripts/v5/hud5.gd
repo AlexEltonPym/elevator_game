@@ -32,7 +32,6 @@ var level_label: Label
 var served_label: Label
 var lost_label: Label
 var menu_btn: Button
-var speed_buttons: Array = []
 var hint_label: Label
 var chip_buttons: Array = []
 var chip_pips: Array = []
@@ -42,9 +41,6 @@ var action_btn: Button
 var overlay: Control = null
 var _chips_built := false
 var headless := false
-
-# 5x is the default pace; 1x is a "slow down" for watching a tricky moment. No pause.
-const SPEEDS := [[5.0, "5x"], [1.0, "1x"]]
 
 
 func _ready() -> void:
@@ -71,28 +67,14 @@ func _build_top() -> void:
 	level_label.text = "R-1"
 	served_label = _make_label(Vector2(110, 12), 24, Color(0.45, 0.95, 0.55))
 	lost_label = _make_label(Vector2(110, 52), 24, Color(1.0, 0.5, 0.45))
-	menu_btn = Ui5.make_button("LEVELS", "Grey", 18)
-	menu_btn.position = Vector2(330, 6)
-	menu_btn.size = Vector2(100, 86)
+	# The run always plays at the default speed (5x) — no speed picker.
+	menu_btn = Ui5.make_button("LEVELS", "Grey", 20)
+	menu_btn.position = Vector2(552, 6)
+	menu_btn.size = Vector2(154, 86)
 	menu_btn.pressed.connect(func():
 		if game != null:
 			game.to_level_select())
 	add_child(menu_btn)
-	for i in SPEEDS.size():
-		var btn := Ui5.make_button(SPEEDS[i][1], "Grey", 30)
-		# Kenney Future mangles "5x"/"1x" (5->S, x->H); keep the crisp default font here.
-		btn.add_theme_font_override("font", ThemeDB.fallback_font)
-		btn.position = Vector2(438 + i * 94, 6)
-		btn.size = Vector2(88, 86)
-		var s: float = SPEEDS[i][0]
-		btn.pressed.connect(func(): _on_speed(s))
-		add_child(btn)
-		speed_buttons.append(btn)
-
-
-func _on_speed(s: float) -> void:
-	if game != null:
-		game.set_speed(s)
 
 
 func _build_panel() -> void:
@@ -225,11 +207,6 @@ func refresh_stats() -> void:
 	else:
 		served_label.text = "Served %d/%d" % [game.served, game.QUOTA]
 		lost_label.text = "Lost %d/%d" % [game.lost, game.MAX_LOST]
-	var running: bool = game.state == game.State.PLAYING
-	for i in speed_buttons.size():
-		var active: bool = is_equal_approx(game.time_scale, SPEEDS[i][0])
-		speed_buttons[i].visible = running
-		speed_buttons[i].modulate = Color(1, 1, 1, 1.0) if active else Color(1, 1, 1, 0.45)
 	clear_btn.visible = game.can_edit() and game.selected_card >= 0 \
 			and game.routes[game.selected_card] != null
 	if _serves_changed():

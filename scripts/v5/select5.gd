@@ -139,7 +139,7 @@ func _rebuild() -> void:
 			var got: int = Levels5.best_stars(str(lv.id))
 			var sbar := StarBar5.new()
 			sbar.setup(got, 20.0)
-			sbar.position = Vector2(vp.x - 40 - sol_w - 96.0, top + k * (h + gap) + h - 30.0)
+			sbar.position = Vector2(vp.x - 40 - sol_w - 96.0, top + k * (h + gap) + h * 0.5 - 11.0)
 			add_child(sbar)
 		# "Solution" launch: opens the level with the expert plan already drawn, to compare.
 		if has_sol:
