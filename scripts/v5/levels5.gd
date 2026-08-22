@@ -626,6 +626,7 @@ const LEVELS := [
 		# cover: round-robin demand so every room gets riders (abandon one and its riders
 		# time out, costing tips) — the soft version of the old all-served rule.
 		"shift": 90.0,
+		"stars": [130, 260, 340, 460],
 		"spawn": {"interval_start": 2.2, "interval_end": 1.7, "ramp": 40.0,
 				"burst_min": 1, "burst_max": 2, "gap": 0.9, "cover": true},
 		"mix": {"visitor": 0.6, "shopper": 0.25, "patient": 0.15},
@@ -657,6 +658,7 @@ const LEVELS := [
 			{"name": "EXPRESS", "type": "express", "color": COL_D, "speed": 1500.0, "accel": 1200.0},
 		],
 		"quota": 20, "max_lost": 4, "shift": 90.0,
+		"stars": [190, 380, 490, 500],
 		"spawn": {"interval_start": 2.2, "interval_end": 1.7, "ramp": 40.0, "burst_min": 1, "burst_max": 2, "gap": 0.9, "cover": true},
 		"mix": {"visitor": 0.6, "shopper": 0.25, "patient": 0.15},
 		"trips": [
@@ -687,6 +689,7 @@ const LEVELS := [
 			{"name": "CARGO", "type": "cargo", "color": COL_C, "speed": 100.0, "accel": 80.0},
 		],
 		"quota": 20, "max_lost": 4, "shift": 90.0,
+		"stars": [150, 300, 390, 420],
 		"spawn": {"interval_start": 2.2, "interval_end": 1.7, "ramp": 40.0, "burst_min": 1, "burst_max": 2, "gap": 0.9, "cover": true},
 		"mix": {"visitor": 0.6, "shopper": 0.25, "patient": 0.15},
 		"trips": [
@@ -719,6 +722,7 @@ const LEVELS := [
 			{"name": "CARGO", "type": "cargo", "color": COL_C, "speed": 100.0, "accel": 80.0},
 		],
 		"quota": 20, "max_lost": 4, "shift": 90.0,
+		"stars": [160, 190, 410, 420],
 		"spawn": {"interval_start": 2.2, "interval_end": 1.7, "ramp": 40.0, "burst_min": 1, "burst_max": 2, "gap": 0.9, "cover": true},
 		"mix": {"visitor": 0.6, "shopper": 0.25, "patient": 0.15},
 		"trips": [
@@ -752,6 +756,7 @@ const LEVELS := [
 			{"name": "CARGO", "type": "cargo", "color": COL_C, "speed": 100.0, "accel": 80.0},
 		],
 		"quota": 20, "max_lost": 4, "shift": 90.0,
+		"stars": [130, 260, 340, 350],
 		"spawn": {"interval_start": 2.2, "interval_end": 1.7, "ramp": 40.0, "burst_min": 1, "burst_max": 2, "gap": 0.9, "cover": true},
 		"mix": {"visitor": 0.6, "shopper": 0.25, "patient": 0.15},
 		"trips": [
@@ -783,6 +788,7 @@ const LEVELS := [
 			{"name": "EXPRESS", "type": "express", "color": COL_D, "speed": 1500.0, "accel": 1200.0},
 		],
 		"quota": 20, "max_lost": 4, "shift": 90.0,
+		"stars": [160, 310, 410, 420],
 		"spawn": {"interval_start": 2.2, "interval_end": 1.7, "ramp": 40.0, "burst_min": 1, "burst_max": 2, "gap": 0.9, "cover": true},
 		"mix": {"visitor": 0.6, "shopper": 0.25, "patient": 0.15},
 		"trips": [
@@ -817,6 +823,7 @@ const LEVELS := [
 			{"name": "CARGO", "type": "cargo", "color": COL_C, "speed": 100.0, "accel": 80.0},
 		],
 		"quota": 20, "max_lost": 4, "shift": 90.0,
+		"stars": [140, 270, 350, 360],
 		"spawn": {"interval_start": 2.2, "interval_end": 1.7, "ramp": 40.0, "burst_min": 1, "burst_max": 2, "gap": 0.9, "cover": true},
 		"mix": {"visitor": 0.6, "shopper": 0.25, "patient": 0.15},
 		"trips": [
@@ -851,6 +858,7 @@ const LEVELS := [
 			{"name": "CARGO", "type": "cargo", "color": COL_C, "speed": 100.0, "accel": 80.0},
 		],
 		"quota": 20, "max_lost": 4, "shift": 90.0,
+		"stars": [170, 310, 440, 480],
 		"spawn": {"interval_start": 2.2, "interval_end": 1.7, "ramp": 40.0, "burst_min": 1, "burst_max": 2, "gap": 0.9, "cover": true},
 		"mix": {"visitor": 0.6, "shopper": 0.25, "patient": 0.15},
 		"trips": [
@@ -887,6 +895,7 @@ const LEVELS := [
 			{"name": "CARGO", "type": "cargo", "color": COL_C, "speed": 100.0, "accel": 80.0},
 		],
 		"quota": 20, "max_lost": 4, "shift": 90.0,
+		"stars": [140, 270, 350, 360],
 		"spawn": {"interval_start": 2.2, "interval_end": 1.7, "ramp": 40.0, "burst_min": 1, "burst_max": 2, "gap": 0.9, "cover": true},
 		"mix": {"visitor": 0.6, "shopper": 0.25, "patient": 0.15},
 		"trips": [
@@ -925,6 +934,7 @@ const LEVELS := [
 			{"name": "CARGO", "type": "cargo", "color": COL_C, "speed": 100.0, "accel": 80.0},
 		],
 		"quota": 20, "max_lost": 4, "shift": 90.0,
+		"stars": [150, 220, 380, 390],
 		"spawn": {"interval_start": 2.2, "interval_end": 1.7, "ramp": 40.0, "burst_min": 1, "burst_max": 2, "gap": 0.9, "cover": true},
 		"mix": {"visitor": 0.6, "shopper": 0.25, "patient": 0.15},
 		"trips": [
