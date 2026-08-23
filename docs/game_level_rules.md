@@ -89,6 +89,16 @@ If a rule here seems wrong for a task, ask — do not silently violate it.
   lift trips between walkable-adjacent rooms. Tune demand by editing the type-affinity
   model in `Demand5`, not per level. (Fixtures/tests may still set explicit trips.)
 
+- **TRANSFERS ONLY VIA HUBS** (user 2026-08-23): a rider may only get off to CHANGE LIFTS at
+  a **lobby, cafe, storage (delivery), or atrium**. Transferring through an office/penthouse
+  is nonsensical, so `Pathfind5` never uses a non-hub room as an intermediate transfer node
+  (`HUB_TYPES` / `_is_hub`; you can still ride straight to an office as your DESTINATION). This
+  is a SIM rule — it rebaselines the fingerprint and every level is re-solved against it.
+- **NO APARTMENTS** (user 2026-08-23): apartment is retired — it was functionally an office
+  and just added confusion. All apartments are now offices (level data + the `_pcg_gen`
+  palette). `office|office` demand applies; the dead `apartment` keys in `Demand5.AFF` are
+  harmless.
+
 ## Visual language
 
 - **Tile standard — every non-room cell is exactly one of two things, one look each:**
@@ -127,7 +137,7 @@ If a rule here seems wrong for a task, ask — do not silently violate it.
 
 ## Process / verification (engineering rules)
 
-- **Fingerprint discipline.** `FINGERPRINT5-ALL 3356209996` must stay byte-identical for any
+- **Fingerprint discipline.** `FINGERPRINT5-ALL 4276812684` must stay byte-identical for any
   RENDERING-only change (verify with `tools/v5/run_fingerprint5.gd`). A SIM/CONTENT change
   legitimately rebaselines it — flag that explicitly and keep `V5 SMOKE ALL PASS`.
 - **Suite = HAND tutorials + PCG crosslink (2026-08-23).** T-1..T-7 are HAND-AUTHORED (a

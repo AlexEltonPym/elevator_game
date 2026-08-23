@@ -369,7 +369,10 @@ func _maybe_play_demo() -> void:
 	var id := str(level.get("id", ""))
 	if Levels5.demo_seen(id):
 		return
-	var sol: Array = level.get("solution", [])
+	# Hand-authored ghost paths (`demo`) override the solution-derived trace: the solver's
+	# route order can zig-zag or draw bottom-to-top, which reads oddly as a taught gesture.
+	# `demo` is the same [route -> [[x,y]...]] shape, drawn verbatim in card order.
+	var sol: Array = level.get("demo", level.get("solution", []))
 	if sol.is_empty():
 		return
 	var steps: Array = []
@@ -1005,11 +1008,16 @@ func on_served(p) -> void:
 		waiting[p.cur_room].erase(p)
 	log_served.append({"type": p.ptype, "wait": p.wait_time, "rides": p.rides})
 	served += 1
-	tips += _tip_of(p.wait_time)
+	# CARGO PAYS 5x (user): a completed cargo run is worth five times a passenger's tip. Only
+	# the LOADED leg counts (delivery man with a cart, not yet on his empty walk home) — the
+	# empty return is a plain w1 person and tips normally.
+	var mult := 5.0 if (p.ptype == "delivery" and not p.returning) else 1.0
+	tips += _tip_of(p.wait_time) * mult
 	# A tip coin flies from the served passenger up to the TIPS counter (visual only, so it
-	# reads that tips come from passengers). Deterministic arc side; skipped in headless.
+	# reads that tips come from passengers). Cargo shows its 5x as a burst of 5 coins.
+	# Deterministic arc side; skipped in headless.
 	if not headless:
-		hud.fly_coin(p.global_position, 1.0 if served % 2 == 0 else -1.0)
+		hud.fly_coin(p.global_position, 1.0 if served % 2 == 0 else -1.0, int(mult))
 	if _cover_on:
 		_served_rooms[p.cur_room] = true
 	p.begin_between()

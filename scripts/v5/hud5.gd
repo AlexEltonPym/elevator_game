@@ -239,15 +239,30 @@ func play_demo(steps: Array) -> void:
 ## A served passenger sends a tip coin arcing from its spot (screen pos) up to the TIPS
 ## counter, which pops when the coin lands. Purely visual — makes "tips come from passengers"
 ## legible. `side` (deterministic, from the served count) just varies the arc left/right.
-func fly_coin(from: Vector2, side: float) -> void:
+func fly_coin(from: Vector2, side: float, count := 1) -> void:
 	if headless or served_label == null:
 		return
+	# count>1 = a cargo 5x burst: fan the coins out with a per-coin offset + stagger so it
+	# visibly reads as five coins, not one.
+	for i in maxi(count, 1):
+		var off := Vector2.ZERO
+		var delay := 0.0
+		if count > 1:
+			off = Vector2((float(i) / float(count - 1) - 0.5) * 34.0, -float(i) * 7.0)
+			delay = float(i) * 0.07
+		_fly_one(from + off, side * (1.0 if i % 2 == 0 else -1.0), delay, i == count - 1)
+
+
+func _fly_one(from: Vector2, side: float, delay: float, bump: bool) -> void:
 	var coin := Coin5.new()
 	coin.position = from
+	coin.modulate.a = 0.0
 	add_child(coin)
 	var to: Vector2 = served_label.global_position + Vector2(46.0, 16.0)
 	var mid: Vector2 = from.lerp(to, 0.5) + Vector2(side * 26.0, -96.0)
 	var tw := create_tween()
+	if delay > 0.0:
+		tw.tween_interval(delay)
 	tw.tween_method(func(t: float):
 		coin.position = _qbez(from, mid, to, t)
 		var s := lerpf(1.05, 0.55, t)
@@ -257,7 +272,8 @@ func fly_coin(from: Vector2, side: float) -> void:
 	tw.tween_callback(func():
 		if is_instance_valid(coin):
 			coin.queue_free()
-		_bump_tips())
+		if bump:
+			_bump_tips())
 
 
 ## A quick scale-pop on the Tips counter when a coin lands.

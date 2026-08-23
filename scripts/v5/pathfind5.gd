@@ -25,6 +25,15 @@ const LEG_WAIT := 6.0
 const TIE_EPS := 0.5
 const INF_T := 1.0e18
 
+## TRANSFER RULE (user): a rider may only get off to CHANGE LIFTS at a HUB — a lobby, cafe,
+## storage (delivery) or atrium. Transferring through an office/penthouse is nonsensical, so
+## those are never used as intermediate transfer points (you can still ride straight to one as
+## your destination; you just can't hop lifts there).
+const HUB_TYPES := {"lobby": true, "cafe": true, "delivery": true, "atrium": true}
+
+static func _is_hub(room_id: int) -> bool:
+	return HUB_TYPES.has(Grid5.room_type(room_id))
+
 
 ## Returns an Array of legs, or null if no path. `salt` (0..1) adds a
 ## deterministic sub-second per-car jitter so near-equal plans split load;
@@ -102,6 +111,12 @@ static func _dijkstra(start_room: int, dest_room: int, cars: Array,
 		done[u] = true
 		if u == dest_room:
 			break
+		# TRANSFER RULE: you may only change lifts at a HUB. The start room is the origin
+		# (boarding, not a transfer); any OTHER room reached mid-path is a transfer point, so a
+		# non-hub intermediate is a dead end here — you can arrive (and if it's the destination
+		# that was handled above), but you can't hop to another lift.
+		if u != start_room and not _is_hub(u):
+			continue
 		for e in edges.get(u, []):
 			var nc: float = best[u] + e.cost
 			if nc < best.get(e.to, INF_T):

@@ -58,7 +58,7 @@ func _templates() -> Dictionary:
 					"docks": [{"c": Vector2i(2,0), "dir": R}]},
 		"delivery":  {"w": 2, "h": 2, "cells": [Vector2i(0,0),Vector2i(1,0),Vector2i(0,1),Vector2i(1,1)],
 					"docks": [{"c": Vector2i(1,0), "dir": R}], "label": "storage"},
-		"apartment": {"w": 2, "h": 1, "cells": [Vector2i(0,0),Vector2i(1,0)],
+		"office": {"w": 2, "h": 1, "cells": [Vector2i(0,0),Vector2i(1,0)],
 					"docks": [{"c": Vector2i(1,0), "dir": R}]},
 		"cafe":      {"w": 4, "h": 2, "cells": [Vector2i(0,1),Vector2i(1,1),Vector2i(2,1),Vector2i(3,1),Vector2i(1,0),Vector2i(2,0)],
 					"docks": [{"c": Vector2i(1,0), "dir": L}, {"c": Vector2i(2,0), "dir": R}]},
@@ -181,12 +181,12 @@ func _generate(seed_v: int, n_rooms := 0) -> Dictionary:
 	if not add.call(_place("lobby", cols, rows, occ, docks_all, rng, 40, true, BASEMENT)):
 		return {}
 	# Build a wishlist sized to n_rooms: cafe + penthouse (enable express); delivery when
-	# there's budget (enable cargo); fill the rest with apartments, maybe one atrium.
+	# there's budget (enable cargo); fill the rest with offices, maybe one atrium.
 	var wish := ["cafe", "penthouse"]
 	if n_rooms >= 5:
 		wish.append("delivery")
 	while wish.size() < n_rooms - 1:
-		wish.append("apartment")
+		wish.append("office")
 	if n_rooms >= 6 and rng.randf() < 0.6 and wish.size() >= 1:
 		wish[wish.size() - 1] = "atrium"
 	for type in wish:
@@ -651,7 +651,7 @@ func _mapgen_report(archive: Dictionary, infeasible: Dictionary, evals: int, sig
 ## seed-sampler, this is a DIRECTLY MUTABLE design: small edits give nearby designs (a
 ## smooth landscape for QD), and an infeasible design can be REPAIRED toward feasibility
 ## and migrate into the feasible archive -- the whole point of keeping a two-map FI split.
-const PALETTE := ["apartment", "cafe", "penthouse", "delivery", "atrium"]
+const PALETTE := ["office", "cafe", "penthouse", "delivery", "atrium"]
 const MAX_BLOCKS := 6
 
 
@@ -812,7 +812,7 @@ func _random_design(rng: RandomNumberGenerator, nrooms: int, cols: int, rows: in
 	if nrooms >= 5:
 		wish.append("delivery")
 	while wish.size() < nrooms:
-		wish.append("apartment")
+		wish.append("office")
 	if nrooms >= 6 and rng.randf() < 0.5:
 		wish[wish.size() - 1] = "atrium"
 	var rooms := []
@@ -1138,7 +1138,7 @@ func _mut_design(rng: RandomNumberGenerator, g: Dictionary, repair := false) -> 
 			var cafe := false
 			for r in out.rooms:
 				if r.type == "cafe": cafe = true
-			if not cafe: t = "apartment"
+			if not cafe: t = "office"
 		out.rooms.append({"type": t, "ax": rng.randi_range(0, cols - 2),
 				"ay": rng.randi_range(0, rows - 2), "flip": rng.randf() < 0.5})
 	elif not nl.is_empty() and out.rooms.size() > 4: # REMOVE
