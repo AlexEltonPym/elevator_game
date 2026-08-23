@@ -9,6 +9,7 @@ const StarBar5 := preload("res://scripts/v5/starbar5.gd")
 const Ui5 := preload("res://scripts/v5/ui5.gd")
 const SpeedBtn5 := preload("res://scripts/v5/speedbtn5.gd")
 const Coin5 := preload("res://scripts/v5/coin5.gd")
+const GhostDemo5 := preload("res://scripts/v5/ghost_demo5.gd")
 
 var game = null # main5.gd
 
@@ -213,6 +214,26 @@ func refresh_cards() -> void:
 		for s in ["normal", "hover", "pressed", "disabled"]:
 			btn.add_theme_stylebox_override(s, sb)
 		btn.disabled = not game.can_edit()
+
+
+## Screen-space centre of lift chip `i` (where the ghost-hand demo "taps"). Falls back to the
+## known panel layout if the chip button isn't laid out yet.
+func chip_center(i: int) -> Vector2:
+	if i >= 0 and i < chip_buttons.size() and chip_buttons[i] != null:
+		var b: Control = chip_buttons[i]
+		return b.position + b.size * 0.5
+	return Vector2(93.0 + i * 172.0, 1104.0)
+
+
+## Play the ghost-hand tutorial demo over the board (see ghost_demo5.gd). `steps` are built by
+## main5 from the level's solution (chip centre + route cells -> screen). Added last so the
+## finger draws over the chips; it blocks input until it ends or is tapped to skip.
+func play_demo(steps: Array) -> void:
+	if headless:
+		return
+	var d := GhostDemo5.new()
+	add_child(d)
+	d.play(steps)
 
 
 ## A served passenger sends a tip coin arcing from its spot (screen pos) up to the TIPS

@@ -312,6 +312,7 @@ func to_plan() -> void:
 	_reset_spawner()
 	hud.hide_overlay()
 	hud.refresh_cards()
+	_maybe_play_demo()
 
 
 func start_run() -> void:
@@ -354,6 +355,35 @@ func _standardize_card_colors() -> void:
 
 func abort_run() -> void:
 	to_plan()
+
+
+## The first few tutorials play a one-time GHOST-HAND DEMO on entering PLAN: a finger taps a
+## lift chip and draws each route (from the level's solution), teaching tap->draw->repeat (and,
+## on T-2/T-3, two lifts / a shared dock) without text. Persisted per level so it shows once;
+## tap to skip. Visual only — the board stays empty, the player draws for real.
+const DEMO_LEVELS := ["T-1", "T-2", "T-3", "T-4"]
+
+func _maybe_play_demo() -> void:
+	if headless or not DEMO_LEVELS.has(str(level.get("id", ""))):
+		return
+	var id := str(level.get("id", ""))
+	if Levels5.demo_seen(id):
+		return
+	var sol: Array = level.get("solution", [])
+	if sol.is_empty():
+		return
+	var steps: Array = []
+	for ri in mini(sol.size(), CARDS.size()):
+		var pts: Array = []
+		for xy in sol[ri]:
+			var cell := Vector2i(int(xy[0]), int(xy[1]))
+			pts.append(Grid5.view_offset + Grid5.view_scale * Grid5.cell_center(cell))
+		if not pts.is_empty():
+			steps.append({"color": CARDS[ri].color, "chip": hud.chip_center(ri), "pts": pts})
+	if steps.is_empty():
+		return
+	Levels5.mark_demo_seen(id)
+	hud.play_demo(steps)
 
 
 func next_level() -> void:

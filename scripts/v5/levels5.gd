@@ -109,6 +109,40 @@ static func record_stars(id: String, n: int) -> void:
 		f.store_string(JSON.stringify(_stars_cache))
 		f.close()
 
+## GHOST-HAND DEMO seen-state: a level's tutorial demo plays ONCE ever (persisted here), so it
+## doesn't replay every time you re-enter to plan. Parallels the stars cache.
+const DEMOS_PATH := "user://v5_demos.json"
+static var _demos_cache = null
+
+static func _load_demos() -> void:
+	if _demos_cache != null:
+		return
+	_demos_cache = {}
+	if FileAccess.file_exists(DEMOS_PATH):
+		var f := FileAccess.open(DEMOS_PATH, FileAccess.READ)
+		if f != null:
+			var d = JSON.parse_string(f.get_as_text())
+			f.close()
+			if d is Dictionary:
+				_demos_cache = d
+
+
+static func demo_seen(id: String) -> bool:
+	_load_demos()
+	return bool(_demos_cache.get(id, false))
+
+
+static func mark_demo_seen(id: String) -> void:
+	_load_demos()
+	if bool(_demos_cache.get(id, false)):
+		return
+	_demos_cache[id] = true
+	var f := FileAccess.open(DEMOS_PATH, FileAccess.WRITE)
+	if f != null:
+		f.store_string(JSON.stringify(_demos_cache))
+		f.close()
+
+
 const ROOM_LETTERS := "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 ## Dropoff facing shorthands (dir points from the room cell into open space).
