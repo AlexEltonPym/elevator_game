@@ -8,6 +8,7 @@ extends CanvasLayer
 const StarBar5 := preload("res://scripts/v5/starbar5.gd")
 const Ui5 := preload("res://scripts/v5/ui5.gd")
 const SpeedBtn5 := preload("res://scripts/v5/speedbtn5.gd")
+const Coin5 := preload("res://scripts/v5/coin5.gd")
 
 var game = null # main5.gd
 
@@ -212,6 +213,45 @@ func refresh_cards() -> void:
 		for s in ["normal", "hover", "pressed", "disabled"]:
 			btn.add_theme_stylebox_override(s, sb)
 		btn.disabled = not game.can_edit()
+
+
+## A served passenger sends a tip coin arcing from its spot (screen pos) up to the TIPS
+## counter, which pops when the coin lands. Purely visual — makes "tips come from passengers"
+## legible. `side` (deterministic, from the served count) just varies the arc left/right.
+func fly_coin(from: Vector2, side: float) -> void:
+	if headless or served_label == null:
+		return
+	var coin := Coin5.new()
+	coin.position = from
+	add_child(coin)
+	var to: Vector2 = served_label.global_position + Vector2(46.0, 16.0)
+	var mid: Vector2 = from.lerp(to, 0.5) + Vector2(side * 26.0, -96.0)
+	var tw := create_tween()
+	tw.tween_method(func(t: float):
+		coin.position = _qbez(from, mid, to, t)
+		var s := lerpf(1.05, 0.55, t)
+		coin.scale = Vector2(s, s)
+		coin.modulate.a = 1.0 if t < 0.82 else lerpf(1.0, 0.0, (t - 0.82) / 0.18),
+			0.0, 1.0, 0.52).set_trans(Tween.TRANS_SINE)
+	tw.tween_callback(func():
+		if is_instance_valid(coin):
+			coin.queue_free()
+		_bump_tips())
+
+
+## A quick scale-pop on the Tips counter when a coin lands.
+func _bump_tips() -> void:
+	if served_label == null:
+		return
+	served_label.pivot_offset = served_label.size * 0.5
+	var tw := create_tween()
+	tw.tween_property(served_label, "scale", Vector2(1.22, 1.22), 0.06)
+	tw.tween_property(served_label, "scale", Vector2.ONE, 0.12).set_trans(Tween.TRANS_SINE)
+
+
+static func _qbez(a: Vector2, m: Vector2, b: Vector2, t: float) -> Vector2:
+	var u := 1.0 - t
+	return u * u * a + 2.0 * u * t * m + t * t * b
 
 
 func refresh_stats() -> void:

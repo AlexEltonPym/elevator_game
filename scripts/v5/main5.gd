@@ -976,6 +976,10 @@ func on_served(p) -> void:
 	log_served.append({"type": p.ptype, "wait": p.wait_time, "rides": p.rides})
 	served += 1
 	tips += _tip_of(p.wait_time)
+	# A tip coin flies from the served passenger up to the TIPS counter (visual only, so it
+	# reads that tips come from passengers). Deterministic arc side; skipped in headless.
+	if not headless:
+		hud.fly_coin(p.global_position, 1.0 if served % 2 == 0 else -1.0)
 	if _cover_on:
 		_served_rooms[p.cur_room] = true
 	p.begin_between()
