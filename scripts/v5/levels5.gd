@@ -211,13 +211,13 @@ const LEVELS := [
 					"drops": [{"cell": Vector2i(6, 0), "dir": L}]},
 		],
 		"cards": [
-			{"name": "BLUE", "type": "standard", "color": COL_A},
-			{"name": "GREEN", "type": "standard", "color": COL_B},
+			{"name": "LIFT 1", "type": "standard", "color": COL_A},
+			{"name": "LIFT 2", "type": "standard", "color": COL_B},
 		],
 		"quota": 12, "max_lost": 10, "shift": 90.0,
 		"stars": [160, 240, 300, 330],
-		"solution": [[[5, 1], [5, 0]], [[2, 1], [2, 0]]],
-		"demo": [[[5, 1], [5, 0]], [[2, 1], [2, 0]]],  # two lifts flanking the atrium: hand off across it
+		"solution": [[[2, 1], [2, 0]], [[5, 1], [5, 0]]],
+		"demo": [[[2, 1], [2, 0]], [[5, 1], [5, 0]]],  # LIFT 1 (blue) left, LIFT 2 (green) right — hand off across the atrium
 		"sols": [[[[2, 0], [2, 1]], [[5, 0], [5, 1]]], [[[5, 1], [5, 0]], [[2, 1], [2, 0]]], [[[5, 1], [5, 0]], [[2, 1], [2, 0]]], [[[5, 1], [5, 0]], [[2, 1], [2, 0]]]],
 		"spawn": {"interval_start": 2.8, "interval_end": 2.4, "ramp": 55.0,
 				"burst_min": 1, "burst_max": 2, "gap": 0.9},
@@ -259,8 +259,8 @@ const LEVELS := [
 		"id": "T-4", "world": "TUTORIAL", "name": "Freight",
 		"cols": 7, "rows": 7, "blocked": [Vector2i(0, 4), Vector2i(0, 5), Vector2i(1, 2), Vector2i(1, 4), Vector2i(1, 6), Vector2i(5, 3)],
 		"overlaps": [
-			{"cells": [Vector2i(0, 2), Vector2i(0, 3), Vector2i(0, 6), Vector2i(1, 3), Vector2i(1, 5), Vector2i(2, 1), Vector2i(2, 2), Vector2i(2, 3), Vector2i(2, 4), Vector2i(2, 5), Vector2i(2, 6), Vector2i(3, 1), Vector2i(3, 3), Vector2i(3, 5), Vector2i(4, 1), Vector2i(4, 3), Vector2i(4, 5), Vector2i(5, 1), Vector2i(5, 5), Vector2i(6, 1), Vector2i(6, 3), Vector2i(6, 5)], "max": 3},
-			{"cells": [Vector2i(2, 0), Vector2i(3, 6), Vector2i(6, 6), Vector2i(3, 0), Vector2i(6, 0), Vector2i(3, 2), Vector2i(6, 2), Vector2i(3, 4), Vector2i(6, 4)], "max": 6},
+			{"cells": [Vector2i(0, 2), Vector2i(0, 3), Vector2i(0, 6), Vector2i(1, 3), Vector2i(1, 5), Vector2i(2, 1), Vector2i(2, 2), Vector2i(2, 3), Vector2i(2, 4), Vector2i(2, 5), Vector2i(2, 6), Vector2i(3, 1), Vector2i(3, 3), Vector2i(3, 5), Vector2i(4, 1), Vector2i(4, 3), Vector2i(4, 5), Vector2i(5, 1), Vector2i(5, 5), Vector2i(6, 0), Vector2i(6, 1), Vector2i(6, 2), Vector2i(6, 3), Vector2i(6, 4), Vector2i(6, 5), Vector2i(6, 6)], "max": 3},
+			{"cells": [Vector2i(2, 0), Vector2i(3, 6), Vector2i(3, 0), Vector2i(3, 2), Vector2i(3, 4)], "max": 6},
 		],
 		"rooms": [
 			{"type": "delivery", "cells": [
@@ -269,24 +269,20 @@ const LEVELS := [
 						{"cell": Vector2i(1, 0), "dir": R}]},
 			{"type": "cafe", "cells": [Vector2i(4, 6), Vector2i(5, 6)],
 					"drops": [
-						{"cell": Vector2i(4, 6), "dir": L},
-						{"cell": Vector2i(5, 6), "dir": R}]},
+						{"cell": Vector2i(4, 6), "dir": L}]},
 			{"type": "lobby", "cells": [Vector2i(4, 0), Vector2i(5, 0)],
 					"drops": [
-						{"cell": Vector2i(4, 0), "dir": L},
-						{"cell": Vector2i(5, 0), "dir": R}]},
+						{"cell": Vector2i(4, 0), "dir": L}]},
 			{"type": "office", "cells": [Vector2i(4, 2), Vector2i(5, 2)],
 					"drops": [
-						{"cell": Vector2i(4, 2), "dir": L},
-						{"cell": Vector2i(5, 2), "dir": R}]},
+						{"cell": Vector2i(4, 2), "dir": L}]},
 			{"type": "office", "cells": [Vector2i(4, 4), Vector2i(5, 4)],
 					"drops": [
-						{"cell": Vector2i(4, 4), "dir": L},
-						{"cell": Vector2i(5, 4), "dir": R}]},
+						{"cell": Vector2i(4, 4), "dir": L}]},
 		],
 		"cards": [
 			{"name": "CARGO", "type": "cargo", "color": COL_D},
-			{"name": "LOCAL", "type": "standard", "color": COL_A},
+			{"name": "LIFT", "type": "standard", "color": COL_A},
 		],
 		"quota": 15, "max_lost": 8, "shift": 90.0,
 		"stars": [160, 230, 290, 315],
@@ -322,7 +318,7 @@ const LEVELS := [
 		],
 		"cards": [
 			{"name": "EXPRESS", "type": "express", "color": COL_C},
-			{"name": "LOCAL", "type": "standard", "color": COL_A},
+			{"name": "LIFT", "type": "standard", "color": COL_A},
 		],
 		"quota": 16, "max_lost": 10, "shift": 90.0,
 		"stars": [200, 290, 370, 410],
@@ -355,8 +351,8 @@ const LEVELS := [
 					"drops": [{"cell": Vector2i(6, 4), "dir": L}]},
 		],
 		"cards": [
-			{"name": "BLUE", "type": "standard", "color": COL_A},
-			{"name": "GREEN", "type": "standard", "color": COL_B},
+			{"name": "LIFT 1", "type": "standard", "color": COL_A},
+			{"name": "LIFT 2", "type": "standard", "color": COL_B},
 		],
 		"quota": 16, "max_lost": 12, "shift": 90.0,
 		"stars": [190, 280, 350, 390],
@@ -381,7 +377,7 @@ const LEVELS := [
 			{"type": "office", "cells": [Vector2i(2, 5), Vector2i(1, 5)], "drops": [{"cell": Vector2i(1, 5), "dir": L}]},
 		],
 		"cards": [
-			{"name": "LOCAL", "type": "standard", "color": COL_A},
+			{"name": "LIFT", "type": "standard", "color": COL_A},
 			{"name": "EXPRESS", "type": "express", "color": COL_D, "speed": 1500.0, "accel": 1200.0},
 			{"name": "CARGO", "type": "cargo", "color": COL_C, "speed": 100.0, "accel": 80.0},
 		],
@@ -409,7 +405,7 @@ const LEVELS := [
 			{"type": "office", "cells": [Vector2i(0, 3), Vector2i(1, 3)], "drops": [{"cell": Vector2i(1, 3), "dir": R}]},
 		],
 		"cards": [
-			{"name": "LOCAL", "type": "standard", "color": COL_A},
+			{"name": "LIFT", "type": "standard", "color": COL_A},
 			{"name": "EXPRESS", "type": "express", "color": COL_D, "speed": 1500.0, "accel": 1200.0},
 			{"name": "CARGO", "type": "cargo", "color": COL_C, "speed": 100.0, "accel": 80.0},
 		],
@@ -435,7 +431,7 @@ const LEVELS := [
 			{"type": "office", "cells": [Vector2i(3, 0), Vector2i(2, 0)], "drops": [{"cell": Vector2i(2, 0), "dir": L}]},
 		],
 		"cards": [
-			{"name": "LOCAL", "type": "standard", "color": COL_A},
+			{"name": "LIFT", "type": "standard", "color": COL_A},
 			{"name": "EXPRESS", "type": "express", "color": COL_D, "speed": 1500.0, "accel": 1200.0},
 			{"name": "CARGO", "type": "cargo", "color": COL_C, "speed": 100.0, "accel": 80.0},
 		],
@@ -461,7 +457,7 @@ const LEVELS := [
 			{"type": "office", "cells": [Vector2i(5, 8), Vector2i(6, 8)], "drops": [{"cell": Vector2i(6, 8), "dir": R}]},
 		],
 		"cards": [
-			{"name": "LOCAL", "type": "standard", "color": COL_A},
+			{"name": "LIFT", "type": "standard", "color": COL_A},
 			{"name": "EXPRESS", "type": "express", "color": COL_D, "speed": 1500.0, "accel": 1200.0},
 			{"name": "CARGO", "type": "cargo", "color": COL_C, "speed": 100.0, "accel": 80.0},
 		],
@@ -488,7 +484,7 @@ const LEVELS := [
 			{"type": "atrium", "cells": [Vector2i(4, 3), Vector2i(5, 3), Vector2i(6, 3)], "drops": [{"cell": Vector2i(4, 3), "dir": L}, {"cell": Vector2i(6, 3), "dir": R}]},
 		],
 		"cards": [
-			{"name": "LOCAL", "type": "standard", "color": COL_A},
+			{"name": "LIFT", "type": "standard", "color": COL_A},
 			{"name": "EXPRESS", "type": "express", "color": COL_D, "speed": 1500.0, "accel": 1200.0},
 			{"name": "CARGO", "type": "cargo", "color": COL_C, "speed": 100.0, "accel": 80.0},
 		],
@@ -514,7 +510,7 @@ const LEVELS := [
 			{"type": "office", "cells": [Vector2i(5, 3), Vector2i(6, 3)], "drops": [{"cell": Vector2i(6, 3), "dir": R}]},
 		],
 		"cards": [
-			{"name": "LOCAL", "type": "standard", "color": COL_A},
+			{"name": "LIFT", "type": "standard", "color": COL_A},
 			{"name": "EXPRESS", "type": "express", "color": COL_D, "speed": 1500.0, "accel": 1200.0},
 			{"name": "CARGO", "type": "cargo", "color": COL_C, "speed": 100.0, "accel": 80.0},
 		],
@@ -541,7 +537,7 @@ const LEVELS := [
 			{"type": "atrium", "cells": [Vector2i(5, 3), Vector2i(6, 3), Vector2i(7, 3)], "drops": [{"cell": Vector2i(5, 3), "dir": L}, {"cell": Vector2i(7, 3), "dir": R}]},
 		],
 		"cards": [
-			{"name": "LOCAL", "type": "standard", "color": COL_A},
+			{"name": "LIFT", "type": "standard", "color": COL_A},
 			{"name": "EXPRESS", "type": "express", "color": COL_D, "speed": 1500.0, "accel": 1200.0},
 			{"name": "CARGO", "type": "cargo", "color": COL_C, "speed": 100.0, "accel": 80.0},
 		],
@@ -568,7 +564,7 @@ const LEVELS := [
 			{"type": "office", "cells": [Vector2i(8, 3), Vector2i(7, 3)], "drops": [{"cell": Vector2i(7, 3), "dir": L}]},
 		],
 		"cards": [
-			{"name": "LOCAL", "type": "standard", "color": COL_A},
+			{"name": "LIFT", "type": "standard", "color": COL_A},
 			{"name": "EXPRESS", "type": "express", "color": COL_D, "speed": 1500.0, "accel": 1200.0},
 			{"name": "CARGO", "type": "cargo", "color": COL_C, "speed": 100.0, "accel": 80.0},
 		],
@@ -595,7 +591,7 @@ const LEVELS := [
 			{"type": "office", "cells": [Vector2i(7, 6), Vector2i(6, 6)], "drops": [{"cell": Vector2i(6, 6), "dir": L}]},
 		],
 		"cards": [
-			{"name": "LOCAL", "type": "standard", "color": COL_A},
+			{"name": "LIFT", "type": "standard", "color": COL_A},
 			{"name": "EXPRESS", "type": "express", "color": COL_D, "speed": 1500.0, "accel": 1200.0},
 			{"name": "CARGO", "type": "cargo", "color": COL_C, "speed": 100.0, "accel": 80.0},
 		],
@@ -623,7 +619,7 @@ const LEVELS := [
 			{"type": "office", "cells": [Vector2i(7, 3), Vector2i(6, 3)], "drops": [{"cell": Vector2i(6, 3), "dir": L}]},
 		],
 		"cards": [
-			{"name": "LOCAL", "type": "standard", "color": COL_A},
+			{"name": "LIFT", "type": "standard", "color": COL_A},
 			{"name": "EXPRESS", "type": "express", "color": COL_D, "speed": 1500.0, "accel": 1200.0},
 			{"name": "CARGO", "type": "cargo", "color": COL_C, "speed": 100.0, "accel": 80.0},
 		],
@@ -649,7 +645,7 @@ const LEVELS := [
 			{"type": "office", "cells": [Vector2i(0, 2), Vector2i(1, 2)], "drops": [{"cell": Vector2i(1, 2), "dir": R}]},
 		],
 		"cards": [
-			{"name": "LOCAL", "type": "standard", "color": COL_A},
+			{"name": "LIFT", "type": "standard", "color": COL_A},
 			{"name": "EXPRESS", "type": "express", "color": COL_D, "speed": 1500.0, "accel": 1200.0},
 			{"name": "CARGO", "type": "cargo", "color": COL_C, "speed": 100.0, "accel": 80.0},
 		],
