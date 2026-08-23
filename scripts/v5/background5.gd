@@ -49,10 +49,10 @@ func _ready() -> void:
 	for i in 260:
 		_specks.append({"x": rng.randf() * VP.x, "y": rng.randf(),
 				"r": rng.randf_range(1.0, 2.6), "d": rng.randf_range(0.10, 0.30)})
-	# A handful of buried finds strung across the dirt, at fixed columns.
-	var kinds := ["skull", "bone", "ribs", "bone", "skull"]
+	# A couple of small buried finds, spread wide (the dirt band is thin now).
+	var kinds := ["skull", "bone"]
 	for i in kinds.size():
-		_bones.append({"x": 70.0 + i * 150.0 + rng.randf_range(-24.0, 24.0), "kind": kinds[i]})
+		_bones.append({"x": 200.0 + i * 330.0 + rng.randf_range(-40.0, 40.0), "kind": kinds[i]})
 
 
 func _process(_dt: float) -> void:
@@ -202,10 +202,10 @@ func _draw_ground(gy: float, night: float) -> void:
 	for s in _specks:
 		var y: float = gy + 10.0 + s.y * (BOTTOM_HUD - gy - 10.0)
 		draw_circle(Vector2(s.x, y), s.r, Color(0.0, 0.0, 0.0, s.d * (1.0 - night * 0.5)))
-	# Buried finds strung along the middle of the visible dirt band.
-	var by := (gy + BOTTOM_HUD) * 0.5
+	# Buried finds sit LOW in the (thin) dirt band, small, so they don't crowd the grass.
+	var by := gy + (BOTTOM_HUD - gy) * 0.74
 	for b in _bones:
-		_draw_find(Vector2(b.x, by), str(b.kind), night)
+		_draw_find(Vector2(b.x, by), str(b.kind), night, 0.62)
 	# Grass cap on the ground line.
 	var grass := Color(0.42, 0.66, 0.32).lerp(Color(0.16, 0.30, 0.16), night)
 	draw_rect(Rect2(0.0, gy, VP.x, 20.0), grass)
@@ -216,24 +216,20 @@ func _draw_ground(gy: float, night: float) -> void:
 		bx += 13.0
 
 
-## A little buried find (bone / skull / ribcage), drawn in bone-white against the dirt.
-func _draw_find(c: Vector2, kind: String, night: float) -> void:
+## A little buried find (skull / bone), drawn bone-white against the dirt at `scl` scale.
+func _draw_find(c: Vector2, kind: String, night: float, scl := 1.0) -> void:
 	var bone := Color(0.86, 0.83, 0.74).lerp(Color(0.55, 0.53, 0.48), night)
+	draw_set_transform(c, 0.0, Vector2(scl, scl))
 	match kind:
 		"skull":
-			draw_circle(c, 12.0, bone)
-			draw_rect(Rect2(c.x - 7.0, c.y + 8.0, 14.0, 8.0), bone)   # jaw
-			draw_circle(Vector2(c.x - 4.5, c.y - 1.0), 3.0, Color(0.12, 0.09, 0.07))
-			draw_circle(Vector2(c.x + 4.5, c.y - 1.0), 3.0, Color(0.12, 0.09, 0.07))
-			draw_rect(Rect2(c.x - 1.5, c.y + 3.0, 3.0, 4.0), Color(0.12, 0.09, 0.07))
-		"ribs":
-			draw_rect(Rect2(c.x - 1.5, c.y - 16.0, 3.0, 34.0), bone)   # spine
-			for i in 4:
-				var ry := c.y - 10.0 + i * 8.0
-				draw_arc(Vector2(c.x, ry), 12.0, PI * 0.15, PI * 0.85, 10, bone, 3.0)
-				draw_arc(Vector2(c.x, ry), 12.0, PI * 1.15, PI * 1.85, 10, bone, 3.0)
+			draw_circle(Vector2.ZERO, 12.0, bone)
+			draw_rect(Rect2(-7.0, 8.0, 14.0, 8.0), bone)   # jaw
+			draw_circle(Vector2(-4.5, -1.0), 3.0, Color(0.12, 0.09, 0.07))
+			draw_circle(Vector2(4.5, -1.0), 3.0, Color(0.12, 0.09, 0.07))
+			draw_rect(Rect2(-1.5, 3.0, 3.0, 4.0), Color(0.12, 0.09, 0.07))
 		_: # a single long bone
-			draw_line(Vector2(c.x - 16.0, c.y - 8.0), Vector2(c.x + 16.0, c.y + 8.0), bone, 6.0)
+			draw_line(Vector2(-16.0, -8.0), Vector2(16.0, 8.0), bone, 6.0)
 			for e in [Vector2(-16.0, -8.0), Vector2(16.0, 8.0)]:
-				draw_circle(Vector2(c.x + e.x, c.y + e.y - 3.0), 4.5, bone)
-				draw_circle(Vector2(c.x + e.x, c.y + e.y + 3.0), 4.5, bone)
+				draw_circle(Vector2(e.x, e.y - 3.0), 4.5, bone)
+				draw_circle(Vector2(e.x, e.y + 3.0), 4.5, bone)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
