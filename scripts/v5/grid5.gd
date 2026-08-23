@@ -20,6 +20,18 @@ const GRID_X := 720.0 # playfield width the grid centers in
 const GRID_Y_TOP := 100.0 # grid area is y 100..1000 (below the top HUD)
 const GRID_Y_H := 900.0
 
+# Realism-pass framing: the building is fit into a REDUCED box that reserves a border on
+# every side plus a permanent underground band, so it never touches a screen edge and there
+# is always visible dirt below (room for a basement). The ground line is a FIXED screen y —
+# every level shares one horizon (sky above, grass + dirt below).
+const SIDE_MARGIN := 24.0        # min gap left & right of the building
+const TOP_MARGIN := 30.0         # min sky above the building (under the top HUD)
+const PLAY_TOP := 98.0           # bottom edge of the top HUD bar
+const PLAY_BOTTOM := 1010.0      # top edge of the bottom card panel
+const UNDERGROUND := 128.0       # visible dirt band below the ground line
+const DIRT_LIP := 18.0           # min dirt kept below a basement's lowest row
+const GROUND_LINE := PLAY_BOTTOM - UNDERGROUND  # fixed street line (screen y)
+
 ## Seconds of walk per tile of Manhattan distance. Board = queue tile -> boarding
 ## dock; alight = alighting dock -> queue tile. Priced identically in Pathfind5 so
 ## planning stays honest against the sim. Slowed to read calm/deliberate (v5.1h).
@@ -138,20 +150,22 @@ static func load_level(level: Dictionary) -> void:
 			GRID_Y_TOP + (GRID_Y_H - ROWS * CELL) / 2.0)
 	var bbox_w := COLS * CELL
 	var bbox_h := ROWS * CELL
-	view_scale = minf(1.0, minf(GRID_X / bbox_w, GRID_Y_H / bbox_h))
-	var cx := ORIGIN.x + bbox_w / 2.0
-	view_offset.x = GRID_X / 2.0 - view_scale * cx
-	# VERTICAL: ground-anchor instead of centring. The building drops so its ground row
-	# sits low in the play area, leaving a band below for the basement + dirt; the sky
-	# fills whatever slack is left ABOVE. bottom_gap (the basement/dirt band) is capped by
-	# the available slack, so a tall tower still fits — it just shows a thinner dirt strip.
-	var scaled_h := view_scale * bbox_h
-	var free_v := GRID_Y_H - scaled_h
-	var want_gap := view_scale * CELL * (float(GROUND_ROW) + 1.2)
-	var bottom_gap := clampf(want_gap, 0.0, free_v)
-	view_offset.y = (GRID_Y_TOP + GRID_Y_H - bottom_gap) - view_scale * (ORIGIN.y + bbox_h)
-	# The world ground line in SCREEN space = the bottom edge of GROUND_ROW.
-	GROUND_Y = view_offset.y + view_scale * (ORIGIN.y + float(ROWS - GROUND_ROW) * CELL)
+	# Fit into the reduced framing box: a border on every side + the underground band are
+	# reserved, so a wide/tall level SHRINKS to fit rather than bleeding to the edges.
+	var above_h := float(ROWS - GROUND_ROW) * CELL   # rows at/above the ground floor
+	var below_h := float(GROUND_ROW) * CELL          # basement rows (below the ground line)
+	var w_avail := GRID_X - 2.0 * SIDE_MARGIN
+	var above_avail := GROUND_LINE - (PLAY_TOP + TOP_MARGIN)
+	var below_avail := PLAY_BOTTOM - GROUND_LINE - DIRT_LIP
+	view_scale = minf(1.0, w_avail / bbox_w)
+	view_scale = minf(view_scale, above_avail / maxf(1.0, above_h))
+	if below_h > 0.0:
+		view_scale = minf(view_scale, below_avail / below_h)
+	# Horizontal: centre across the full width (the width cap above guarantees the side border).
+	view_offset.x = GRID_X / 2.0 - view_scale * (ORIGIN.x + bbox_w / 2.0)
+	# Vertical: pin the BOTTOM edge of GROUND_ROW to the fixed street line — one shared horizon.
+	view_offset.y = GROUND_LINE - view_scale * (ORIGIN.y + float(ROWS - GROUND_ROW) * CELL)
+	GROUND_Y = GROUND_LINE
 	_blocked = {}
 	for c in level.get("blocked", []):
 		_blocked[c] = true
@@ -473,15 +487,29 @@ func _ensure_tex() -> void:
 
 
 ## SOLID (un-routable) tile — the "wall" half of the tile standard. A raised concrete
-## block: light top bevel + dark base so it reads as a solid, impassable mass, with one
-## mortar course so it's masonry rather than a flat swatch.
-func _draw_solid(rect: Rect2) -> void:
+## block: light top bevel + dark base so it reads as a solid, impassable mass. ~10% of
+## walls (deterministic by cell) carry a lit window so the facade isn't a dead slab; the
+## rest get one mortar course so they read as masonry rather than a flat swatch.
+func _draw_solid(rect: Rect2, c: Vector2i) -> void:
 	draw_rect(rect, Color(0.33, 0.32, 0.36))
 	draw_rect(Rect2(rect.position, Vector2(rect.size.x, 4.0)), Color(0.41, 0.40, 0.45))
 	draw_rect(Rect2(rect.position.x, rect.end.y - 4.0, rect.size.x, 4.0), Color(0.20, 0.19, 0.23))
-	draw_rect(Rect2(rect.position.x, rect.get_center().y - 1.0, rect.size.x, 2.0),
-			Color(0, 0, 0, 0.18))
+	if posmod(c.x * 73 + c.y * 131, 10) == 0:
+		_draw_window(rect)
+	else:
+		draw_rect(Rect2(rect.position.x, rect.get_center().y - 1.0, rect.size.x, 2.0),
+				Color(0, 0, 0, 0.18))
 	draw_rect(rect, Color(0, 0, 0, 0.30), false, 1.5)
+
+
+## A lit glass window set into a wall tile (glass + frame + mullions). Used on ~10% of walls.
+func _draw_window(rect: Rect2) -> void:
+	var g := rect.grow(-11.0)
+	draw_rect(g.grow(2.0), Color(0.16, 0.15, 0.18))            # frame
+	draw_rect(g, Color(0.62, 0.78, 0.86))                       # lit glass
+	draw_rect(g, Color(1.0, 0.96, 0.80, 0.18))                  # warm interior glow
+	draw_rect(Rect2(g.get_center().x - 1.0, g.position.y, 2.0, g.size.y), Color(0.28, 0.30, 0.34))
+	draw_rect(Rect2(g.position.x, g.get_center().y - 1.0, g.size.x, 2.0), Color(0.28, 0.30, 0.34))
 
 
 ## OPEN (routable) tile — the "you may draw here" half of the standard. A recessed shaft
@@ -574,7 +602,7 @@ func _draw() -> void:
 			if Grid5.is_corridor(c):
 				_draw_corridor(rect, c)
 			elif not Grid5.passable(c):
-				_draw_solid(rect)
+				_draw_solid(rect, c)
 			else:
 				_draw_shaft(rect)
 			# Disjoint tiles are the DEFAULT and render blank; only SHAREABLE tiles (cap
