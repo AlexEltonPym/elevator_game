@@ -415,7 +415,13 @@ func _process(delta: float) -> void:
 	if riding != null:
 		position = riding.slot_position(self)
 	elif walk_left > 0.0 and walk_total > 0.0:
-		var f := clampf(1.0 - walk_left / walk_total, 0.0, 1.0)
+		# RENDER INTERPOLATION: walk_left steps down once per sim tick, so at 1x the figure would
+		# jump ~10x/s. Interpolate from the previous tick's walk_left to the current one by the
+		# sim accumulator, so the walk reads smooth at any speed (render-only; the sim timing is
+		# untouched). `game.SIM_DT` is the tick size in walk_left's own (seconds) units.
+		var a: float = game.render_alpha() if game != null else 1.0
+		var eff: float = clampf(walk_left + game.SIM_DT * (1.0 - a), 0.0, walk_total)
+		var f := clampf(1.0 - eff / walk_total, 0.0, 1.0)
 		# HEAVY EASE-IN (visual only): a LOADED delivery man (width >= 3, pushing the
 		# cart) accelerates up from REST — a quadratic f is exactly a constant-
 		# acceleration ramp, so he starts slow and builds speed into the dock. The

@@ -56,6 +56,10 @@ var door_timer := 0.0
 var exchange_elapsed := 0.0
 var stop_moves := 0
 var idle := false
+# Render interpolation: the car's position at the previous and current sim tick; _process
+# lerps between them by main5.render_alpha() so 1x isn't choppy (see _update_position).
+var _pos_prev := Vector2.ZERO
+var _pos_cur := Vector2.ZERO
 var riders: Array = []
 var _boarding: Array = [] # passengers assigned to board this stop, still walking in
 var _assign_timer := 0.0 # countdown to admitting the next front boarder
@@ -155,6 +159,8 @@ func set_route(r) -> void:
 	visible = route != null
 	if route != null and route.cells.size() > 0:
 		position = Grid5.cell_center(route.cells[home_idx])
+		_pos_prev = position
+		_pos_cur = position
 		if running():
 			_arrive_center()
 
@@ -480,11 +486,16 @@ func _update_position() -> void:
 	if not on_grid() or route == null or route.cells.is_empty():
 		return
 	var a := Grid5.cell_center(route.cells[idx])
-	if seg_t <= 0.0:
-		position = a
-	else:
+	var np := a
+	if seg_t > 0.0:
 		var b := Grid5.cell_center(route.cells[_wrap_idx(idx + dir)])
-		position = a.lerp(b, seg_t / Grid5.CELL)
+		np = a.lerp(b, seg_t / Grid5.CELL)
+	# RENDER INTERPOLATION: remember the last tick's position so _process can lerp from it to
+	# this one by the sim accumulator, smoothing motion at 1x. `position` is set to the fresh
+	# sim value here too, so any logic read before the next _process still gets a valid spot.
+	_pos_prev = _pos_cur
+	_pos_cur = np
+	position = np
 
 
 # ---------------------------------------------------------------- riders
@@ -626,6 +637,10 @@ func door_frac() -> float:
 
 func _process(delta: float) -> void:
 	vis_t += delta
+	# Smooth the discrete per-tick position by interpolating from the previous tick to the
+	# current one by the sim accumulator (render-only; the sim positions are _pos_prev/_pos_cur).
+	if car_state == CarState.RUNNING and game != null:
+		position = _pos_prev.lerp(_pos_cur, game.render_alpha())
 	queue_redraw()
 
 

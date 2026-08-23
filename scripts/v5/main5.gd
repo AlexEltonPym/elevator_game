@@ -216,6 +216,17 @@ func advance(dt: float) -> void:
 			return
 
 
+## Render interpolation factor 0..1: how far the leftover accumulator is into the NEXT sim
+## tick. Cars/passengers lerp from their previous tick's state to the current one by this, so
+## motion stays smooth at ANY speed (esp. 1x = 10 ticks/s) WITHOUT shrinking SIM_DT (which
+## would multiply solve cost and rebaseline the fingerprint). Render-only — never touches the
+## sim. Headless (no rendering) never calls this.
+func render_alpha() -> float:
+	if SIM_DT <= 0.0:
+		return 1.0
+	return clampf(_sim_accum / SIM_DT, 0.0, 1.0)
+
+
 ## One fixed sim step (the old advance body).
 func _step(dt: float) -> void:
 	elapsed += dt

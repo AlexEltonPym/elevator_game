@@ -7,6 +7,7 @@ extends CanvasLayer
 
 const StarBar5 := preload("res://scripts/v5/starbar5.gd")
 const Ui5 := preload("res://scripts/v5/ui5.gd")
+const SpeedBtn5 := preload("res://scripts/v5/speedbtn5.gd")
 
 var game = null # main5.gd
 
@@ -32,6 +33,8 @@ var level_label: Label
 var served_label: Label
 var lost_label: Label
 var menu_btn: Button
+var speed_play: Control  # SpeedBtn5 (1x)
+var speed_ff: Control    # SpeedBtn5 (5x)
 var hint_label: Label
 var chip_buttons: Array = []
 var chip_pips: Array = []
@@ -67,7 +70,23 @@ func _build_top() -> void:
 	level_label.text = "R-1"
 	served_label = _make_label(Vector2(110, 12), 24, Color(0.45, 0.95, 0.55))
 	lost_label = _make_label(Vector2(110, 52), 24, Color(1.0, 0.5, 0.45))
-	# The run always plays at the default speed (5x) — no speed picker.
+	# SPEED PICKER: play (1x) + fast-forward (5x). 1x reads smooth thanks to render
+	# interpolation (main5.render_alpha), so it's a real "slow, watch it" pace, not a stutter.
+	var accent := Color(0.42, 0.72, 0.55)  # green "go" tint for the active speed
+	speed_play = SpeedBtn5.new()
+	speed_play.kind = SpeedBtn5.Kind.PLAY
+	speed_play.accent = accent
+	speed_play.position = Vector2(392, 18)
+	speed_play.size = Vector2(64, 62)
+	speed_play.tapped.connect(func(): if game != null: game.set_speed(1.0))
+	add_child(speed_play)
+	speed_ff = SpeedBtn5.new()
+	speed_ff.kind = SpeedBtn5.Kind.FF
+	speed_ff.accent = accent
+	speed_ff.position = Vector2(464, 18)
+	speed_ff.size = Vector2(64, 62)
+	speed_ff.tapped.connect(func(): if game != null: game.set_speed(5.0))
+	add_child(speed_ff)
 	menu_btn = Ui5.make_button("LEVELS", "Grey", 20)
 	menu_btn.position = Vector2(552, 6)
 	menu_btn.size = Vector2(154, 86)
@@ -206,6 +225,9 @@ func refresh_stats() -> void:
 	else:
 		served_label.text = "Served %d/%d" % [game.served, game.QUOTA]
 		lost_label.text = "Lost %d/%d" % [game.lost, game.MAX_LOST]
+	if speed_play != null:
+		speed_play.set_active(game.time_scale < 3.0)
+		speed_ff.set_active(game.time_scale >= 3.0)
 	clear_btn.visible = game.can_edit() and game.selected_card >= 0 \
 			and game.routes[game.selected_card] != null
 	if _serves_changed():

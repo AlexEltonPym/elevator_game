@@ -134,7 +134,7 @@ const LEVELS := [
 	# ===================== TUTORIAL =====================
 	{
 		"id": "T-1", "world": "TUTORIAL", "name": "First Run",
-		"cols": 5, "rows": 5, "blocked": [Vector2i(0, 2), Vector2i(0, 3), Vector2i(1, 1), Vector2i(1, 2), Vector2i(1, 3), Vector2i(3, 3)],
+		"cols": 5, "rows": 5, "blocked": [Vector2i(0, 1), Vector2i(1, 1), Vector2i(1, 2), Vector2i(4, 1), Vector2i(4, 2), Vector2i(4, 3)],
 		"rooms": [
 			{"type": "lobby", "cells": [Vector2i(0, 0), Vector2i(1, 0)],
 					"drops": [{"cell": Vector2i(1, 0), "dir": R}]},
@@ -156,7 +156,7 @@ const LEVELS := [
 	},
 	{
 		"id": "T-2", "world": "TUTORIAL", "name": "Handoff",
-		"cols": 8, "rows": 3, "blocked": [Vector2i(0, 2), Vector2i(3, 0), Vector2i(3, 2), Vector2i(4, 0), Vector2i(4, 2), Vector2i(6, 1), Vector2i(7, 1), Vector2i(7, 2)],
+		"cols": 8, "rows": 3, "blocked": [Vector2i(0, 1), Vector2i(0, 2), Vector2i(3, 0), Vector2i(3, 2), Vector2i(4, 0), Vector2i(4, 2), Vector2i(6, 1), Vector2i(7, 1)],
 		"rooms": [
 			{"type": "apartment", "cells": [Vector2i(0, 0), Vector2i(1, 0)],
 					"drops": [{"cell": Vector2i(1, 0), "dir": R}]},
@@ -180,8 +180,41 @@ const LEVELS := [
 		"mix": {"visitor": 1.0},
 	},
 	{
-		"id": "T-3", "world": "TUTORIAL", "name": "Freight",
-		"cols": 7, "rows": 7, "blocked": [Vector2i(0, 5), Vector2i(0, 6), Vector2i(1, 3), Vector2i(1, 4), Vector2i(1, 6), Vector2i(5, 1)],
+		"id": "T-3", "world": "TUTORIAL", "name": "Squeeze",
+		"cols": 6, "rows": 9, "blocked": [Vector2i(0, 3), Vector2i(0, 6), Vector2i(0, 8), Vector2i(1, 6), Vector2i(1, 8), Vector2i(4, 2), Vector2i(5, 0), Vector2i(5, 1), Vector2i(5, 3), Vector2i(5, 7)],
+		"overlaps": [
+			{"cells": [Vector2i(2, 0), Vector2i(2, 1), Vector2i(2, 2), Vector2i(2, 3),
+					Vector2i(3, 4), Vector2i(3, 5), Vector2i(3, 6), Vector2i(3, 7),
+					Vector2i(3, 8)], "max": 2},
+			{"cells": [Vector2i(2, 4)], "max": 4},
+		],
+		"rooms": [
+			{"type": "lobby", "cells": [Vector2i(0, 0), Vector2i(1, 0)],
+					"drops": [{"cell": Vector2i(1, 0), "dir": R}]},
+			{"type": "office", "cells": [Vector2i(0, 2), Vector2i(1, 2)],
+					"drops": [{"cell": Vector2i(1, 2), "dir": R}]},
+			{"type": "atrium", "cells": [Vector2i(0, 4), Vector2i(1, 4)],
+					"drops": [{"cell": Vector2i(1, 4), "dir": R}]},
+			{"type": "office", "cells": [Vector2i(4, 6), Vector2i(5, 6)],
+					"drops": [{"cell": Vector2i(4, 6), "dir": L}]},
+			{"type": "apartment", "cells": [Vector2i(4, 8), Vector2i(5, 8)],
+					"drops": [{"cell": Vector2i(4, 8), "dir": L}]},
+		],
+		"cards": [
+			{"name": "LIFT 1", "type": "standard", "color": COL_A},
+			{"name": "LIFT 2", "type": "standard", "color": COL_B},
+		],
+		"quota": 20, "max_lost": 8, "shift": 90.0,
+		"stars": [170, 250, 310, 340],
+		"solution": [[[2, 4], [2, 3], [2, 2], [2, 1], [2, 0]], [[3, 6], [3, 7], [3, 8], [2, 8], [2, 7], [2, 6], [2, 5], [2, 4]]],
+		"sols": [[[[2, 2], [2, 3], [2, 4], [2, 5], [2, 6], [3, 6]], [[2, 4], [3, 4], [3, 3], [3, 2], [3, 1], [3, 0], [2, 0]]], [[[2, 0], [2, 1], [2, 2], [2, 3], [2, 4]], [[2, 4], [2, 5], [2, 6], [3, 6], [3, 7], [3, 8]]], [[[2, 0], [2, 1], [2, 2], [2, 3], [2, 4]], [[2, 4], [2, 5], [2, 6], [2, 7], [2, 8], [3, 8], [3, 7], [3, 6], [3, 5], [4, 5], [4, 4], [3, 4]]], [[[2, 4], [2, 3], [2, 2], [2, 1], [2, 0]], [[3, 6], [3, 7], [3, 8], [2, 8], [2, 7], [2, 6], [2, 5], [2, 4]]]],
+		"spawn": {"interval_start": 2.6, "interval_end": 2.2, "ramp": 50.0,
+				"burst_min": 1, "burst_max": 2, "gap": 0.9},
+		"mix": {"visitor": 1.0},
+	},
+	{
+		"id": "T-4", "world": "TUTORIAL", "name": "Freight",
+		"cols": 7, "rows": 7, "blocked": [Vector2i(0, 4), Vector2i(0, 5), Vector2i(1, 2), Vector2i(1, 4), Vector2i(1, 6), Vector2i(5, 3)],
 		"rooms": [
 			{"type": "delivery", "cells": [
 					Vector2i(0, 0), Vector2i(1, 0), Vector2i(0, 1), Vector2i(1, 1)],
@@ -209,9 +242,9 @@ const LEVELS := [
 			{"name": "LOCAL", "type": "standard", "color": COL_A},
 		],
 		"quota": 15, "max_lost": 8, "shift": 90.0,
-		"stars": [140, 210, 260, 290],
-		"solution": [[[3, 2], [3, 1], [3, 0], [2, 0], [2, 1], [2, 2], [2, 3], [2, 4], [2, 5], [2, 6], [3, 6]], [[3, 6], [3, 5], [3, 4], [3, 3], [3, 2], [3, 1], [3, 0], [2, 0]]],
-		"sols": [[[[3, 4], [3, 5], [3, 6]], [[6, 6], [6, 5], [6, 4], [6, 3], [5, 3], [4, 3], [3, 3], [3, 2], [3, 1], [3, 0]]], [[[3, 2], [3, 1], [3, 0], [2, 0], [2, 1], [2, 2], [2, 3], [2, 4], [3, 4], [3, 5], [3, 6]], [[2, 0], [3, 0], [3, 1], [3, 2], [3, 3], [3, 4], [3, 5], [3, 6]]], [[[3, 2], [3, 1], [3, 0], [2, 0], [2, 1], [2, 2], [2, 3], [2, 4], [2, 5], [2, 6], [3, 6]], [[3, 6], [3, 5], [3, 4], [3, 3], [3, 2], [3, 1], [3, 0], [2, 0]]], [[[3, 2], [3, 1], [3, 0], [2, 0], [2, 1], [2, 2], [2, 3], [2, 4], [2, 5], [2, 6], [3, 6]], [[3, 6], [3, 5], [3, 4], [3, 3], [3, 2], [3, 1], [3, 0], [2, 0]]]],
+		"stars": [120, 180, 230, 250],
+		"solution": [[[3, 6], [3, 5], [3, 4], [3, 3], [3, 2], [3, 1], [3, 0], [2, 0], [2, 1], [2, 2], [2, 3], [2, 4], [2, 5], [2, 6]], [[3, 0], [3, 1], [3, 2], [3, 3], [3, 4], [3, 5], [3, 6], [2, 6], [2, 5], [2, 4], [2, 3], [2, 2], [2, 1], [2, 0]]],
+		"sols": [[[[2, 0], [2, 1], [2, 2], [2, 3], [2, 4], [2, 5], [3, 5], [4, 5], [5, 5], [6, 5], [6, 6]], [[3, 4], [3, 3], [3, 2], [3, 1], [3, 0], [2, 0], [2, 1], [2, 2], [2, 3], [2, 4], [2, 5], [3, 5], [4, 5], [5, 5], [6, 5], [6, 4], [6, 3], [6, 2], [6, 1], [6, 0]]], [[[2, 0], [3, 0], [3, 1], [3, 2], [3, 3], [3, 4], [3, 5], [3, 6], [2, 6], [2, 5], [2, 4], [2, 3], [2, 2], [2, 1]], [[3, 0], [3, 1], [3, 2], [3, 3], [3, 4], [3, 5], [3, 6], [2, 6], [2, 5], [2, 4], [2, 3], [2, 2], [2, 1], [2, 0]]], [[[3, 6], [3, 5], [3, 4], [3, 3], [3, 2], [3, 1], [3, 0], [2, 0], [2, 1], [2, 2], [2, 3], [2, 4], [2, 5], [2, 6]], [[3, 0], [3, 1], [3, 2], [3, 3], [3, 4], [3, 5], [3, 6], [2, 6], [2, 5], [2, 4], [2, 3], [2, 2], [2, 1], [2, 0]]], [[[3, 6], [3, 5], [3, 4], [3, 3], [3, 2], [3, 1], [3, 0], [2, 0], [2, 1], [2, 2], [2, 3], [2, 4], [2, 5], [2, 6]], [[3, 0], [3, 1], [3, 2], [3, 3], [3, 4], [3, 5], [3, 6], [2, 6], [2, 5], [2, 4], [2, 3], [2, 2], [2, 1], [2, 0]]]],
 		"patience": {"delivery": 62.0},
 		"spawn": {"interval_start": 3.4, "interval_end": 3.0, "ramp": 55.0,
 				"burst_min": 1, "burst_max": 2, "gap": 1.1},
@@ -219,8 +252,8 @@ const LEVELS := [
 		"reactivate": 0.0,
 	},
 	{
-		"id": "T-4", "world": "TUTORIAL", "name": "Express Line",
-		"cols": 7, "rows": 11, "blocked": [Vector2i(0, 1), Vector2i(0, 3), Vector2i(0, 5), Vector2i(0, 6), Vector2i(0, 7), Vector2i(2, 2), Vector2i(2, 7), Vector2i(3, 2), Vector2i(3, 3), Vector2i(3, 7), Vector2i(5, 4), Vector2i(5, 10), Vector2i(6, 5), Vector2i(6, 10)],
+		"id": "T-5", "world": "TUTORIAL", "name": "Express Line",
+		"cols": 7, "rows": 11, "blocked": [Vector2i(1, 4), Vector2i(1, 5), Vector2i(1, 7), Vector2i(3, 2), Vector2i(4, 10), Vector2i(5, 4), Vector2i(5, 10), Vector2i(6, 0), Vector2i(6, 4)],
 		"rooms": [
 			{"type": "lobby", "cells": [Vector2i(2, 0), Vector2i(3, 0)],
 					"drops": [
@@ -240,17 +273,17 @@ const LEVELS := [
 			{"name": "LOCAL", "type": "standard", "color": COL_A},
 		],
 		"quota": 16, "max_lost": 10, "shift": 90.0,
-		"stars": [200, 290, 370, 410],
-		"solution": [[[4, 6], [4, 7], [4, 8], [4, 9], [3, 9], [2, 9], [1, 9], [1, 10], [0, 10], [0, 9], [0, 8], [1, 8], [1, 7], [1, 6], [1, 5], [1, 4], [1, 3], [1, 2], [1, 1], [1, 0]], [[4, 8], [4, 7], [4, 6], [4, 5], [4, 4], [4, 3], [4, 2], [4, 1], [4, 0]]],
-		"sols": [[[[1, 0], [1, 1], [1, 2], [1, 3], [1, 4], [1, 5], [1, 6], [1, 7], [1, 8], [2, 8], [3, 8], [4, 8]], [[1, 10], [1, 9], [2, 9], [3, 9], [4, 9], [4, 8], [4, 7], [4, 6], [4, 5], [4, 4], [4, 3], [4, 2], [4, 1], [4, 0]]], [[[1, 0], [1, 1], [2, 1], [3, 1], [4, 1], [4, 0], [5, 0], [5, 1], [5, 2], [4, 2], [4, 3], [4, 4], [4, 5], [4, 6], [4, 7], [4, 8], [4, 9], [3, 9], [2, 9], [1, 9], [1, 10]], [[4, 0], [4, 1], [4, 2], [4, 3], [4, 4], [4, 5], [4, 6], [4, 7], [4, 8]]], [[[1, 0], [1, 1], [2, 1], [3, 1], [4, 1], [4, 0], [5, 0], [5, 1], [5, 2], [4, 2], [4, 3], [4, 4], [4, 5], [4, 6], [4, 7], [4, 8], [4, 9], [3, 9], [2, 9], [1, 9], [1, 10]], [[4, 0], [4, 1], [4, 2], [4, 3], [4, 4], [4, 5], [4, 6], [4, 7], [4, 8]]], [[[4, 6], [4, 7], [4, 8], [4, 9], [3, 9], [2, 9], [1, 9], [1, 10], [0, 10], [0, 9], [0, 8], [1, 8], [1, 7], [1, 6], [1, 5], [1, 4], [1, 3], [1, 2], [1, 1], [1, 0]], [[4, 8], [4, 7], [4, 6], [4, 5], [4, 4], [4, 3], [4, 2], [4, 1], [4, 0]]]],
+		"stars": [210, 300, 380, 420],
+		"solution": [[[1, 0], [1, 1], [2, 1], [3, 1], [4, 1], [4, 0], [5, 0], [5, 1], [5, 2], [4, 2], [4, 3], [4, 4], [4, 5], [4, 6], [4, 7], [4, 8], [4, 9], [3, 9], [2, 9], [1, 9], [1, 10]], [[1, 0], [1, 1], [1, 2], [1, 3], [2, 3], [3, 3], [4, 3], [4, 4], [4, 5], [4, 6], [4, 7], [4, 8]]],
+		"sols": [[[[1, 10], [1, 9], [2, 9], [3, 9], [4, 9], [4, 8], [4, 7], [4, 6], [4, 5], [4, 4], [4, 3], [4, 2], [4, 1], [3, 1], [2, 1], [1, 1], [1, 0]], [[4, 3], [4, 4], [4, 5], [4, 6], [4, 7], [4, 8], [4, 9], [3, 9], [2, 9], [1, 9], [1, 10], [0, 10], [0, 9], [0, 8], [1, 8], [2, 8], [3, 8], [3, 7], [3, 6], [3, 5], [3, 4], [3, 3]]], [[[1, 0], [1, 1], [1, 2], [1, 3], [2, 3], [3, 3], [4, 3], [4, 4], [4, 5], [4, 6], [4, 7], [4, 8], [4, 9], [3, 9], [2, 9], [1, 9], [0, 9], [0, 8], [0, 7], [0, 6], [0, 5], [0, 4], [0, 3], [0, 2], [0, 1], [0, 0]], [[4, 0], [4, 1], [4, 2], [4, 3], [4, 4], [4, 5], [4, 6], [4, 7], [4, 8], [4, 9], [3, 9], [2, 9], [1, 9], [1, 10]]], [[[4, 3], [4, 2], [4, 1], [3, 1], [2, 1], [1, 1], [1, 0], [0, 0], [0, 1], [0, 2], [0, 3], [0, 4], [0, 5], [0, 6], [1, 6], [2, 6], [3, 6], [4, 6], [4, 7], [4, 8]], [[4, 0], [4, 1], [4, 2], [4, 3], [4, 4], [4, 5], [4, 6], [4, 7], [4, 8], [4, 9], [3, 9], [2, 9], [1, 9], [1, 10]]], [[[1, 0], [1, 1], [2, 1], [3, 1], [4, 1], [4, 0], [5, 0], [5, 1], [5, 2], [4, 2], [4, 3], [4, 4], [4, 5], [4, 6], [4, 7], [4, 8], [4, 9], [3, 9], [2, 9], [1, 9], [1, 10]], [[1, 0], [1, 1], [1, 2], [1, 3], [2, 3], [3, 3], [4, 3], [4, 4], [4, 5], [4, 6], [4, 7], [4, 8]]]],
 		"patience": {"visitor": 62.0},
 		"spawn": {"interval_start": 2.4, "interval_end": 2.0, "ramp": 60.0,
 				"burst_min": 1, "burst_max": 2, "gap": 0.8},
 		"mix": {"visitor": 1.0},
 	},
 	{
-		"id": "T-5", "world": "TUTORIAL", "name": "Relay",
-		"cols": 8, "rows": 5, "blocked": [Vector2i(0, 2), Vector2i(0, 3), Vector2i(1, 2), Vector2i(3, 0), Vector2i(3, 1), Vector2i(3, 3), Vector2i(3, 4), Vector2i(4, 0), Vector2i(4, 1), Vector2i(4, 3), Vector2i(4, 4), Vector2i(7, 1), Vector2i(7, 3)],
+		"id": "T-6", "world": "TUTORIAL", "name": "Relay",
+		"cols": 8, "rows": 5, "blocked": [Vector2i(0, 2), Vector2i(1, 1), Vector2i(3, 0), Vector2i(3, 1), Vector2i(3, 3), Vector2i(3, 4), Vector2i(4, 0), Vector2i(4, 1), Vector2i(4, 3), Vector2i(4, 4), Vector2i(6, 2), Vector2i(7, 2), Vector2i(7, 3)],
 		"rooms": [
 			{"type": "office", "cells": [Vector2i(0, 0), Vector2i(1, 0)],
 					"drops": [{"cell": Vector2i(1, 0), "dir": R}]},
@@ -270,16 +303,16 @@ const LEVELS := [
 			{"name": "GREEN", "type": "standard", "color": COL_B},
 		],
 		"quota": 16, "max_lost": 12, "shift": 90.0,
-		"stars": [180, 260, 330, 370],
-		"solution": [[[5, 0], [5, 1], [5, 2], [5, 3], [5, 4]], [[2, 4], [2, 3], [2, 2], [2, 1], [2, 0]]],
-		"sols": [[[[2, 4], [2, 3], [2, 2], [2, 1], [2, 0]], [[5, 0], [5, 1], [5, 2]]], [[[5, 0], [5, 1], [5, 2], [5, 3], [5, 4]], [[2, 4], [2, 3], [2, 2], [2, 1], [2, 0]]], [[[5, 0], [5, 1], [5, 2], [5, 3], [5, 4]], [[2, 4], [2, 3], [2, 2], [2, 1], [2, 0]]], [[[5, 0], [5, 1], [5, 2], [5, 3], [5, 4]], [[2, 4], [2, 3], [2, 2], [2, 1], [2, 0]]]],
+		"stars": [190, 270, 340, 380],
+		"solution": [[[5, 0], [5, 1], [5, 2], [5, 3], [5, 4]], [[2, 0], [2, 1], [2, 2], [2, 3], [2, 4]]],
+		"sols": [[[[2, 2], [2, 1], [2, 0]], [[5, 4], [5, 3], [5, 2], [5, 1], [5, 0]]], [[[5, 0], [5, 1], [5, 2], [5, 3], [5, 4]], [[2, 0], [2, 1], [2, 2], [2, 3], [2, 4]]], [[[5, 0], [5, 1], [5, 2], [5, 3], [5, 4]], [[2, 0], [2, 1], [2, 2], [2, 3], [2, 4]]], [[[5, 0], [5, 1], [5, 2], [5, 3], [5, 4]], [[2, 0], [2, 1], [2, 2], [2, 3], [2, 4]]]],
 		"spawn": {"interval_start": 2.6, "interval_end": 2.2, "ramp": 55.0,
 				"burst_min": 1, "burst_max": 2, "gap": 0.9},
 		"mix": {"visitor": 1.0},
 	},
 	{
-		"id": "T-6", "world": "TUTORIAL", "name": "Loading & Lift",
-		"cols": 9, "rows": 9, "blocked": [Vector2i(1, 8), Vector2i(4, 0), Vector2i(5, 0), Vector2i(5, 8), Vector2i(6, 1), Vector2i(7, 1), Vector2i(7, 2), Vector2i(7, 3), Vector2i(8, 1), Vector2i(8, 2), Vector2i(8, 3), Vector2i(8, 4)],
+		"id": "T-7", "world": "TUTORIAL", "name": "Loading & Lift",
+		"cols": 9, "rows": 9, "blocked": [Vector2i(0, 7), Vector2i(1, 4), Vector2i(5, 0), Vector2i(5, 5), Vector2i(5, 8), Vector2i(6, 0), Vector2i(6, 1), Vector2i(7, 0), Vector2i(7, 3), Vector2i(7, 8), Vector2i(8, 0), Vector2i(8, 2), Vector2i(8, 3), Vector2i(8, 8)],
 		"overlaps": [
 			{"cells": [Vector2i(0, 1), Vector2i(0, 2), Vector2i(0, 3), Vector2i(0, 4), Vector2i(0, 6), Vector2i(0, 7), Vector2i(0, 8), Vector2i(1, 2), Vector2i(1, 3), Vector2i(1, 4), Vector2i(1, 6), Vector2i(1, 8), Vector2i(2, 2), Vector2i(2, 6), Vector2i(3, 2), Vector2i(3, 5), Vector2i(3, 6), Vector2i(4, 0), Vector2i(4, 1), Vector2i(4, 2), Vector2i(4, 5), Vector2i(4, 6), Vector2i(4, 8), Vector2i(5, 0), Vector2i(5, 1), Vector2i(5, 2), Vector2i(5, 5), Vector2i(5, 6), Vector2i(5, 8), Vector2i(6, 0), Vector2i(6, 1), Vector2i(6, 2), Vector2i(6, 3), Vector2i(6, 4), Vector2i(6, 5), Vector2i(6, 7), Vector2i(6, 8), Vector2i(7, 0), Vector2i(7, 1), Vector2i(7, 2), Vector2i(7, 3), Vector2i(7, 4), Vector2i(7, 5), Vector2i(7, 8), Vector2i(8, 0), Vector2i(8, 1), Vector2i(8, 2), Vector2i(8, 3), Vector2i(8, 4), Vector2i(8, 5), Vector2i(8, 8)], "max": 3},
 			{"cells": [Vector2i(0, 0), Vector2i(5, 3), Vector2i(2, 3), Vector2i(5, 7), Vector2i(6, 6), Vector2i(0, 5)], "max": 6},
@@ -297,50 +330,17 @@ const LEVELS := [
 			{"name": "CARGO", "type": "cargo", "color": COL_C, "speed": 100.0, "accel": 80.0},
 		],
 		"quota": 20, "max_lost": 4, "shift": 90.0,
-		"stars": [220, 330, 410, 450],
-		"solution": [[[0, 5], [0, 6], [1, 6], [2, 6], [3, 6], [4, 6], [5, 6], [6, 6], [6, 7], [5, 7]], [[0, 5], [0, 4], [1, 4], [1, 3], [2, 3], [2, 2], [1, 2], [0, 2], [0, 1], [0, 0]], [[6, 6], [6, 5], [6, 4], [6, 3], [5, 3]]],
-		"sols": [[[[5, 7], [5, 6], [4, 6], [3, 6], [2, 6], [1, 6], [0, 6], [0, 5]], [[2, 3], [2, 2], [1, 2], [0, 2], [0, 1], [0, 0]], [[2, 3], [1, 3], [1, 4], [0, 4], [0, 5]]], [[[0, 5], [0, 4], [0, 3], [0, 2], [0, 1], [0, 0]], [[0, 5], [0, 6], [1, 6], [2, 6], [3, 6], [4, 6], [5, 6], [6, 6], [6, 7], [5, 7]], [[6, 6], [6, 5], [6, 4], [6, 3], [6, 2], [5, 2], [4, 2], [3, 2], [2, 2], [2, 3]]], [[[6, 6], [6, 7], [5, 7], [5, 6], [4, 6], [3, 6], [2, 6], [1, 6], [0, 6], [0, 5]], [[0, 5], [0, 4], [1, 4], [1, 3], [2, 3], [2, 2], [1, 2], [0, 2], [0, 1], [0, 0]], [[6, 6], [6, 5], [6, 4], [6, 3], [5, 3]]], [[[0, 5], [0, 6], [1, 6], [2, 6], [3, 6], [4, 6], [5, 6], [6, 6], [6, 7], [5, 7]], [[0, 5], [0, 4], [1, 4], [1, 3], [2, 3], [2, 2], [1, 2], [0, 2], [0, 1], [0, 0]], [[6, 6], [6, 5], [6, 4], [6, 3], [5, 3]]]],
+		"stars": [190, 270, 340, 380],
+		"solution": [[[0, 5], [0, 4], [0, 3], [0, 2], [0, 1], [0, 0]], [[0, 5], [0, 6], [1, 6], [2, 6], [3, 6], [4, 6], [5, 6], [5, 7], [6, 7], [6, 6]], [[5, 3], [6, 3], [6, 4], [6, 5], [6, 6]]],
+		"sols": [[[[6, 6], [5, 6], [4, 6], [3, 6], [2, 6], [1, 6], [0, 6], [0, 5]], [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4], [0, 5]], [[2, 3], [2, 2], [3, 2], [4, 2], [5, 2], [5, 3], [6, 3], [6, 4], [6, 5], [6, 6], [6, 7], [5, 7]]], [[[0, 5], [0, 4], [0, 3], [0, 2], [0, 1], [0, 0]], [[0, 5], [0, 6], [1, 6], [2, 6], [3, 6], [4, 6], [5, 6], [5, 7], [6, 7], [6, 6]], [[6, 6], [6, 5], [6, 4], [6, 3], [5, 3], [5, 2], [4, 2], [3, 2], [2, 2], [2, 3]]], [[[0, 5], [0, 4], [0, 3], [0, 2], [0, 1], [0, 0]], [[0, 5], [0, 6], [1, 6], [2, 6], [3, 6], [4, 6], [5, 6], [5, 7], [6, 7], [6, 6]], [[5, 3], [6, 3], [6, 4], [6, 5], [6, 6]]], [[[0, 5], [0, 4], [0, 3], [0, 2], [0, 1], [0, 0]], [[0, 5], [0, 6], [1, 6], [2, 6], [3, 6], [4, 6], [5, 6], [5, 7], [6, 7], [6, 6]], [[5, 3], [6, 3], [6, 4], [6, 5], [6, 6]]]],
 		"spawn": {"interval_start": 2.80, "interval_end": 2.30, "ramp": 45.00, "burst_min": 1, "burst_max": 2, "gap": 1.00},
 		"mix": {"visitor": 1.00},
 		"patience": {"delivery": 60.00, "visitor": 55.00},
 	},
-	{
-		"id": "T-7", "world": "TUTORIAL", "name": "Squeeze",
-		"cols": 6, "rows": 9, "blocked": [Vector2i(0, 3), Vector2i(0, 7), Vector2i(0, 8), Vector2i(1, 1), Vector2i(1, 3), Vector2i(1, 5), Vector2i(1, 6), Vector2i(1, 8), Vector2i(2, 8), Vector2i(4, 5), Vector2i(5, 2), Vector2i(5, 3)],
-		"overlaps": [
-			{"cells": [Vector2i(2, 0), Vector2i(2, 1), Vector2i(2, 2), Vector2i(2, 3),
-					Vector2i(3, 4), Vector2i(3, 5), Vector2i(3, 6), Vector2i(3, 7),
-					Vector2i(3, 8)], "max": 2},
-			{"cells": [Vector2i(2, 4)], "max": 4},
-		],
-		"rooms": [
-			{"type": "lobby", "cells": [Vector2i(0, 0), Vector2i(1, 0)],
-					"drops": [{"cell": Vector2i(1, 0), "dir": R}]},
-			{"type": "office", "cells": [Vector2i(0, 2), Vector2i(1, 2)],
-					"drops": [{"cell": Vector2i(1, 2), "dir": R}]},
-			{"type": "atrium", "cells": [Vector2i(0, 4), Vector2i(1, 4)],
-					"drops": [{"cell": Vector2i(1, 4), "dir": R}]},
-			{"type": "office", "cells": [Vector2i(4, 6), Vector2i(5, 6)],
-					"drops": [{"cell": Vector2i(4, 6), "dir": L}]},
-			{"type": "apartment", "cells": [Vector2i(4, 8), Vector2i(5, 8)],
-					"drops": [{"cell": Vector2i(4, 8), "dir": L}]},
-		],
-		"cards": [
-			{"name": "LIFT 1", "type": "standard", "color": COL_A},
-			{"name": "LIFT 2", "type": "standard", "color": COL_B},
-		],
-		"quota": 20, "max_lost": 8, "shift": 90.0,
-		"stars": [160, 230, 290, 330],
-		"solution": [[[2, 4], [2, 3], [2, 2], [2, 1], [2, 0]], [[2, 4], [2, 5], [2, 6], [3, 6], [3, 7], [3, 8]]],
-		"sols": [[[[2, 2], [2, 3], [2, 4], [3, 4], [3, 3], [3, 2], [3, 1], [3, 0], [2, 0]], [[2, 4], [2, 5], [2, 6], [3, 6], [3, 7], [3, 8]]], [[[2, 4], [2, 3], [2, 2], [2, 1], [2, 0]], [[2, 4], [2, 5], [2, 6], [3, 6], [3, 7], [3, 8]]], [[[2, 4], [2, 3], [2, 2], [2, 1], [2, 0]], [[2, 4], [2, 5], [2, 6], [3, 6], [3, 7], [3, 8]]], [[[2, 4], [2, 3], [2, 2], [2, 1], [2, 0]], [[2, 4], [2, 5], [2, 6], [3, 6], [3, 7], [3, 8]]]],
-		"spawn": {"interval_start": 2.6, "interval_end": 2.2, "ramp": 50.0,
-				"burst_min": 1, "burst_max": 2, "gap": 0.9},
-		"mix": {"visitor": 1.0},
-	},
 	# ===================== CROSSLINK =====================
 	{
 		"id": "XL1", "world": "CROSSLINK", "name": "Crosslink",
-		"cols": 9, "rows": 7, "ground_row": 0, "blocked": [Vector2i(0, 4), Vector2i(3, 2), Vector2i(4, 0), Vector2i(5, 5), Vector2i(5, 6), Vector2i(8, 0), Vector2i(8, 1), Vector2i(8, 6)],
+		"cols": 9, "rows": 7, "ground_row": 0, "blocked": [Vector2i(0, 5), Vector2i(5, 6), Vector2i(6, 0), Vector2i(6, 6), Vector2i(8, 1), Vector2i(8, 3), Vector2i(8, 5), Vector2i(8, 6)],
 		"overlaps": [
 			{"cells": [Vector2i(0, 1), Vector2i(0, 2), Vector2i(0, 4), Vector2i(0, 5), Vector2i(0, 6), Vector2i(1, 2), Vector2i(1, 4), Vector2i(2, 2), Vector2i(2, 4), Vector2i(3, 2), Vector2i(3, 3), Vector2i(3, 4), Vector2i(4, 0), Vector2i(4, 1), Vector2i(4, 2), Vector2i(4, 3), Vector2i(5, 0), Vector2i(5, 1), Vector2i(5, 5), Vector2i(5, 6), Vector2i(6, 0), Vector2i(6, 1), Vector2i(6, 6), Vector2i(7, 0), Vector2i(7, 1), Vector2i(7, 3), Vector2i(7, 6), Vector2i(8, 0), Vector2i(8, 1), Vector2i(8, 2), Vector2i(8, 3), Vector2i(8, 5), Vector2i(8, 6)], "max": 3},
 			{"cells": [Vector2i(0, 0), Vector2i(1, 5), Vector2i(4, 5), Vector2i(4, 4), Vector2i(7, 2), Vector2i(2, 3)], "max": 6},
@@ -366,7 +366,7 @@ const LEVELS := [
 	},
 	{
 		"id": "XL2", "world": "CROSSLINK", "name": "Foyer",
-		"cols": 9, "rows": 8, "ground_row": 0, "blocked": [Vector2i(0, 5), Vector2i(0, 6), Vector2i(2, 4), Vector2i(2, 5), Vector2i(2, 7), Vector2i(3, 4), Vector2i(5, 4), Vector2i(5, 7), Vector2i(7, 7), Vector2i(8, 6)],
+		"cols": 9, "rows": 8, "ground_row": 0, "blocked": [Vector2i(0, 5), Vector2i(1, 4), Vector2i(2, 4), Vector2i(2, 7), Vector2i(3, 4), Vector2i(4, 4), Vector2i(4, 5), Vector2i(6, 7), Vector2i(8, 5), Vector2i(8, 6)],
 		"overlaps": [
 			{"cells": [Vector2i(0, 0), Vector2i(0, 1), Vector2i(0, 4), Vector2i(0, 5), Vector2i(0, 6), Vector2i(0, 7), Vector2i(1, 1), Vector2i(1, 4), Vector2i(1, 5), Vector2i(1, 6), Vector2i(1, 7), Vector2i(2, 1), Vector2i(2, 4), Vector2i(2, 5), Vector2i(2, 7), Vector2i(3, 1), Vector2i(3, 4), Vector2i(3, 5), Vector2i(4, 2), Vector2i(4, 3), Vector2i(4, 4), Vector2i(4, 5), Vector2i(5, 2), Vector2i(5, 3), Vector2i(5, 4), Vector2i(5, 5), Vector2i(5, 7), Vector2i(6, 2), Vector2i(6, 4), Vector2i(6, 5), Vector2i(6, 7), Vector2i(7, 1), Vector2i(7, 2), Vector2i(7, 5), Vector2i(7, 6), Vector2i(7, 7), Vector2i(8, 0), Vector2i(8, 1), Vector2i(8, 2), Vector2i(8, 5), Vector2i(8, 6), Vector2i(8, 7)], "max": 3},
 			{"cells": [Vector2i(7, 0), Vector2i(3, 2), Vector2i(0, 2), Vector2i(6, 6), Vector2i(6, 3), Vector2i(1, 0)], "max": 6},
@@ -392,7 +392,7 @@ const LEVELS := [
 	},
 	{
 		"id": "XL3", "world": "CROSSLINK", "name": "High Rise",
-		"cols": 9, "rows": 9, "ground_row": 0, "blocked": [Vector2i(0, 0), Vector2i(0, 6), Vector2i(1, 3), Vector2i(1, 8), Vector2i(2, 3), Vector2i(2, 4), Vector2i(2, 8), Vector2i(3, 0), Vector2i(6, 7), Vector2i(7, 4)],
+		"cols": 9, "rows": 9, "ground_row": 0, "blocked": [Vector2i(0, 1), Vector2i(0, 3), Vector2i(0, 6), Vector2i(0, 7), Vector2i(1, 5), Vector2i(2, 0), Vector2i(3, 0), Vector2i(6, 7), Vector2i(7, 3), Vector2i(7, 4)],
 		"overlaps": [
 			{"cells": [Vector2i(0, 0), Vector2i(0, 1), Vector2i(0, 2), Vector2i(0, 3), Vector2i(0, 4), Vector2i(0, 5), Vector2i(0, 6), Vector2i(0, 7), Vector2i(0, 8), Vector2i(1, 0), Vector2i(1, 3), Vector2i(1, 4), Vector2i(1, 5), Vector2i(1, 6), Vector2i(1, 8), Vector2i(2, 0), Vector2i(2, 3), Vector2i(2, 4), Vector2i(2, 5), Vector2i(2, 6), Vector2i(2, 8), Vector2i(3, 0), Vector2i(3, 2), Vector2i(3, 3), Vector2i(3, 4), Vector2i(4, 1), Vector2i(4, 2), Vector2i(4, 3), Vector2i(4, 4), Vector2i(5, 2), Vector2i(5, 3), Vector2i(5, 4), Vector2i(6, 2), Vector2i(6, 3), Vector2i(6, 4), Vector2i(6, 7), Vector2i(7, 2), Vector2i(7, 3), Vector2i(7, 4), Vector2i(7, 5), Vector2i(7, 6), Vector2i(7, 7), Vector2i(8, 0), Vector2i(8, 1), Vector2i(8, 2), Vector2i(8, 3), Vector2i(8, 4), Vector2i(8, 5), Vector2i(8, 6), Vector2i(8, 7), Vector2i(8, 8)], "max": 3},
 			{"cells": [Vector2i(4, 0), Vector2i(6, 5), Vector2i(3, 5), Vector2i(1, 7), Vector2i(3, 1), Vector2i(7, 8)], "max": 6},
@@ -418,7 +418,7 @@ const LEVELS := [
 	},
 	{
 		"id": "XL4", "world": "CROSSLINK", "name": "Atrium",
-		"cols": 9, "rows": 8, "ground_row": 0, "blocked": [Vector2i(0, 6), Vector2i(2, 7), Vector2i(6, 4)],
+		"cols": 9, "rows": 8, "ground_row": 0, "blocked": [Vector2i(2, 7), Vector2i(5, 4), Vector2i(5, 7)],
 		"overlaps": [
 			{"cells": [Vector2i(0, 1), Vector2i(0, 2), Vector2i(0, 3), Vector2i(0, 6), Vector2i(0, 7), Vector2i(1, 2), Vector2i(1, 3), Vector2i(1, 6), Vector2i(1, 7), Vector2i(2, 2), Vector2i(2, 3), Vector2i(2, 7), Vector2i(3, 2), Vector2i(4, 2), Vector2i(4, 4), Vector2i(4, 5), Vector2i(5, 2), Vector2i(5, 4), Vector2i(5, 5), Vector2i(5, 7), Vector2i(6, 1), Vector2i(6, 2), Vector2i(6, 4), Vector2i(6, 5), Vector2i(7, 0), Vector2i(7, 1), Vector2i(7, 2), Vector2i(7, 4), Vector2i(7, 5), Vector2i(7, 6), Vector2i(8, 0), Vector2i(8, 1), Vector2i(8, 2), Vector2i(8, 3), Vector2i(8, 4), Vector2i(8, 5), Vector2i(8, 6)], "max": 3},
 			{"cells": [Vector2i(6, 0), Vector2i(0, 4), Vector2i(3, 4), Vector2i(6, 6), Vector2i(0, 0), Vector2i(6, 7), Vector2i(3, 3), Vector2i(7, 3)], "max": 6},
@@ -445,7 +445,7 @@ const LEVELS := [
 	},
 	{
 		"id": "XL5", "world": "CROSSLINK", "name": "Skyline",
-		"cols": 9, "rows": 9, "ground_row": 0, "blocked": [Vector2i(1, 2), Vector2i(1, 4), Vector2i(2, 3), Vector2i(2, 5), Vector2i(3, 0), Vector2i(3, 2), Vector2i(3, 4), Vector2i(3, 5), Vector2i(4, 3), Vector2i(4, 4), Vector2i(6, 8), Vector2i(8, 5), Vector2i(8, 8)],
+		"cols": 9, "rows": 9, "ground_row": 0, "blocked": [Vector2i(2, 2), Vector2i(2, 4), Vector2i(3, 0), Vector2i(3, 2), Vector2i(3, 3), Vector2i(3, 5), Vector2i(5, 8), Vector2i(6, 2), Vector2i(6, 4), Vector2i(6, 8), Vector2i(7, 8), Vector2i(8, 4), Vector2i(8, 5)],
 		"overlaps": [
 			{"cells": [Vector2i(0, 1), Vector2i(0, 2), Vector2i(0, 3), Vector2i(0, 4), Vector2i(0, 5), Vector2i(0, 6), Vector2i(0, 7), Vector2i(0, 8), Vector2i(1, 2), Vector2i(1, 3), Vector2i(1, 4), Vector2i(1, 5), Vector2i(1, 6), Vector2i(2, 2), Vector2i(2, 3), Vector2i(2, 4), Vector2i(2, 5), Vector2i(2, 6), Vector2i(3, 0), Vector2i(3, 1), Vector2i(3, 2), Vector2i(3, 3), Vector2i(3, 4), Vector2i(3, 5), Vector2i(3, 6), Vector2i(4, 2), Vector2i(4, 3), Vector2i(4, 4), Vector2i(4, 5), Vector2i(5, 2), Vector2i(5, 4), Vector2i(5, 5), Vector2i(5, 7), Vector2i(5, 8), Vector2i(6, 2), Vector2i(6, 4), Vector2i(6, 5), Vector2i(6, 8), Vector2i(7, 1), Vector2i(7, 2), Vector2i(7, 4), Vector2i(7, 5), Vector2i(7, 8), Vector2i(8, 0), Vector2i(8, 1), Vector2i(8, 2), Vector2i(8, 3), Vector2i(8, 4), Vector2i(8, 5), Vector2i(8, 7), Vector2i(8, 8)], "max": 3},
 			{"cells": [Vector2i(7, 0), Vector2i(4, 7), Vector2i(1, 7), Vector2i(4, 6), Vector2i(0, 0), Vector2i(7, 3)], "max": 6},
@@ -471,7 +471,7 @@ const LEVELS := [
 	},
 	{
 		"id": "XL6", "world": "CROSSLINK", "name": "Courtyard",
-		"cols": 9, "rows": 9, "ground_row": 0, "blocked": [Vector2i(1, 4), Vector2i(2, 8), Vector2i(4, 7), Vector2i(4, 8), Vector2i(5, 4), Vector2i(5, 7), Vector2i(5, 8), Vector2i(6, 4), Vector2i(6, 5), Vector2i(7, 5), Vector2i(8, 7)],
+		"cols": 9, "rows": 9, "ground_row": 0, "blocked": [Vector2i(0, 8), Vector2i(2, 4), Vector2i(2, 8), Vector2i(5, 5), Vector2i(5, 7), Vector2i(7, 5), Vector2i(7, 8), Vector2i(8, 0), Vector2i(8, 1), Vector2i(8, 5), Vector2i(8, 7)],
 		"overlaps": [
 			{"cells": [Vector2i(0, 1), Vector2i(0, 2), Vector2i(0, 3), Vector2i(0, 4), Vector2i(0, 5), Vector2i(0, 8), Vector2i(1, 2), Vector2i(1, 4), Vector2i(1, 5), Vector2i(1, 8), Vector2i(2, 2), Vector2i(2, 4), Vector2i(2, 5), Vector2i(2, 8), Vector2i(3, 0), Vector2i(3, 1), Vector2i(3, 2), Vector2i(3, 4), Vector2i(3, 5), Vector2i(3, 8), Vector2i(4, 2), Vector2i(4, 4), Vector2i(4, 5), Vector2i(4, 7), Vector2i(4, 8), Vector2i(5, 2), Vector2i(5, 4), Vector2i(5, 5), Vector2i(5, 7), Vector2i(5, 8), Vector2i(6, 2), Vector2i(6, 4), Vector2i(6, 5), Vector2i(6, 8), Vector2i(7, 1), Vector2i(7, 2), Vector2i(7, 4), Vector2i(7, 5), Vector2i(7, 8), Vector2i(8, 0), Vector2i(8, 1), Vector2i(8, 2), Vector2i(8, 4), Vector2i(8, 5), Vector2i(8, 7), Vector2i(8, 8)], "max": 3},
 			{"cells": [Vector2i(7, 0), Vector2i(3, 6), Vector2i(0, 6), Vector2i(4, 6), Vector2i(0, 0), Vector2i(3, 3), Vector2i(4, 3), Vector2i(8, 3)], "max": 6},
@@ -498,7 +498,7 @@ const LEVELS := [
 	},
 	{
 		"id": "XL7", "world": "CROSSLINK", "name": "Sidestep",
-		"cols": 9, "rows": 8, "ground_row": 0, "blocked": [Vector2i(0, 7), Vector2i(1, 7), Vector2i(4, 7), Vector2i(5, 7), Vector2i(8, 1), Vector2i(8, 2), Vector2i(8, 7)],
+		"cols": 9, "rows": 8, "ground_row": 0, "blocked": [Vector2i(0, 0), Vector2i(0, 4), Vector2i(1, 4), Vector2i(2, 0), Vector2i(4, 7), Vector2i(7, 7), Vector2i(8, 0)],
 		"overlaps": [
 			{"cells": [Vector2i(0, 0), Vector2i(0, 4), Vector2i(0, 5), Vector2i(0, 7), Vector2i(1, 0), Vector2i(1, 4), Vector2i(1, 5), Vector2i(1, 7), Vector2i(2, 0), Vector2i(2, 3), Vector2i(2, 4), Vector2i(2, 5), Vector2i(3, 0), Vector2i(3, 1), Vector2i(3, 2), Vector2i(3, 3), Vector2i(3, 4), Vector2i(3, 5), Vector2i(4, 2), Vector2i(4, 3), Vector2i(4, 4), Vector2i(4, 5), Vector2i(4, 7), Vector2i(5, 2), Vector2i(5, 3), Vector2i(5, 4), Vector2i(5, 7), Vector2i(6, 2), Vector2i(6, 4), Vector2i(6, 7), Vector2i(7, 1), Vector2i(7, 2), Vector2i(7, 4), Vector2i(7, 7), Vector2i(8, 0), Vector2i(8, 1), Vector2i(8, 2), Vector2i(8, 4), Vector2i(8, 7)], "max": 3},
 			{"cells": [Vector2i(7, 0), Vector2i(5, 5), Vector2i(8, 5), Vector2i(0, 6), Vector2i(2, 2), Vector2i(2, 1), Vector2i(6, 3)], "max": 6},
@@ -525,7 +525,7 @@ const LEVELS := [
 	},
 	{
 		"id": "XL8", "world": "CROSSLINK", "name": "Rush Hour",
-		"cols": 9, "rows": 9, "ground_row": 0, "blocked": [Vector2i(2, 0), Vector2i(4, 5), Vector2i(4, 8), Vector2i(5, 8), Vector2i(6, 7), Vector2i(6, 8), Vector2i(7, 5), Vector2i(7, 7), Vector2i(7, 8), Vector2i(8, 6)],
+		"cols": 9, "rows": 9, "ground_row": 0, "blocked": [Vector2i(2, 0), Vector2i(4, 8), Vector2i(6, 5), Vector2i(6, 7), Vector2i(6, 8), Vector2i(7, 5), Vector2i(7, 7), Vector2i(7, 8), Vector2i(8, 6), Vector2i(8, 7)],
 		"overlaps": [
 			{"cells": [Vector2i(0, 0), Vector2i(0, 1), Vector2i(0, 3), Vector2i(0, 4), Vector2i(0, 6), Vector2i(0, 7), Vector2i(0, 8), Vector2i(1, 0), Vector2i(1, 1), Vector2i(1, 4), Vector2i(1, 6), Vector2i(1, 8), Vector2i(2, 0), Vector2i(2, 1), Vector2i(2, 4), Vector2i(2, 6), Vector2i(3, 0), Vector2i(3, 1), Vector2i(3, 2), Vector2i(3, 3), Vector2i(3, 4), Vector2i(3, 5), Vector2i(3, 6), Vector2i(4, 2), Vector2i(4, 3), Vector2i(4, 4), Vector2i(4, 5), Vector2i(4, 6), Vector2i(4, 8), Vector2i(5, 2), Vector2i(5, 5), Vector2i(5, 8), Vector2i(6, 2), Vector2i(6, 5), Vector2i(6, 7), Vector2i(6, 8), Vector2i(7, 1), Vector2i(7, 2), Vector2i(7, 5), Vector2i(7, 7), Vector2i(7, 8), Vector2i(8, 0), Vector2i(8, 1), Vector2i(8, 2), Vector2i(8, 5), Vector2i(8, 6), Vector2i(8, 7), Vector2i(8, 8)], "max": 3},
 			{"cells": [Vector2i(7, 0), Vector2i(5, 3), Vector2i(8, 3), Vector2i(5, 7), Vector2i(0, 2), Vector2i(0, 5), Vector2i(5, 6)], "max": 6},
@@ -552,7 +552,7 @@ const LEVELS := [
 	},
 	{
 		"id": "XL9", "world": "CROSSLINK", "name": "Gridlock",
-		"cols": 9, "rows": 9, "ground_row": 0, "blocked": [Vector2i(0, 0), Vector2i(0, 1), Vector2i(0, 2), Vector2i(3, 7), Vector2i(6, 4), Vector2i(7, 4), Vector2i(8, 1)],
+		"cols": 9, "rows": 9, "ground_row": 0, "blocked": [Vector2i(0, 0), Vector2i(0, 1), Vector2i(0, 4), Vector2i(0, 5), Vector2i(0, 8), Vector2i(7, 4), Vector2i(8, 0)],
 		"overlaps": [
 			{"cells": [Vector2i(0, 0), Vector2i(0, 1), Vector2i(0, 2), Vector2i(0, 3), Vector2i(0, 4), Vector2i(0, 5), Vector2i(0, 7), Vector2i(0, 8), Vector2i(1, 1), Vector2i(1, 2), Vector2i(1, 3), Vector2i(1, 4), Vector2i(1, 5), Vector2i(1, 8), Vector2i(2, 1), Vector2i(2, 4), Vector2i(2, 5), Vector2i(2, 8), Vector2i(3, 1), Vector2i(3, 4), Vector2i(3, 5), Vector2i(3, 7), Vector2i(3, 8), Vector2i(4, 1), Vector2i(4, 3), Vector2i(4, 4), Vector2i(4, 5), Vector2i(5, 2), Vector2i(5, 4), Vector2i(5, 6), Vector2i(6, 2), Vector2i(6, 4), Vector2i(6, 6), Vector2i(7, 2), Vector2i(7, 4), Vector2i(7, 6), Vector2i(8, 0), Vector2i(8, 1), Vector2i(8, 2), Vector2i(8, 3), Vector2i(8, 4), Vector2i(8, 5), Vector2i(8, 6), Vector2i(8, 7), Vector2i(8, 8)], "max": 3},
 			{"cells": [Vector2i(4, 0), Vector2i(4, 7), Vector2i(7, 7), Vector2i(4, 6), Vector2i(4, 2), Vector2i(5, 5), Vector2i(3, 0), Vector2i(5, 3)], "max": 6},
@@ -580,7 +580,7 @@ const LEVELS := [
 	},
 	{
 		"id": "XL10", "world": "CROSSLINK", "name": "Last Orders",
-		"cols": 9, "rows": 9, "ground_row": 0, "blocked": [Vector2i(0, 1), Vector2i(0, 3), Vector2i(0, 5), Vector2i(1, 1), Vector2i(1, 4), Vector2i(1, 5), Vector2i(2, 1), Vector2i(2, 8), Vector2i(3, 5), Vector2i(8, 1), Vector2i(8, 2), Vector2i(8, 8)],
+		"cols": 9, "rows": 9, "ground_row": 0, "blocked": [Vector2i(0, 3), Vector2i(0, 5), Vector2i(1, 1), Vector2i(1, 3), Vector2i(1, 4), Vector2i(1, 5), Vector2i(2, 5), Vector2i(3, 4), Vector2i(3, 7), Vector2i(3, 8), Vector2i(8, 2), Vector2i(8, 8)],
 		"overlaps": [
 			{"cells": [Vector2i(0, 0), Vector2i(0, 1), Vector2i(0, 3), Vector2i(0, 4), Vector2i(0, 5), Vector2i(0, 7), Vector2i(0, 8), Vector2i(1, 0), Vector2i(1, 1), Vector2i(1, 3), Vector2i(1, 4), Vector2i(1, 5), Vector2i(1, 8), Vector2i(2, 0), Vector2i(2, 1), Vector2i(2, 3), Vector2i(2, 4), Vector2i(2, 5), Vector2i(2, 8), Vector2i(3, 2), Vector2i(3, 3), Vector2i(3, 4), Vector2i(3, 5), Vector2i(3, 7), Vector2i(3, 8), Vector2i(4, 2), Vector2i(4, 3), Vector2i(4, 4), Vector2i(4, 5), Vector2i(5, 2), Vector2i(5, 5), Vector2i(5, 6), Vector2i(6, 1), Vector2i(6, 2), Vector2i(6, 5), Vector2i(6, 6), Vector2i(7, 0), Vector2i(7, 1), Vector2i(7, 2), Vector2i(7, 4), Vector2i(7, 5), Vector2i(7, 6), Vector2i(8, 0), Vector2i(8, 1), Vector2i(8, 2), Vector2i(8, 3), Vector2i(8, 4), Vector2i(8, 5), Vector2i(8, 6), Vector2i(8, 7), Vector2i(8, 8)], "max": 3},
 			{"cells": [Vector2i(6, 0), Vector2i(7, 7), Vector2i(4, 7), Vector2i(4, 6), Vector2i(7, 3), Vector2i(2, 2)], "max": 6},
