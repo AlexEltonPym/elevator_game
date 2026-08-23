@@ -261,9 +261,9 @@ func _refresh_hint() -> void:
 		hint_label.text = game.reject_msg
 		hint_label.add_theme_color_override("font_color", Color(1.0, 0.6, 0.5))
 		return
-	# Incomplete routes (serve <2 rooms) fail SILENTLY - no red/amber scold. RUN just
-	# stays greyed until every lift is valid; the neutral guidance below tells the
-	# player what to draw. (reject_msg above is different: an illegal action just tried.)
+	# Incomplete routes (serve <2 rooms) fail SILENTLY - no red/amber scold. RUN just stays
+	# greyed until at least one lift is validly placed and no drawn route is unfinished (you
+	# don't have to place every lift). (reject_msg above is different: an illegal action.)
 	var sel: int = game.selected_card
 	if sel >= 0:
 		if game.routes[sel] != null:

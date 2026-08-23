@@ -137,6 +137,7 @@ func _ready() -> void:
 		# so it is NOT given the grid view transform — only the shift clock, for day/night.
 		background.game = self
 	CARDS = level.cards
+	_standardize_card_colors()
 	QUOTA = level.quota
 	MAX_LOST = level.max_lost
 	shift_len = float(level.get("shift", 0.0))
@@ -330,6 +331,27 @@ func level_seed() -> int:
 	return hash(str(level.get("id", "")))
 
 
+## Standard lift colours by TYPE, applied at load so every level reads the same regardless of
+## what colour the level data stored: LOCAL = blue, a 2nd local = green, CARGO = yellow,
+## EXPRESS = orange. Visual only (colour feeds the card chip, route line and car).
+const LIFT_BLUE := Color(0.42, 0.66, 0.95)
+const LIFT_GREEN := Color(0.46, 0.84, 0.52)
+const LIFT_YELLOW := Color(0.96, 0.82, 0.26)
+const LIFT_ORANGE := Color(0.97, 0.58, 0.17)
+
+func _standardize_card_colors() -> void:
+	var local_n := 0
+	for c in CARDS:
+		match str(c.get("type", "standard")):
+			"express":
+				c.color = LIFT_ORANGE
+			"cargo":
+				c.color = LIFT_YELLOW
+			_:
+				c.color = LIFT_BLUE if local_n == 0 else LIFT_GREEN
+				local_n += 1
+
+
 func abort_run() -> void:
 	to_plan()
 
@@ -461,16 +483,26 @@ func can_edit() -> bool:
 	return state == State.PLAN
 
 
+## Cards whose DRAWN route is incomplete (serves < 2 rooms). An UNPLACED lift is fine — you
+## don't have to place every lift — so a null route is NOT "not ready"; only a started-but-
+## unfinished route blocks RUN.
 func cards_not_ready() -> Array:
 	var out: Array = []
 	for i in CARDS.size():
-		if routes[i] == null or routes[i].served_rooms().size() < 2:
+		if routes[i] != null and routes[i].served_rooms().size() < 2:
 			out.append(CARDS[i].name)
 	return out
 
 
+## RUN is allowed once no placed route is incomplete AND at least one lift is actually placed
+## (running with zero lifts would be a no-op).
 func ready_to_run() -> bool:
-	return cards_not_ready().is_empty()
+	if not cards_not_ready().is_empty():
+		return false
+	for i in CARDS.size():
+		if routes[i] != null:
+			return true
+	return false
 
 
 func route_warning(i: int) -> bool:
