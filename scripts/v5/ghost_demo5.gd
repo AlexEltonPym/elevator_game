@@ -21,7 +21,8 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 
 
-## `steps`: one per lift to demonstrate, in order. Plays a chained cutscene, then frees.
+## `steps`: one per lift to demonstrate, in order. Plays a chained cutscene that LOOPS (so the
+## player can watch it as many times as they like); a tap anywhere stops it and hands over.
 func play(steps: Array) -> void:
 	_steps = steps
 	_routes = []
@@ -31,24 +32,30 @@ func play(steps: Array) -> void:
 		_finish(); return
 	_finger = steps[0].chip
 	_active = true
-	modulate.a = 0.0
-	_tw = create_tween()
-	_tw.tween_property(self, "modulate:a", 1.0, 0.35)
+	modulate.a = 1.0
+	_tw = create_tween().set_loops()   # ambient loop until the player taps to take over
+	_tw.tween_callback(_reset_loop)
+	_tw.tween_interval(0.5)
 	for si in steps.size():
 		var s: Dictionary = steps[si]
-		_tw.tween_property(self, "_finger", s.chip, 0.45).set_trans(Tween.TRANS_SINE)   # to chip
+		_tw.tween_property(self, "_finger", s.chip, 0.72).set_trans(Tween.TRANS_SINE)   # to chip
 		_tw.tween_callback(_do_ripple.bind(s.chip))                                     # tap
-		_tw.tween_interval(0.35)
-		_tw.tween_property(self, "_finger", s.pts[0], 0.45).set_trans(Tween.TRANS_SINE) # to start
+		_tw.tween_interval(0.55)
+		_tw.tween_property(self, "_finger", s.pts[0], 0.72).set_trans(Tween.TRANS_SINE) # to start
 		_tw.tween_callback(_do_ripple.bind(s.pts[0]))                                   # press
-		_tw.tween_interval(0.12)
-		var dur: float = clampf(0.11 * s.pts.size(), 0.5, 1.7)
+		_tw.tween_interval(0.22)
+		var dur: float = clampf(0.19 * s.pts.size(), 0.85, 2.8)
 		_tw.tween_method(_drag.bind(si), 0.0, 1.0, dur).set_trans(Tween.TRANS_SINE)     # drag
 		_tw.tween_callback(_do_ripple.bind(s.pts[s.pts.size() - 1]))                    # release
-		_tw.tween_interval(0.5)
-	_tw.tween_interval(0.7)
-	_tw.tween_property(self, "modulate:a", 0.0, 0.4)
-	_tw.tween_callback(_finish)
+		_tw.tween_interval(0.7)
+	_tw.tween_interval(1.3)   # hold the finished plan, then the loop restarts
+
+
+## Clear the revealed routes + reset the finger so each loop redraws from scratch.
+func _reset_loop() -> void:
+	for r in _routes:
+		r.rev = 0.0
+	_finger = _steps[0].chip
 
 
 func _drag(t: float, si: int) -> void:
@@ -124,10 +131,10 @@ func _draw() -> void:
 			acc += seg
 		if line.size() >= 2:
 			draw_polyline(line, Color(r.color, 0.8), 7.0, true)
-	# Tap ripple + fingertip.
+	# Tap ripple + fingertip (a big, soft "hand" so it reads clearly at a glance).
 	if _ripple > 0.001:
-		draw_arc(_ripple_at, 8.0 + 34.0 * _ripple, 0.0, TAU, 28,
-				Color(1, 1, 1, (1.0 - _ripple) * 0.6), 3.0)
-	draw_circle(_finger, 21.0, Color(1, 1, 1, 0.12))
-	draw_circle(_finger, 13.0, Color(0.95, 0.97, 1.0, 0.88))
-	draw_arc(_finger, 13.0, 0.0, TAU, 24, Color(0.2, 0.3, 0.45, 0.6), 2.0)
+		draw_arc(_ripple_at, 12.0 + 48.0 * _ripple, 0.0, TAU, 32,
+				Color(1, 1, 1, (1.0 - _ripple) * 0.6), 4.0)
+	draw_circle(_finger, 34.0, Color(1, 1, 1, 0.12))
+	draw_circle(_finger, 21.0, Color(0.95, 0.97, 1.0, 0.90))
+	draw_arc(_finger, 21.0, 0.0, TAU, 28, Color(0.2, 0.3, 0.45, 0.65), 3.0)
