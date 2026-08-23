@@ -1,9 +1,11 @@
-/*! coi-serviceworker v0.1.7 - Guido Zuidhof and contributors, licensed under MIT */
-/* Adds Cross-Origin-Opener-Policy / Cross-Origin-Embedder-Policy headers via a service
-   worker so SharedArrayBuffer (needed by the threaded Godot 4 web build) works on static
-   hosts that don't send those headers, e.g. GitHub Pages. */
+/*! coi-serviceworker - based on v0.1.7 by Guido Zuidhof (MIT), hardened for GitHub Pages.
+   Adds Cross-Origin-Opener-Policy / Cross-Origin-Embedder-Policy headers via a service worker
+   so SharedArrayBuffer (the threaded Godot 4 web build) works on static hosts that don't send
+   those headers. The window side hides the page until isolation is active (so Godot's
+   "features missing" error never flashes) and reloads reliably once the SW is ready. */
 let coepCredentialless = false;
 if (typeof window === 'undefined') {
+    // ---- service worker side: rewrite responses to add the isolation headers ----
     self.addEventListener("install", () => self.skipWaiting());
     self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim()));
     self.addEventListener("message", (ev) => {
@@ -35,45 +37,31 @@ if (typeof window === 'undefined') {
         }).catch((e) => console.error(e)));
     });
 } else {
+    // ---- window side: ensure the page becomes cross-origin isolated, no error flash ----
     (() => {
-        const reloadedBySelf = window.sessionStorage.getItem("coiReloadedBySelf");
-        window.sessionStorage.removeItem("coiReloadedBySelf");
-        const coi = {
-            shouldRegister: () => !reloadedBySelf,
-            shouldNotRegister: () => false,
-            coepCredentialless: () => true,
-            coepDegrade: () => true,
-            doReload: () => window.location.reload(),
-            quiet: false,
-            ...window.coi
+        if (window.crossOriginIsolated) {
+            window.sessionStorage.removeItem("coiReloads");
+            return; // already isolated: let Godot boot normally
+        }
+        // Hide everything until we reload isolated, so Godot's "missing features" error never
+        // shows. Reveal after a few seconds as a fallback (so a browser without SW support
+        // still shows *something* instead of a permanently blank page).
+        const html = document.documentElement;
+        html.style.visibility = "hidden";
+        setTimeout(() => { html.style.visibility = ""; }, 4000);
+
+        if (!window.isSecureContext || !navigator.serviceWorker) { html.style.visibility = ""; return; }
+        const scriptSrc = document.currentScript && document.currentScript.src;
+        const tries = parseInt(window.sessionStorage.getItem("coiReloads") || "0", 10);
+        if (tries >= 3) { html.style.visibility = ""; return; } // give up (avoid reload loops)
+
+        const reload = () => {
+            window.sessionStorage.setItem("coiReloads", (tries + 1).toString());
+            window.location.reload();
         };
-        const n = navigator;
-        if (n.serviceWorker && n.serviceWorker.controller) {
-            n.serviceWorker.controller.postMessage({ type: "coepCredentialless", value: coi.coepCredentialless() });
-            if (coi.shouldDeregister && coi.shouldDeregister())
-                n.serviceWorker.controller.postMessage({ type: "deregister" });
-        }
-        if (window.crossOriginIsolated !== false || !coi.shouldRegister()) return;
-        if (!window.isSecureContext) {
-            !coi.quiet && console.log("COOP/COEP Service Worker not registered, a secure context is required.");
-            return;
-        }
-        if (n.serviceWorker) {
-            n.serviceWorker.register(window.document.currentScript.src).then((registration) => {
-                !coi.quiet && console.log("COOP/COEP Service Worker registered", registration.scope);
-                registration.addEventListener("updatefound", () => {
-                    !coi.quiet && console.log("Reloading page to make use of updated COOP/COEP Service Worker.");
-                    window.sessionStorage.setItem("coiReloadedBySelf", "updatefound");
-                    coi.doReload();
-                });
-                if (registration.active && !n.serviceWorker.controller) {
-                    !coi.quiet && console.log("Reloading page to make use of COOP/COEP Service Worker.");
-                    window.sessionStorage.setItem("coiReloadedBySelf", "notcontrolling");
-                    coi.doReload();
-                }
-            }, (err) => {
-                !coi.quiet && console.error("COOP/COEP Service Worker failed to register:", err);
-            });
-        }
+        navigator.serviceWorker.register(scriptSrc).then(() => {
+            if (navigator.serviceWorker.controller) { reload(); return; }
+            navigator.serviceWorker.ready.then(reload);
+        }).catch((err) => { console.error("COOP/COEP SW register failed:", err); html.style.visibility = ""; });
     })();
 }
