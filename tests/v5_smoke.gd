@@ -35,67 +35,72 @@ func _c(pairs: Array) -> Array:
 func _solution(id: String) -> Array:
 	match id:
 		"T-1":
-			return [_c([[2,0],[2,1],[2,2],[2,3],[2,4]])]
+			return [_c([[3,2],[4,2],[4,1],[3,1]]),
+					_c([[3,1],[4,1],[4,0],[5,0],[6,0],[7,0],[8,0],[8,1],[8,2],[8,3]])]
 		"T-2":
-			return [_c([[5,1],[5,0]]),
-				_c([[2,1],[2,0]])]
+			return [_c([[8,5],[8,4],[8,3],[7,3],[6,3],[5,3]]),
+					_c([[5,3],[5,2],[5,1],[4,1],[4,2],[3,2],[2,2],[2,3],[1,3],[1,4],[0,4],[0,5]])]
 		"T-3":
-			return [_c([[3,2],[3,1],[3,0],[2,0],[2,1],[2,2],[2,3],[2,4],[2,5],[2,6],[3,6]]),
-				_c([[3,6],[3,5],[3,4],[3,3],[3,2],[3,1],[3,0],[2,0]])]
+			return [_c([[2,1],[2,2],[2,3],[2,4],[2,5],[3,5],[3,4],[4,4]]),
+					_c([[2,3],[3,3],[4,3],[4,4]])]
 		"T-4":
-			return [_c([[4,6],[4,7],[4,8],[4,9],[3,9],[2,9],[1,9],[1,10],[0,10],[0,9],[0,8],[1,8],[1,7],[1,6],[1,5],[1,4],[1,3],[1,2],[1,1],[1,0]]),
-				_c([[4,8],[4,7],[4,6],[4,5],[4,4],[4,3],[4,2],[4,1],[4,0]])]
+			return [_c([[3,3],[4,3]]),
+					_c([[3,3],[3,2],[3,1],[4,1],[4,2],[4,3],[4,4],[4,5]])]
 		"T-5":
-			return [_c([[5,0],[5,1],[5,2],[5,3],[5,4]]),
-				_c([[2,4],[2,3],[2,2],[2,1],[2,0]])]
+			return [_c([[1,1],[1,2],[1,3],[2,3],[3,3],[4,3],[5,3],[5,4],[5,5]]),
+					_c([[1,1],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[7,1],[7,2],[7,3],[7,4],[6,4],[5,4],[5,5],[6,5],[7,5],[8,5],[8,6],[8,7],[7,7],[6,7],[5,7],[4,7],[3,7],[2,7],[1,7],[1,6],[1,5],[1,4],[0,4],[0,3],[0,2],[0,1]])]
 		"T-6":
-			return [_c([[0,5],[0,6],[1,6],[2,6],[3,6],[4,6],[5,6],[6,6],[6,7],[5,7]]),
-				_c([[0,5],[0,4],[1,4],[1,3],[2,3],[2,2],[1,2],[0,2],[0,1],[0,0]]),
-				_c([[6,6],[6,5],[6,4],[6,3],[5,3]])]
+			return [_c([[0,6],[0,7],[0,8],[1,8],[2,8],[3,8],[4,8],[5,8],[6,8],[7,8],[8,8],[8,7]]),
+					_c([[0,6],[0,5],[1,5],[2,5],[2,4],[3,4],[4,4],[5,4],[5,3],[4,3],[3,3],[3,2],[3,1]])]
 		"T-7":
-			return [_c([[2,0],[2,1],[2,2],[2,3],[2,4]]),
-				_c([[3,8],[3,7],[3,6],[3,5],[3,4],[2,4]])]
+			return [_c([[5,4],[4,4]]),
+					_c([[6,1],[6,2],[7,2],[8,2],[8,3],[8,4]]),
+					_c([[0,1],[0,2],[0,3],[1,3],[2,3],[3,3],[4,3],[5,3],[5,4]])]
 		"XL1":
-			return [_c([[3,0],[3,1],[3,2],[3,3],[2,3],[2,4],[2,5],[2,6],[2,7],[2,8]]),
-				_c([[7,7],[7,6],[8,6],[8,5],[8,4],[7,4],[7,3],[6,3],[6,2],[6,1],[6,0],[5,0],[4,0],[3,0]]),
-				_c([[6,1],[5,1],[5,2],[5,3],[4,3],[4,4]])]
+			return [_c([[4,6],[4,5]]),
+					_c([[0,1],[0,2],[0,3],[1,3],[2,3],[2,4],[2,5],[1,5],[1,6]]),
+					_c([[7,3],[7,2],[6,2],[5,2],[4,2],[4,3],[4,4],[4,5],[4,6]])]
 		"XL2":
-			return [_c([[5,3],[6,3],[7,3],[7,2],[7,1],[7,0]]),
-				_c([[5,3],[5,4],[5,5],[5,6],[4,6],[4,7],[5,7]])]
+			return [_c([[1,6],[1,5],[1,4],[1,3],[0,3],[0,2],[0,1]]),
+					_c([[0,1],[0,0],[1,0],[2,0],[3,0],[4,0],[4,1],[4,2],[5,2],[5,3],[5,4]]),
+					_c([[5,4],[5,3],[6,3],[6,2],[6,1]])]
 		"XL3":
-			return [_c([[4,7],[4,6],[4,5],[4,4],[4,3],[3,3],[3,2],[4,2],[5,2],[6,2],[7,2],[7,1],[7,0]]),
-				_c([[4,7],[3,7],[3,6],[3,5],[3,4],[3,3]])]
+			return [_c([[1,8],[1,7],[2,7],[2,6],[3,6]]),
+					_c([[4,1],[4,2],[4,3],[4,4],[4,5],[5,5],[6,5],[6,6],[7,6],[7,7],[7,8],[7,9],[8,9],[8,8],[8,7],[8,6],[8,5],[8,4],[8,3],[8,2],[8,1],[8,0],[7,0],[6,0],[5,0],[4,0]]),
+					_c([[4,1],[3,1],[3,2],[3,3],[3,4],[3,5],[3,6]])]
 		"XL4":
-			return [_c([[4,0],[4,1],[4,2],[4,3],[4,4],[4,5],[4,6],[3,6],[3,7],[3,8],[3,9]]),
-				_c([[2,7],[2,8],[2,9],[3,9]])]
+			return [_c([[3,5],[4,5],[4,6],[5,6],[6,6],[6,7],[6,8]]),
+					_c([[6,1],[6,2],[6,3],[7,3],[7,4],[7,5],[7,6],[7,7],[6,7],[6,8]]),
+					_c([[0,1],[0,2],[0,3],[0,4],[0,5]])]
 		"XL5":
-			return [_c([[8,0],[8,1],[8,2],[8,3],[8,4],[7,4],[6,4],[5,4],[4,4],[4,3],[4,2]]),
-				_c([[4,4],[4,5],[4,6],[3,6],[3,7],[3,8],[3,9]])]
+			return [_c([[0,1],[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[7,1],[7,2],[7,3],[7,4]]),
+					_c([[4,8],[4,7],[4,6],[3,6],[3,5],[4,5],[5,5],[6,5],[7,5],[8,5],[8,4],[8,3],[8,2],[8,1],[7,1]]),
+					_c([[0,1],[0,2],[0,3],[0,4],[0,5],[0,6],[0,7],[0,8],[1,8]])]
 		"XL6":
-			return [_c([[5,10],[6,10],[7,10],[7,9],[7,8],[7,7],[7,6],[7,5],[7,4],[7,3],[6,3],[5,3],[5,2],[6,2],[7,2],[8,2],[8,1],[8,0]]),
-				_c([[5,10],[5,9],[6,9],[6,8],[6,7],[6,6],[5,6],[4,6],[4,7],[3,7],[2,7],[1,7],[1,8],[0,8],[0,7],[0,6],[1,6],[1,5],[1,4],[1,3],[2,3]])]
+			return [_c([[3,4],[3,3],[3,2],[3,1],[3,0],[4,0],[5,0],[6,0],[7,0],[7,1]]),
+					_c([[3,4],[3,5],[3,6],[3,7],[4,7]]),
+					_c([[0,7],[0,6],[0,5],[0,4],[0,3],[0,2],[0,1]])]
 		"XL7":
-			return [_c([[2,7],[3,7],[3,6],[4,6],[4,5],[4,4],[4,3],[4,2],[4,1],[4,0]]),
-				_c([[6,9],[6,8],[6,7],[6,6],[6,5],[6,4],[5,4],[4,4]])]
+			return [_c([[0,1],[0,2],[0,3],[0,4]]),
+					_c([[5,1],[5,0],[4,0],[3,0],[2,0],[1,0],[0,0],[0,1]]),
+					_c([[7,4],[7,3],[6,3],[5,3],[4,3],[4,2],[4,1],[5,1]])]
 		"XL8":
-			return [_c([[2,0],[2,1],[2,2],[2,3],[2,4],[2,5],[2,6],[2,7],[2,8],[3,8],[4,8],[5,8],[6,8],[6,9]]),
-				_c([[2,0],[3,0],[3,1],[3,2],[4,2],[5,2],[6,2],[7,2],[7,1],[7,0],[8,0],[8,1],[8,2],[8,3],[8,4],[8,5]]),
-				_c([[5,5],[5,4],[5,3],[4,3],[4,4],[4,5],[3,5],[2,5]])]
+			return [_c([[4,1],[4,2],[4,3],[4,4],[4,5],[4,6],[5,6],[5,7],[5,8],[6,8]]),
+					_c([[6,8],[6,7],[6,6],[6,5],[6,4],[6,3],[7,3],[8,3],[8,2],[8,1],[7,1],[6,1],[5,1],[4,1],[4,0],[3,0],[2,0],[1,0],[0,0],[0,1],[0,2],[0,3],[0,4],[0,5],[0,6],[1,6]]),
+					_c([[6,4],[5,4],[5,5],[4,5],[4,6]])]
 		"XL9":
-			return [_c([[2,3],[1,3],[1,4],[1,5],[2,5],[3,5],[4,5],[4,6]]),
-				_c([[8,0],[8,1],[8,2],[8,3],[7,3],[6,3],[5,3],[5,2],[4,2],[3,2],[2,2],[1,2],[0,2],[0,3],[0,4],[0,5],[0,6],[0,7],[0,8],[1,8]]),
-				_c([[5,10],[6,10],[6,9],[6,8],[6,7],[6,6],[5,6],[4,6],[4,7],[3,7],[2,7],[1,7],[1,8]])]
+			return [_c([[4,1],[4,2],[4,3],[4,4],[5,4],[5,5],[5,6],[5,7],[4,7],[4,8]]),
+					_c([[4,1],[3,1],[3,2],[2,2],[1,2],[1,3],[1,4],[1,5],[1,6],[2,6],[3,6],[4,6],[4,7],[4,8]]),
+					_c([[7,8],[8,8],[8,7],[8,6],[8,5],[8,4],[8,3],[7,3],[6,3],[5,3],[4,3]])]
 		"XL10":
-			return [_c([[7,5],[7,6],[6,6],[5,6],[4,6],[4,5],[4,4],[4,3],[4,2],[4,1],[4,0],[3,0]]),
-				_c([[8,9],[8,8],[8,7],[8,6],[8,5],[7,5],[7,4],[8,4],[8,3],[8,2],[8,1],[8,0]]),
-				_c([[1,3],[1,4],[1,5],[1,6],[0,6],[0,7],[0,8],[0,9],[1,9],[2,9],[3,9],[3,10]])]
+			return [_c([[2,3],[3,3],[4,3],[5,3],[6,3],[6,2],[6,1]]),
+					_c([[6,1],[7,1],[7,2],[7,3],[7,4],[7,5],[7,6],[7,7],[6,7],[5,7],[4,7],[4,8]]),
+					_c([[7,4],[8,4],[8,5],[8,6],[8,7],[8,8],[7,8]])]
 	return []
-func _expect_serves(id: String) -> Array:
-	match id:
-		"T-1":
-			return [3] # one lift serves A + both offices via the shared top dock
-		"T-7":
-			return [3, 3] # LIFT 1 serves A,B,C; LIFT 2 serves C,D,E
+func _expect_serves(_id: String) -> Array:
+	# Per-level serve-count assertions are retired: the suite is PCG-generated, so there are
+	# no hand-known room counts to pin. The smoke still checks every level RUNS its solution
+	# to a clean finish; the overlap-cap mechanic is covered by its own injected fixture.
 	return []
 
 
@@ -106,15 +111,35 @@ func _r6_index() -> int:
 	return -1
 
 
-## The overlap-cap drawing limit on R-6: (b) a legal route is accepted; the two
-## cooperative routes SHARE the cap-4 transfer tile (2,4) legally; a route pushing
-## a cap-2 tile over its cap is REFUSED; and (c) clearing frees the width back.
+## A self-contained overlap-cap fixture (never in the shipped table): a bare grid whose
+## column-2 tiles are cap-2 with a single cap-4 transfer tile at (2,4), so the exact
+## reject/share/free assertions below don't depend on any generated level's geometry.
+func _overlap_level() -> Dictionary:
+	return {
+		"id": "OVL", "world": "MECHANICS", "name": "Overlap Fixture",
+		"cols": 6, "rows": 9, "ground_row": 1, "rooms": [],
+		"overlaps": [
+			{"cells": [Vector2i(2,0),Vector2i(2,1),Vector2i(2,2),Vector2i(2,3),
+					Vector2i(3,4),Vector2i(3,5),Vector2i(3,6),Vector2i(3,7),Vector2i(3,8)], "max": 2},
+			{"cells": [Vector2i(2,4)], "max": 4},
+		],
+		"cards": [
+			{"name": "L1", "type": "standard", "color": Color(0.45,0.68,0.95)},
+			{"name": "L2", "type": "standard", "color": Color(0.5,0.88,0.55)},
+		],
+		"quota": 12, "max_lost": 8, "shift": 0.0,
+		"spawn": {"interval_start": 3.0, "interval_end": 3.0, "ramp": 50.0,
+				"burst_min": 1, "burst_max": 1, "gap": 1.0},
+		"mix": {"visitor": 1.0}, "trips": [],
+	}
+
+
+## The overlap-cap drawing limit: (b) a legal route is accepted; two cooperative routes
+## SHARE the cap-4 transfer tile (2,4) legally; a route pushing a cap-2 tile over its cap is
+## REFUSED; and (c) clearing frees the width back. Uses the injected fixture above.
 func _overlap_test() -> bool:
-	var idx := _r6_index()
-	if idx < 0:
-		print("  overlap: R-6 not found **FAIL**")
-		return false
-	Levels5.current = idx
+	Levels5.injected = _overlap_level()
+	Levels5.current = 0
 	Levels5.headless = true
 	var node = load("res://scenes/v5_main.tscn").instantiate()
 	node.headless = true
@@ -122,8 +147,8 @@ func _overlap_test() -> bool:
 	node.shift_len = 0.0  # smoke checks routing in classic quota mode; ship uses shift/tips
 	node.to_plan()
 	var ok := true
-	var l1 := _c([[2,0],[2,1],[2,2],[2,3],[2,4]]) # lower-left + atrium (2,4), legal
-	var l2coop := _c([[2,4],[3,4],[3,5],[3,6],[3,7],[3,8]]) # upper-right; shares (2,4) cap-4
+	var l1 := _c([[2,0],[2,1],[2,2],[2,3],[2,4]]) # column 2 up to the cap-4 transfer tile
+	var l2coop := _c([[2,4],[3,4],[3,5],[3,6],[3,7],[3,8]]) # shares (2,4) cap-4, legal
 	var l2bad := _c([[2,2],[2,3]]) # would overlap L1 on cap-2 tiles (2+2 > 2)
 	if not node.commit_route(0, l1, false):
 		ok = false
@@ -140,6 +165,7 @@ func _overlap_test() -> bool:
 		ok = false
 		print("  overlap: route still rejected after clear (width not freed) **FAIL**")
 	node.free()
+	Levels5.injected = null # CRITICAL: leave the shipped table untouched afterward
 	return ok
 
 
@@ -431,7 +457,7 @@ func _run_once(lv: Dictionary, i: int, seed: int) -> Dictionary:
 	# (cargo-only-while-loaded); the SAME figures reappear as w1 empty returners (the
 	# w3->w1 transition); commuters NEVER touch the bay. cargo = cars[0], first in the
 	# roster.
-	var r8: bool = lv.id == "T-3"
+	var r8 := false  # delivery-fiction tracking retired for the shipped suite (fixture covers it)
 	var r8_saw_delivery := false
 	var r8_delivery_on_cargo := false
 	var r8_loaded_seen := false # a width-3 loaded outbound man was observed
@@ -522,12 +548,9 @@ func _process(_delta: float) -> bool:
 		else:
 			_fail += 1
 			print("OVERLAP CAP  **FAIL**")
-		# R-6 must REQUIRE two cooperating lifts (one-lift + disjoint-two both fail).
-		if _cooperation_test():
-			print("T-7 COOPERATION: one-lift + disjoint-two both fail as required")
-		else:
-			_fail += 1
-			print("T-7 COOPERATION  **FAIL**")
+		# (The old T-7 "requires two cooperating lifts" test is retired — the PCG suite does
+		# not guarantee any specific level needs cooperation. Overlap + delivery mechanics are
+		# covered by the injected fixtures above/below.)
 		# DELIVERY MAN (width-3, slow): cargo-only board (planner + sim), slower walk,
 		# width-aware packing. Injected fixture, so the shipped fingerprints are safe.
 		if _delivery_test():
@@ -568,31 +591,10 @@ func _process(_delta: float) -> bool:
 	if not a.saw_walk:
 		ok = false
 		notes.append("no-walk")
-	# Transfer levels must actually show a transfer (a rider changes lifts):
-	# R-3 Handoff, R-5 Relay, R-6 Squeeze all route cross trips through a shared room.
-	if (lv.id == "T-2" or lv.id == "T-5" or lv.id == "T-7") and a.transfers == 0:
-		ok = false
-		notes.append("no-xfer")
-	# R-8 EXACT FICTION + ROUND TRIP: delivery men run a LOAD -> DELIVER -> RETURN-EMPTY
-	# itinerary. Loaded outbound men are WIDTH-3 and ride ONLY the CARGO lift (cargo-only
-	# while loaded); the SAME figures reappear as WIDTH-1 empty returners (the w3->w1
-	# transition); commuters never touch the bay (per-trip type binding).
-	if lv.id == "T-3":
-		if not a.r8_saw_delivery:
-			ok = false
-			notes.append("no-delivery")
-		if not a.r8_delivery_on_cargo:
-			ok = false
-			notes.append("delivery-off-cargo")
-		if not a.r8_loaded_seen:
-			ok = false
-			notes.append("no-loaded-w3")
-		if not a.r8_return_seen:
-			ok = false
-			notes.append("no-w3->w1-return")
-		if not a.r8_fiction_ok:
-			ok = false
-			notes.append("fiction-violated")
+	# NOTE: the old per-id mechanic assertions (T-2/T-5/T-7 must transfer; T-3 delivery
+	# round-trip fiction) are retired with the PCG regeneration — the ids no longer map to
+	# those hand-built mechanics. The delivery LOAD->DELIVER->RETURN-EMPTY + w3->w1 fiction is
+	# still verified, independently, by the injected `_delivery_test` fixture below.
 	# (d) serve-count correct for a known route.
 	var exp := _expect_serves(lv.id)
 	for ci in exp.size():

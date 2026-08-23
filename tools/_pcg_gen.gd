@@ -85,19 +85,20 @@ func _flip(tpl: Dictionary) -> Dictionary:
 
 ## Try to place `type` (optionally flipped) somewhere legal. Returns a room dict or {}.
 func _place(type: String, cols: int, rows: int, occ: Dictionary, docks_all: Dictionary,
-		rng: RandomNumberGenerator, tries: int, bottom_only := false) -> Dictionary:
+		rng: RandomNumberGenerator, tries: int, bottom_only := false, ground_row := 0) -> Dictionary:
 	var tpl: Dictionary = _templates()[type]
 	for _t in tries:
 		var t2: Dictionary = _flip(tpl) if rng.randf() < 0.5 else tpl.duplicate(true)
 		var ax := rng.randi_range(0, cols - t2.w)
-		# lobby on the bottom row, penthouse in the top band, everyone else free.
+		# lobby on the GROUND row, penthouse in the top band, everyone else free — but never
+		# below the ground floor (the basement rows stay empty shaft unless authored).
 		var ay: int
 		if bottom_only:
-			ay = 0
+			ay = ground_row
 		elif type == "penthouse":
-			ay = rng.randi_range(maxi(0, rows - int(t2.h) - 1), rows - int(t2.h))
+			ay = rng.randi_range(maxi(ground_row, rows - int(t2.h) - 1), rows - int(t2.h))
 		else:
-			ay = rng.randi_range(0, rows - t2.h)
+			ay = rng.randi_range(ground_row, rows - t2.h)
 		var cells := []
 		var ok := true
 		for c in t2.cells:
@@ -148,13 +149,21 @@ func _place(type: String, cols: int, rows: int, occ: Dictionary, docks_all: Dict
 ## Generate a level. `n_rooms` (0 = derive from seed, 4..8) is the LOOSEN KNOB: fewer
 ## rooms in the fixed grid = more open space = easier (novices can fit a plan); more rooms
 ## = tighter = harder. Returns a built level dict or {} (also rejects enclosed docks).
+# BASEMENT (realism pass): every building dips exactly one floor underground. Row 0 is that
+# basement — an empty open shaft by default (rooms may sit there but need not); the ground
+# floor (people-entry / lobby) is GROUND_ROW. Surface floors = rows above the basement, with
+# a guaranteed minimum so a building always has real vertical space (even if unused).
+const BASEMENT := 1
+const MIN_SURFACE := 4
+
 func _generate(seed_v: int, n_rooms := 0) -> Dictionary:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed_v
-	if n_rooms <= 0:
-		n_rooms = 4 + (seed_v % 5)   # 4..8
 	var cols := 9
-	var rows := rng.randi_range(9, 11)
+	var surface := rng.randi_range(MIN_SURFACE, 9)   # >= 4 surface floors, varied height
+	var rows := surface + BASEMENT
+	if n_rooms <= 0:
+		n_rooms = clampi(4 + (seed_v % 4), 4, maxi(4, surface))   # 4..7, capped by height
 	var occ := {}
 	var docks_all := {}
 	var rooms := []
@@ -167,8 +176,9 @@ func _generate(seed_v: int, n_rooms := 0) -> Dictionary:
 		for dc in res.dockcells:
 			docks_all[dc] = true
 		return true
-	# Lobby first, forced to the bottom row (people entrance).
-	if not add.call(_place("lobby", cols, rows, occ, docks_all, rng, 40, true)):
+	# Lobby first, forced to the GROUND floor (people entrance sits on street level, never
+	# in the basement).
+	if not add.call(_place("lobby", cols, rows, occ, docks_all, rng, 40, true, BASEMENT)):
 		return {}
 	# Build a wishlist sized to n_rooms: cafe + penthouse (enable express); delivery when
 	# there's budget (enable cargo); fill the rest with apartments, maybe one atrium.
@@ -180,7 +190,7 @@ func _generate(seed_v: int, n_rooms := 0) -> Dictionary:
 	if n_rooms >= 6 and rng.randf() < 0.6 and wish.size() >= 1:
 		wish[wish.size() - 1] = "atrium"
 	for type in wish:
-		add.call(_place(type, cols, rows, occ, docks_all, rng, 60))
+		add.call(_place(type, cols, rows, occ, docks_all, rng, 60, false, BASEMENT))
 	# LEGALITY RULE: storage(delivery) implies cafe (it delivers to one); a cafe does NOT
 	# require storage. If cafe failed to place, drop any orphan storage rooms (repair, not
 	# reject) so we never ship a storage with no cafe + a dangling cargo card.
@@ -203,7 +213,7 @@ func _generate(seed_v: int, n_rooms := 0) -> Dictionary:
 			docklist.append(dr.cell + dr.dir)
 	if not _reachable_all(cols, rows, occ, docklist):
 		return {}
-	return _wrap(cols, rows, rooms)
+	return _wrap(cols, rows, rooms, [], BASEMENT)
 
 
 ## Every dock reachable from the first over open (non-room) cells? (generation-time A-check)
@@ -238,7 +248,7 @@ func _rooms_abut(rooms: Array, cellowner: Dictionary, a: int, b: int) -> bool:
 
 ## Wrap placed rooms into a full level: caps, cards, cover trips. `blocks` are 1x1
 ## impassable "window" cells routes must detour around (Grid5.passable is false for them).
-func _wrap(cols: int, rows: int, rooms: Array, blocks := []) -> Dictionary:
+func _wrap(cols: int, rows: int, rooms: Array, blocks := [], ground_row := 0) -> Dictionary:
 	# letters by room order; classify which types exist.
 	var has := {}
 	var letter_of := {}
@@ -307,7 +317,7 @@ func _wrap(cols: int, rows: int, rooms: Array, blocks := []) -> Dictionary:
 				cap3.append(c)
 	return {
 		"id": "GEN", "world": "CROSSLINK", "name": "Generated", "thesis": "", "intro": "",
-		"cols": cols, "rows": rows, "blocked": blockset.keys(), "rooms": rooms,
+		"cols": cols, "rows": rows, "ground_row": ground_row, "blocked": blockset.keys(), "rooms": rooms,
 		"overlaps": [{"cells": cap3, "max": 3}, {"cells": dockset.keys(), "max": 6}],
 		"cards": cards, "quota": 20, "max_lost": 4, "shift": 90.0,
 		"spawn": {"interval_start": 2.2, "interval_end": 1.7, "ramp": 40.0, "burst_min": 1, "burst_max": 2, "gap": 0.9, "cover": true},
@@ -1698,14 +1708,14 @@ func _emit_numdict(d: Dictionary) -> String:
 	return ", ".join(toks)
 
 
-## Emit a full tutorial LEVELS entry (with stars + solution) and its smoke case.
-func _dump_tut(lv: Dictionary, stars: Array, expert_routes: Array) -> void:
+## Emit a full tutorial LEVELS entry (stars + solution + sols) and its smoke case. `s` is the
+## _solve_four result (expert_routes + the four tier_routes for the secret 1-4 shortcut).
+func _dump_tut(lv: Dictionary, stars: Array, s: Dictionary) -> void:
+	var expert_routes: Array = s.get("expert_routes", [])
 	var id: String = str(lv.get("id", "T-?"))
 	print("\t{")
 	print("\t\t\"id\": \"%s\", \"world\": \"%s\", \"name\": \"%s\"," % [id, lv.get("world", "MECHANICS"), lv.get("name", "")])
-	print("\t\t\"thesis\": \"%s\"," % str(lv.get("thesis", "")))
-	print("\t\t\"intro\": \"%s\"," % str(lv.get("intro", "")).replace("\n", "\\n"))
-	print("\t\t\"cols\": %d, \"rows\": %d, \"blocked\": [%s]," % [lv.cols, lv.rows, _vecs(lv.get("blocked", []))])
+	print("\t\t\"cols\": %d, \"rows\": %d, \"ground_row\": %d, \"blocked\": [%s]," % [lv.cols, lv.rows, int(lv.get("ground_row", 0)), _vecs(lv.get("blocked", []))])
 	if lv.has("overlaps") and lv.overlaps.size() >= 2:
 		print("\t\t\"overlaps\": [")
 		print("\t\t\t{\"cells\": [%s], \"max\": 3}," % _vecs(lv.overlaps[0].cells))
@@ -1734,15 +1744,8 @@ func _dump_tut(lv: Dictionary, stars: Array, expert_routes: Array) -> void:
 		print("\t\t\"patience\": {%s}," % _emit_numdict(lv.patience))
 	if lv.has("reactivate"):
 		print("\t\t\"reactivate\": %.2f," % float(lv.reactivate))
-	print("\t\t\"trips\": [")
-	for tr in lv.trips:
-		var extra := ""
-		if tr.has("type"):
-			extra += ", \"type\": \"%s\"" % tr.type
-		if tr.has("return"):
-			extra += ", \"return\": \"%s\"" % str(tr.get("return"))
-		print("\t\t\t{\"w\": %.2f, \"from\": \"%s\", \"to\": \"%s\"%s}," % [tr.w, tr.from, tr.to, extra])
-	print("\t\t],")
+	# NO trips block: demand is DERIVED at load from rooms + fixed seed (Demand5), like every
+	# shipped level. The solve below was run against that same derived demand.
 	if not expert_routes.is_empty():
 		var sols := []
 		for r in expert_routes:
@@ -1751,6 +1754,17 @@ func _dump_tut(lv: Dictionary, stars: Array, expert_routes: Array) -> void:
 				cc2.append("[%d, %d]" % [int(xy[0]), int(xy[1])])
 			sols.append("[%s]" % ", ".join(cc2))
 		print("\t\t\"solution\": [%s]," % ", ".join(sols))
+	# sols = the four skill-tier plans [1-star..4-star] for the secret 1-4 hover shortcut.
+	var tiers := []
+	for tr in s.get("tier_routes", []):
+		var routestrs := []
+		for r in tr:
+			var cc := []
+			for xy in r.cells:
+				cc.append("[%d, %d]" % [int(xy[0]), int(xy[1])])
+			routestrs.append("[%s]" % ", ".join(cc))
+		tiers.append("[%s]" % ", ".join(routestrs))
+	print("\t\t\"sols\": [%s]," % ", ".join(tiers))
 	print("\t},")
 	# smoke case
 	if not expert_routes.is_empty():
@@ -1780,12 +1794,13 @@ func _tutgen(master: String, key: String, cfgpath: String) -> void:
 	if cf != null:
 		cf.close()
 	_apply_cfg(lv, cfg)
+	lv.erase("trips")  # solve against DERIVED demand (Demand5), exactly what live play uses
 	var budgets: Array = cfg.get("budgets", [150, 600, 1400])
 	var s := _solve_four(lv, budgets)
 	var stars := _star_thresholds(s)
 	print("REPORT %s (%s): novice=%.0f adept=%.0f expert=%.0f optimal=%.0f -> stars=%s" % [
 			lv.get("id", "?"), pick.get("sig", ""), s.novice, s.adept, s.expert, s.optimal, str(stars)])
-	_dump_tut(lv, stars, s.expert_routes)
+	_dump_tut(lv, stars, s)
 
 
 ## tutseed: build a level from the current-rules SEED SAMPLER (_generate), apply config
@@ -1800,12 +1815,46 @@ func _tutseed(seed_v: int, nr: int, cfgpath: String) -> void:
 	if cf != null:
 		cf.close()
 	_apply_cfg(lv, cfg)
+	lv.erase("trips")  # solve against DERIVED demand (Demand5), exactly what live play uses
 	var budgets: Array = cfg.get("budgets", [150, 600, 1400])
 	var s := _solve_four(lv, budgets)
 	var stars := _star_thresholds(s)
 	print("REPORT %s (seed %d nr%d): novice=%.0f adept=%.0f expert=%.0f optimal=%.0f -> stars=%s" % [
 			lv.get("id", "?"), seed_v, nr, s.novice, s.adept, s.expert, s.optimal, str(stars)])
-	_dump_tut(lv, stars, s.expert_routes)
+	_dump_tut(lv, stars, s)
+
+
+## tutbatch: solve a whole SUITE in one process (parallel Godot on one project is unsafe —
+## lock collision). cfg = {"levels": [ {seed, nr?, id, world, name, budgets?, ...cfg}, ... ]}.
+## Emits each full entry (with ground_row + sols) to stdout, prefaced by a REPORT line that
+## flags degenerate solves (non-positive novice, or expert barely above novice) as SUSPECT so
+## a weak pick can be dropped/replaced. Redirect stdout to a file and lift the entries out.
+func _tutbatch(cfgpath: String) -> void:
+	var f := FileAccess.open(cfgpath, FileAccess.READ)
+	if f == null:
+		print("no cfg %s" % cfgpath); return
+	var cfg = JSON.parse_string(f.get_as_text())
+	f.close()
+	var specs: Array = cfg.get("levels", [])
+	for spec in specs:
+		var seed_v := int(spec.seed)
+		var nr := int(spec.get("nr", 0))
+		var lv := _generate(seed_v, nr)
+		if lv.is_empty():
+			print("REPORT %s (seed %d): GEN FAILED  <-- SUSPECT" % [spec.get("id", "?"), seed_v])
+			continue
+		_apply_cfg(lv, spec)
+		lv.erase("trips")  # solve against DERIVED demand (Demand5) — matches live play
+		var budgets: Array = spec.get("budgets", [120, 400, 800])
+		var s := _solve_four(lv, budgets)
+		var stars := _star_thresholds(s)
+		var flag := ""
+		if s.novice <= 0.0 or s.expert <= s.novice * 1.05 or stars[0] <= 0:
+			flag = "  <-- SUSPECT"
+		print("REPORT %s (seed %d, %dx%d): nov=%.0f ad=%.0f ex=%.0f op=%.0f -> stars=%s%s" % [
+				lv.id, seed_v, lv.cols, lv.rows, s.novice, s.adept, s.expert, s.optimal, str(stars), flag])
+		_dump_tut(lv, stars, s)
+		print("=== END %s ===" % lv.id)
 
 
 ## tutstars: solve an already-authored LEVELS entry (by id) for its star thresholds and
@@ -1994,6 +2043,9 @@ func _initialize() -> void:
 		quit(); return
 	if mode == "tutseed":
 		_tutseed(int(args[1]), int(args[2]), str(args[3]))
+		quit(); return
+	if mode == "tutbatch":
+		_tutbatch(str(args[1]))
 		quit(); return
 	if mode == "tutstars":
 		var buds: Array = [150, 600, 1400]

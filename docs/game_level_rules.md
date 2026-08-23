@@ -127,9 +127,18 @@ If a rule here seems wrong for a task, ask — do not silently violate it.
 
 ## Process / verification (engineering rules)
 
-- **Fingerprint discipline.** `FINGERPRINT5-ALL 4261061214` must stay byte-identical for any
-  RENDERING-only change (verify with `tools/v5/run_fingerprint5.gd`). A SIM change
-  legitimately rebaselines it — flag that explicitly and keep `V5 SMOKE ALL PASS`.
+- **Fingerprint discipline.** `FINGERPRINT5-ALL 2397605712` must stay byte-identical for any
+  RENDERING-only change (verify with `tools/v5/run_fingerprint5.gd`). A SIM/CONTENT change
+  legitimately rebaselines it — flag that explicitly and keep `V5 SMOKE ALL PASS`. (This
+  baseline is the 2026-08-23 PCG regeneration: 17 fresh levels, each with a 1-row basement
+  and >=4 surface floors — see below.)
+- **Generated suite (PCG).** The shipped LEVELS are produced by `tools/_pcg_gen.gd`
+  (`tutbatch <cfg.json>` solves a whole suite in ONE process — parallel Godot on one project
+  collides on the lock). Every generated building reserves row 0 as a **1-floor basement**
+  (`ground_row: 1`, empty open shaft unless a room is authored there) and has a **variable
+  surface height of 4..9 floors** (min 4 guaranteed). The generator strips its scaffold trips
+  so it solves against DERIVED demand (Demand5) — exactly what live play uses — and emits
+  `ground_row` + `sols` + `solution`. Re-solve/extend via the batch, not by hand.
 - **Parse-check headless first** (`godot --headless ... scenes/v5_main.tscn --quit-after N`)
   before the windowed run — a parse error makes the windowed scene hang silently.
 - **Commit + push often**, directly to `main`, only after verifying green.
