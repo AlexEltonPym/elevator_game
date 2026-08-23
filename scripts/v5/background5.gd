@@ -123,27 +123,37 @@ func _draw() -> void:
 	_draw_ground(gy, night)
 
 
-func _draw_celestial(gy: float, p: float, night: float) -> void:
-	# Sun: parametric across 0..0.9 of the day; after that a moon rises for the night.
-	var span := 0.90
-	var st := clampf(p / span, 0.0, 1.0)
+## A WIDE, shallow arc for the sun/moon: they rise off the left edge low in the open sky
+## beside the building, sweep up to an apex over the roof, and set off the right edge — so
+## most of their travel is in clear side-sky, not hidden behind the tower. `t` is the arc
+## parameter 0..1; returns the screen position on that parabola.
+func _arc_pos(gy: float, t: float) -> Vector2:
 	var sky_h := gy - TOP_HUD
+	var edge_y := gy - sky_h * 0.42   # height at the screen edges (level with the building sides)
+	var peak_y := gy - sky_h * 0.99   # apex, just under the top HUD
+	var u := 2.0 * t - 1.0            # -1 at left edge .. 0 at apex .. +1 at right edge
+	return Vector2(lerpf(-45.0, VP.x + 45.0, t), peak_y + (edge_y - peak_y) * u * u)
+
+
+func _draw_celestial(gy: float, p: float, night: float) -> void:
+	# Sun: rides the arc across 0..0.92 of the day, then a moon rises on the left for the night.
+	var span := 0.92
 	if p < span:
-		var sx := lerpf(80.0, VP.x - 80.0, st)
-		var sy := gy - 40.0 - sin(st * PI) * (sky_h * 0.72)
-		var low := 1.0 - sin(st * PI)               # 1 at horizon, 0 at noon
+		var st := clampf(p / span, 0.0, 1.0)
+		var pos := _arc_pos(gy, st)
+		var low := (2.0 * st - 1.0) * (2.0 * st - 1.0)   # 1 at the horizon edges, 0 at the apex
 		var col := Color(1.0, 0.96, 0.80).lerp(Color(1.0, 0.62, 0.36), low)
-		draw_circle(Vector2(sx, sy), 60.0, Color(col, 0.10))   # glow
-		draw_circle(Vector2(sx, sy), 42.0, Color(col, 0.20))
-		draw_circle(Vector2(sx, sy), 27.0, col)
+		draw_circle(pos, 62.0, Color(col, 0.10))   # glow
+		draw_circle(pos, 43.0, Color(col, 0.20))
+		draw_circle(pos, 27.0, col)
 	if night > 0.04:
+		# Moon rises on the left and climbs toward the apex as the night deepens.
 		var mt := clampf((p - 0.80) / 0.20, 0.0, 1.0)
-		var mx := lerpf(120.0, VP.x - 150.0, mt)
-		var my := gy - 60.0 - sin(clampf(mt, 0.0, 1.0) * PI * 0.6 + 0.15) * (sky_h * 0.55)
+		var pos := _arc_pos(gy, lerpf(0.06, 0.40, mt))
 		var mc := Color(0.92, 0.93, 0.85, night)
-		draw_circle(Vector2(mx, my), 30.0, Color(mc, night * 0.12))
-		draw_circle(Vector2(mx, my), 22.0, mc)
-		draw_circle(Vector2(mx + 8.0, my - 5.0), 20.0,
+		draw_circle(pos, 30.0, Color(mc, night * 0.12))
+		draw_circle(pos, 22.0, mc)
+		draw_circle(pos + Vector2(8.0, -5.0), 20.0,
 				Color(_sky_at(p)[0], night * 0.9))   # crescent bite in the sky colour
 
 
