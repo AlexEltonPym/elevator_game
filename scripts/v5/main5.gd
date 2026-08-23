@@ -111,6 +111,7 @@ var reject_until_ms := 0
 # the last rejected commit, so Grid5 can glow it. Vector2i(-1,-1) = none.
 var reject_stop := Vector2i(-1, -1)
 
+@onready var background: Node2D = $Background
 @onready var grid: Grid5 = $Grid
 @onready var cars_node: Node2D = $Cars
 @onready var passengers_node: Node2D = $Passengers
@@ -132,6 +133,9 @@ func _ready() -> void:
 		for n in [grid, cars_node, passengers_node]:
 			n.scale = Vector2(Grid5.view_scale, Grid5.view_scale)
 			n.position = Grid5.view_offset
+		# The background draws in raw screen space (it lines up on Grid5.GROUND_Y itself),
+		# so it is NOT given the grid view transform — only the shift clock, for day/night.
+		background.game = self
 	CARDS = level.cards
 	QUOTA = level.quota
 	MAX_LOST = level.max_lost

@@ -49,13 +49,23 @@ If a rule here seems wrong for a task, ask — do not silently violate it.
    silhouettes. A dock tucked in a room's OWN concavity (same room above/below) is fine;
    only a dock under a DIFFERENT room is banned (rule 2c).
 
-3b. **People-entry rooms touch the bottom edge, in the corners.** Rooms where PEOPLE enter
-   the building **from outside the screen** (off the bottom of the map) — always the lobby,
-   and any similar people-entrance — sit in the bottom corners (lobby = bottom-left). Flip a
-   corner room horizontally so its dock faces inward. An internal room (e.g. a STORAGE /
-   cargo bay for goods, not people) does NOT need to touch the bottom and can sit in the
-   interior. (Rooms can carry a `label` field to show custom background text while keeping
-   their type/theme — e.g. a "delivery"-typed room labelled STORAGE.)
+3b. **People-entry rooms touch the GROUND floor, in the corners.** Rooms where PEOPLE enter
+   the building **from the street** — always the lobby, and any similar people-entrance — sit
+   on the ground floor in the corners (lobby = ground-left). Flip a corner room horizontally
+   so its dock faces inward. An internal room (e.g. a STORAGE / cargo bay for goods, not
+   people) does NOT need to touch the ground and can sit in the interior. (Rooms can carry a
+   `label` field to show custom background text while keeping their type/theme — e.g. a
+   "delivery"-typed room labelled STORAGE.)
+
+3c. **The building sits on the world GROUND LINE; the lobby is on the GROUND floor, not the
+   "lowest floor".** The map is anchored so its ground row rests on street level (grass above
+   dirt) — `Grid5` no longer centres it. `ground_row` (level field, default 0) is the row
+   whose bottom edge is street level; **rows below `ground_row` are the BASEMENT** — a normal
+   playable floor that just happens to be underground (dirt behind it). A basement level sets
+   `ground_row: 1` (row 0 becomes the basement), keeps the lobby on `ground_row`, and stays
+   short enough that the dirt band can show a full basement floor. Existing levels ship
+   `ground_row = 0` (lobby already on the lowest row = the ground floor). The sky/skyline/
+   grass/dirt + day-night are drawn by `Background5` off `Grid5.GROUND_Y`.
 
 4. **Tall rooms = one extra-tall space, never stacked floors.** A tall room is a single
    volume (skylight at the top), not sliced into floors by internal borders. A ladder
@@ -81,6 +91,11 @@ If a rule here seems wrong for a task, ask — do not silently violate it.
 
 ## Visual language
 
+- **Tile standard — every non-room cell is exactly one of two things, one look each:**
+  a **SOLID** wall (raised concrete block, un-routable — the `blocked` list) or an **OPEN**
+  shaft (recessed dark channel, the routable space a lift snakes through — the default).
+  They must never blur together; `Grid5._draw_solid` / `_draw_shaft` own the two looks.
+  (Corridors are a third, striped, width-limited variant of an open cell.)
 - **Each room TYPE has a unique background colour + theme.** Once you learn a room, you
   know how it behaves. Shapes may vary but the colour is authoritative. (Current temporary
   aid: a faint background TYPE label is drawn in each room — this is scaffolding; the goal

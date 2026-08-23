@@ -34,6 +34,13 @@ static var ROWS := 7
 static var ORIGIN := Vector2(45.0, 100.0)
 static var view_scale := 1.0
 static var view_offset := Vector2.ZERO
+# WORLD GROUND (realism pass): the building sits ON a ground line near the bottom of the
+# play area instead of floating centred. GROUND_ROW is the grid row whose BOTTOM edge is
+# street level (default 0 = the lowest row is the ground floor); rows below it are the
+# BASEMENT (underground). GROUND_Y is that line in screen space, published so Background5
+# can paint sky above / grass + dirt below and line the building up on it.
+static var GROUND_ROW := 0
+static var GROUND_Y := 1000.0
 
 # Per-level derived data (rebuilt in load_level).
 static var _blocked := {} # Vector2i -> true
@@ -86,6 +93,8 @@ const ROOM_STYLE := {
 	"atrium":    {"bg": Color(0.73, 0.61, 0.83), "line": Color(0.48, 0.34, 0.60), "furn": "Objects/Living Room/Flora_daisy_4.png"},
 	"penthouse": {"bg": Color(0.89, 0.79, 0.43), "line": Color(0.66, 0.52, 0.20), "furn": "Furniture/Living Room/Couch_large_red.png"},
 }
+## The building cross-section fill (concrete). The solid/shaft tiles are read relative to it.
+const BUILDING_FILL := Color(0.22, 0.21, 0.25)
 const _PS := "res://assets/pixel/pixelspaces/"
 # Uniform art scale: 1 PixelSpaces pixel -> ART_K logical px, for EVERY sprite (furniture,
 # people, doors, cart) so native art RATIOS are preserved (a 23px fridge stays taller than a
@@ -124,15 +133,25 @@ const PAIR_COLS := [
 static func load_level(level: Dictionary) -> void:
 	COLS = int(level.cols)
 	ROWS = int(level.rows)
+	GROUND_ROW = int(level.get("ground_row", 0))
 	ORIGIN = Vector2((GRID_X - COLS * CELL) / 2.0,
 			GRID_Y_TOP + (GRID_Y_H - ROWS * CELL) / 2.0)
 	var bbox_w := COLS * CELL
 	var bbox_h := ROWS * CELL
 	view_scale = minf(1.0, minf(GRID_X / bbox_w, GRID_Y_H / bbox_h))
 	var cx := ORIGIN.x + bbox_w / 2.0
-	var cy := ORIGIN.y + bbox_h / 2.0
-	view_offset = Vector2(GRID_X / 2.0 - view_scale * cx,
-			(GRID_Y_TOP + GRID_Y_H / 2.0) - view_scale * cy)
+	view_offset.x = GRID_X / 2.0 - view_scale * cx
+	# VERTICAL: ground-anchor instead of centring. The building drops so its ground row
+	# sits low in the play area, leaving a band below for the basement + dirt; the sky
+	# fills whatever slack is left ABOVE. bottom_gap (the basement/dirt band) is capped by
+	# the available slack, so a tall tower still fits — it just shows a thinner dirt strip.
+	var scaled_h := view_scale * bbox_h
+	var free_v := GRID_Y_H - scaled_h
+	var want_gap := view_scale * CELL * (float(GROUND_ROW) + 1.2)
+	var bottom_gap := clampf(want_gap, 0.0, free_v)
+	view_offset.y = (GRID_Y_TOP + GRID_Y_H - bottom_gap) - view_scale * (ORIGIN.y + bbox_h)
+	# The world ground line in SCREEN space = the bottom edge of GROUND_ROW.
+	GROUND_Y = view_offset.y + view_scale * (ORIGIN.y + float(ROWS - GROUND_ROW) * CELL)
 	_blocked = {}
 	for c in level.get("blocked", []):
 		_blocked[c] = true
@@ -453,13 +472,24 @@ func _ensure_tex() -> void:
 		_door_open = load(_PS + "Furniture/Elevator_opened.png")
 
 
-## A drawn full-cell window (glass + frame + mullions) — for blocked/facade cells.
-func _draw_window(rect: Rect2) -> void:
-	var g := rect.grow(-6.0)
-	draw_rect(g, Color(0.20, 0.22, 0.27))
-	draw_rect(g.grow(-2.0), Color(0.54, 0.71, 0.82))
-	draw_rect(Rect2(g.get_center().x - 1.5, g.position.y, 3.0, g.size.y), Color(0.72, 0.82, 0.88))
-	draw_rect(Rect2(g.position.x, g.get_center().y - 1.5, g.size.x, 3.0), Color(0.72, 0.82, 0.88))
+## SOLID (un-routable) tile — the "wall" half of the tile standard. A raised concrete
+## block: light top bevel + dark base so it reads as a solid, impassable mass, with one
+## mortar course so it's masonry rather than a flat swatch.
+func _draw_solid(rect: Rect2) -> void:
+	draw_rect(rect, Color(0.33, 0.32, 0.36))
+	draw_rect(Rect2(rect.position, Vector2(rect.size.x, 4.0)), Color(0.41, 0.40, 0.45))
+	draw_rect(Rect2(rect.position.x, rect.end.y - 4.0, rect.size.x, 4.0), Color(0.20, 0.19, 0.23))
+	draw_rect(Rect2(rect.position.x, rect.get_center().y - 1.0, rect.size.x, 2.0),
+			Color(0, 0, 0, 0.18))
+	draw_rect(rect, Color(0, 0, 0, 0.30), false, 1.5)
+
+
+## OPEN (routable) tile — the "you may draw here" half of the standard. A recessed shaft
+## channel: distinctly darker and sunk-in vs a solid block, with a soft inner shadow.
+func _draw_shaft(rect: Rect2) -> void:
+	draw_rect(rect, Color(0.15, 0.16, 0.21))
+	draw_rect(rect.grow(-5.0), Color(0.10, 0.11, 0.15))
+	draw_rect(rect, Color(0, 0, 0, 0.22), false, 1.0)
 
 
 ## Draw a sprite centred in `rect` at the uniform ART_K scale (native ratios), nearest.
@@ -524,10 +554,17 @@ func _process(_delta: float) -> void:
 
 
 func _draw() -> void:
-	# Faint building facade behind everything.
-	draw_rect(Rect2(ORIGIN - Vector2(8, 8),
-			Vector2(COLS * CELL + 16, ROWS * CELL + 16)), Color(0.13, 0.13, 0.16))
-	# Open + blocked cells first (recede), then rooms, then dock marks, routes.
+	# THE BUILDING is one solid cross-section sitting ON the world ground line (Background5
+	# paints the sky above and the grass/dirt below and lines up on Grid5.GROUND_Y). A single
+	# concrete mass with a roofline catching the light — never a floating facade.
+	var bpanel := Rect2(ORIGIN - Vector2(8, 8),
+			Vector2(COLS * CELL + 16, ROWS * CELL + 16))
+	draw_rect(bpanel, BUILDING_FILL)
+	draw_rect(Rect2(bpanel.position, Vector2(bpanel.size.x, 6.0)), BUILDING_FILL.lightened(0.14))
+	draw_rect(bpanel, Color(0, 0, 0, 0.30), false, 2.0)
+	# TILE STANDARD: every non-room, non-corridor cell is EXACTLY one of two things and reads
+	# as one look each so the two never blur — a SOLID wall (raised concrete, can't route) or
+	# an OPEN shaft (recessed dark channel, the space a lift snakes through).
 	for y in ROWS:
 		for x in COLS:
 			var c := Vector2i(x, y)
@@ -537,22 +574,9 @@ func _draw() -> void:
 			if Grid5.is_corridor(c):
 				_draw_corridor(rect, c)
 			elif not Grid5.passable(c):
-				# BLOCKED = solid wall structure. A deterministic subset shows a window so
-				# the walls read as a building facade rather than dead space.
-				draw_rect(rect, Color(0.30, 0.27, 0.29))
-				if (c.x + c.y) % 2 == 0:
-					_draw_window(rect)
-				else:
-					for k in 2:
-						draw_rect(Rect2(rect.position.x, rect.position.y
-								+ (k + 1) * rect.size.y / 3.0, rect.size.x, 2.0),
-								Color(0, 0, 0, 0.16))
-				draw_rect(rect, Color(0, 0, 0, 0.28), false, 1.5)
+				_draw_solid(rect)
 			else:
-				# OPEN = the shaft / routing space a lift snakes through: a recessed channel.
-				draw_rect(rect, Color(0.155, 0.165, 0.20))
-				draw_rect(rect.grow(-5.0), Color(0.115, 0.125, 0.16))
-				draw_rect(rect, Color(0, 0, 0, 0.18), false, 1.0)
+				_draw_shaft(rect)
 			# Disjoint tiles are the DEFAULT and render blank; only SHAREABLE tiles (cap
 			# lets >= 2 width-2 lifts overlap) get a subtle "you may double up here" tint.
 			if Grid5.overlap_cap(c) >= 4:
