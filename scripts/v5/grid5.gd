@@ -634,96 +634,21 @@ func _draw() -> void:
 		_draw_dock(mark, covered.get(mark.dock, []), open_docks.has(mark.dock))
 	# Committed routes (nudged so overlaps stay readable). A FAST (express) lift draws
 	# its line AS the acceleration heatmap — amber where it's ramping/braking, green
-	# where it's up to speed — so the speed profile IS the line you laid down.
+	# EVERY lift draws as a plain route line in its card colour — the express no longer draws
+	# the acceleration heatmap (the amber->green speed gradient read as clutter).
 	for i in game.routes.size():
 		var route = game.routes[i]
 		if route == null:
 			continue
-		if i < game.cars.size() and game.cars[i].speed > Car5.STANDARD_SPEED:
-			_draw_heatmap_line(route.cells, game.cars[i], route.closed,
-					game.selected_card == i, false)
-		else:
-			_draw_route(route.cells, game.CARDS[i].color, i,
-					game.selected_card == i, route.served_rooms().size() < 2, route.closed)
+		_draw_route(route.cells, game.CARDS[i].color, i,
+				game.selected_card == i, route.served_rooms().size() < 2, route.closed)
 	# (dropoff capacity pips removed — they read as clutter on the docks; the shareable-tile
 	# tint alone signals where routes may double up.)
-	# Live drag preview on top — the express stroke previews as the heatmap line too.
+	# Live drag preview on top (plain stroke for every card, express included).
 	if game.drawing and game.stroke.size() > 0 and game.selected_card >= 0:
-		if game.cars[game.selected_card].speed > Car5.STANDARD_SPEED:
-			_draw_heatmap_line(game.stroke, game.cars[game.selected_card],
-					game.stroke_closed, true, true)
-		else:
-			_draw_stroke_preview(game.stroke, game.CARDS[game.selected_card].color,
-					game.stroke_closed)
+		_draw_stroke_preview(game.stroke, game.CARDS[game.selected_card].color,
+				game.stroke_closed)
 	_draw_momentum_hints()
-
-
-## Per-cell speed fraction along a lift's route: v = min(accel-from-the-last-stop,
-## brake-to-the-next-stop, top speed), normalised to top speed. Stops are the route's
-## dock cells; an open route's two ends are turnarounds (also stops).
-func _speed_fracs(cells: Array, car, closed: bool) -> PackedFloat32Array:
-	var n := cells.size()
-	var out := PackedFloat32Array()
-	out.resize(n)
-	var stops: Array = []
-	for j in n:
-		if Grid5.is_dock(cells[j]):
-			stops.append(j)
-	if not closed:
-		if stops.is_empty() or stops[0] != 0:
-			stops.push_front(0)
-		if stops.back() != n - 1:
-			stops.append(n - 1)
-	if stops.size() < 2 or car.speed <= 0.0:
-		for j in n:
-			out[j] = 1.0
-		return out
-	for j in n:
-		var dprev := 1 << 20
-		var dnext := 1 << 20
-		for s in stops:
-			var db: int = posmod(j - s, n) if closed else j - s
-			var df: int = posmod(s - j, n) if closed else s - j
-			if db >= 0 and db < dprev:
-				dprev = db
-			if df >= 0 and df < dnext:
-				dnext = df
-		var v_acc := sqrt(2.0 * car.accel * float(dprev) * CELL)
-		var v_brk := sqrt(2.0 * car.decel * float(dnext) * CELL)
-		out[j] = clampf(minf(minf(v_acc, v_brk), car.speed) / car.speed, 0.0, 1.0)
-	return out
-
-
-## Draw a fast lift's route AS its acceleration heatmap: a thick polyline whose colour
-## runs amber (ramping / braking) to green (up to speed) per segment. The amber length
-## leaving a stop reads as "blocks until up to speed"; a segment that never greens is
-## too tight to be worth skipping into. `head_pulse` marks the drawing end of a stroke.
-func _draw_heatmap_line(cells: Array, car, closed: bool, selected: bool, head_pulse: bool) -> void:
-	if cells.size() < 2:
-		return
-	var fr := _speed_fracs(cells, car, closed)
-	var amber := Color(0.96, 0.53, 0.18)
-	var green := Color(0.36, 0.96, 0.46)
-	var pts: Array = []
-	for c in cells:
-		pts.append(cell_center(c))
-	if selected:
-		# Soft selection halo under the line.
-		for j in pts.size() - 1:
-			draw_line(pts[j], pts[j + 1], Color(1, 1, 1, 0.18), 13.0)
-	var last := pts.size() - 1
-	for j in last:
-		var col := amber.lerp(green, (fr[j] + fr[j + 1]) * 0.5)
-		draw_line(pts[j], pts[j + 1], Color(col, 0.96), 9.0)
-	if closed:
-		var col := amber.lerp(green, (fr[last] + fr[0]) * 0.5)
-		draw_line(pts[last], pts[0], Color(col, 0.96), 9.0)
-	for j in pts.size():
-		draw_circle(pts[j], 3.5, Color(amber.lerp(green, fr[j]), 0.95))
-	if head_pulse:
-		var head: Vector2 = pts[0] if closed else pts[last]
-		var pulse := 10.0 + 4.0 * sin(Time.get_ticks_msec() / 90.0)
-		draw_arc(head, pulse, 0.0, TAU, 24, Color.WHITE, 3.0)
 
 
 ## MOMENTUM feedback: for a card that carries `min_hop`, ring in warning-red any stop
