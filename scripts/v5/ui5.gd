@@ -43,6 +43,11 @@ static func star_tex(filled: bool) -> Texture2D:
 	return tex("Yellow/Default/star.png") if filled else tex("Grey/Default/star_outline.png")
 
 
+## The "perfected" star — all three turn blue when you top the range (replaces the 4th star).
+static func star_blue_tex() -> Texture2D:
+	return tex("Blue/Default/star.png")
+
+
 static func arrow_tex(dir: String) -> Texture2D:
 	return tex("Grey/Default/arrow_basic_%s.png" % dir)  # "w" / "e"
 

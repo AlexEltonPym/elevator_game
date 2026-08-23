@@ -5,14 +5,17 @@ extends Control
 
 signal tapped
 
+const Ui5 := preload("res://scripts/v5/ui5.gd")
 enum Kind { PLAY, FF }
 var kind := Kind.PLAY
 var active := false
 var accent := Color(0.42, 0.62, 0.88)
+var _arrow: Texture2D
 
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
+	_arrow = Ui5.arrow_tex("e")  # the Kenney play triangle (FF = two of them)
 
 
 func _gui_input(event: InputEvent) -> void:
@@ -35,25 +38,21 @@ func _draw() -> void:
 	var bg: Color = accent if active else Color(0.17, 0.18, 0.23)
 	_rrect(Rect2(Vector2.ZERO, r), 10.0, bg)
 	_rrect(Rect2(Vector2.ZERO, r), 10.0, Color(0, 0, 0, 0.35), false)
-	var fg := Color(0.10, 0.11, 0.14) if active else Color(0.82, 0.85, 0.92)
+	var fg := Color(0.12, 0.13, 0.16) if active else Color(0.86, 0.89, 0.95)
+	if _arrow == null:
+		return
+	# Kenney play triangle (arrow_basic_e), tinted. Play = one; fast-forward = two overlapping.
+	var ah := r.y * 0.52
+	var aw := ah * (float(_arrow.get_width()) / float(_arrow.get_height()))
 	if kind == Kind.PLAY:
-		_tri(r, 0.36, 0.66, fg)
+		_blit_arrow(Vector2(r.x * 0.5, r.y * 0.5), aw, ah, fg)
 	else:
-		_tri(r, 0.20, 0.50, fg)
-		_tri(r, 0.50, 0.80, fg)
+		_blit_arrow(Vector2(r.x * 0.37, r.y * 0.5), aw * 0.86, ah * 0.86, fg)
+		_blit_arrow(Vector2(r.x * 0.63, r.y * 0.5), aw * 0.86, ah * 0.86, fg)
 
 
-## A right-pointing rounded triangle spanning x in [x0f, x1f] of the control, vertically centred.
-func _tri(r: Vector2, x0f: float, x1f: float, col: Color) -> void:
-	var x0 := r.x * x0f
-	var x1 := r.x * x1f
-	var yh := r.y * 0.22
-	var cy := r.y * 0.5
-	var pts := PackedVector2Array([
-			Vector2(x0, cy - yh), Vector2(x1, cy), Vector2(x0, cy + yh)])
-	draw_colored_polygon(pts, col)
-	for p in pts:
-		draw_circle(p, 2.5, col)  # round the corners
+func _blit_arrow(c: Vector2, w: float, h: float, tint: Color) -> void:
+	draw_texture_rect(_arrow, Rect2(c - Vector2(w, h) * 0.5, Vector2(w, h)), false, tint)
 
 
 ## A filled or outlined rounded rectangle (corner discs + edge bars).

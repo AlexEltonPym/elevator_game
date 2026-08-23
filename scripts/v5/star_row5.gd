@@ -7,18 +7,22 @@ const Ui5 := preload("res://scripts/v5/ui5.gd")
 const ASPECT := 60.0 / 64.0   # Kenney star.png is 64x60
 
 var slots := 3
+var perfect := false        # true = topped the range: the filled stars are BLUE (no 4th star)
 var _fill: Array = []       # per-slot gold scale, 0 = empty, ~1 = filled (animated)
 var star_px := 84.0
 var gap := 18.0
 var _empty: Texture2D
 var _full: Texture2D
+var _blue: Texture2D
 
 
-func setup(count := 3, px := 84.0) -> void:
+func setup(count := 3, px := 84.0, perfect_v := false) -> void:
 	slots = count
 	star_px = px
+	perfect = perfect_v
 	_empty = Ui5.star_tex(false)
 	_full = Ui5.star_tex(true)
+	_blue = Ui5.star_blue_tex()
 	_fill = []
 	for i in slots:
 		_fill.append(0.0)
@@ -49,8 +53,9 @@ func _blit(c: Vector2, scale: float, t: Texture2D) -> void:
 
 
 func _draw() -> void:
+	var fill_tex: Texture2D = _blue if perfect else _full
 	for i in slots:
 		_blit(_center(i), 1.0, _empty)
 	for i in slots:
 		if _fill[i] > 0.01:
-			_blit(_center(i), _fill[i], _full)
+			_blit(_center(i), _fill[i], fill_tex)

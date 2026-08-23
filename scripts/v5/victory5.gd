@@ -99,7 +99,8 @@ func _build(cfg: Dictionary) -> void:
 	star_wrap.custom_minimum_size.y = 96
 	box.add_child(star_wrap)
 	_star_row = StarRow5.new()
-	_star_row.setup(3, 82.0)
+	_star_row.setup(3, 82.0, _sc >= 4)
+	_star_row.tooltip_text = _star_tooltip()
 	star_wrap.add_child(_star_row)
 
 	var rat: Dictionary = RATING[_sc]
@@ -159,6 +160,17 @@ func _build(cfg: Dictionary) -> void:
 				or (e is InputEventScreenTouch and e.pressed):
 			_finalize())
 	add_child(_catcher)
+
+
+## Tooltip listing the tip total each star needs (from the level's `stars` thresholds).
+func _star_tooltip() -> String:
+	var th: Array = _game.level.get("stars", []) if _game != null else []
+	if th.size() < 3:
+		return ""
+	var s := "1 star  %d tips\n2 stars  %d tips\n3 stars  %d tips" % [int(th[0]), int(th[1]), int(th[2])]
+	if th.size() >= 4:
+		s += "\nperfect  %d tips" % int(th[3])
+	return s
 
 
 func _make_break(left: String, right: String, col: Color) -> HBoxContainer:
