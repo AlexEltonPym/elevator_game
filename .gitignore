@@ -9,13 +9,16 @@ mono_crash.*.json
 
 # Exports
 export.cfg
-export_presets.cfg
 *.pck
 *.apk
 *.aab
 *.exe
 *.dmg
 *.zip
+# ...but the committed WEB build under docs/ IS tracked (GitHub Pages hosting): its .pck
+# (game + baked art) and the export preset need to be in the repo.
+!export_presets.cfg
+!docs/index.pck
 
 # Depth-tool run artifacts. The COMMITTED output is docs/depth-report5.md;
 # the per-level JSON, run caches and logs under tools/out/ are scratch.
