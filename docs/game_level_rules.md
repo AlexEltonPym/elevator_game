@@ -127,18 +127,27 @@ If a rule here seems wrong for a task, ask — do not silently violate it.
 
 ## Process / verification (engineering rules)
 
-- **Fingerprint discipline.** `FINGERPRINT5-ALL 2397605712` must stay byte-identical for any
+- **Fingerprint discipline.** `FINGERPRINT5-ALL 842144974` must stay byte-identical for any
   RENDERING-only change (verify with `tools/v5/run_fingerprint5.gd`). A SIM/CONTENT change
-  legitimately rebaselines it — flag that explicitly and keep `V5 SMOKE ALL PASS`. (This
-  baseline is the 2026-08-23 PCG regeneration: 17 fresh levels, each with a 1-row basement
-  and >=4 surface floors — see below.)
-- **Generated suite (PCG).** The shipped LEVELS are produced by `tools/_pcg_gen.gd`
-  (`tutbatch <cfg.json>` solves a whole suite in ONE process — parallel Godot on one project
-  collides on the lock). Every generated building reserves row 0 as a **1-floor basement**
-  (`ground_row: 1`, empty open shaft unless a room is authored there) and has a **variable
-  surface height of 4..9 floors** (min 4 guaranteed). The generator strips its scaffold trips
-  so it solves against DERIVED demand (Demand5) — exactly what live play uses — and emits
-  `ground_row` + `sols` + `solution`. Re-solve/extend via the batch, not by hand.
+  legitimately rebaselines it — flag that explicitly and keep `V5 SMOKE ALL PASS`.
+- **Suite = HAND tutorials + PCG crosslink (2026-08-23).** T-1..T-7 are HAND-AUTHORED (a
+  simple teaching ramp; the PCG tutorials were "too much going on"). XL1..XL10 are generated
+  by `tools/_pcg_gen.gd` (`tutbatch <cfg.json>` solves a whole suite in ONE process — parallel
+  Godot on one project collides on the lock). The generator strips its scaffold trips so it
+  solves against DERIVED demand (Demand5) — exactly what live play uses — and emits
+  `sols` + `solution`.
+- **Basements retired (for now).** `BASEMENT=0` — buildings sit on the ground floor, no
+  underground floor (it read poorly without its own art). The `ground_row` mechanism stays in
+  `Grid5`/the generator for when it returns; grass line lowered so only a thin dirt lip shows.
+- **0-lost is DESIGNED IN, not runtime-capped.** A level whose BEST plan still drops riders is
+  INFEASIBLE — the gate classifies it `LOSSY` (into the infeasible set; `_classify` +
+  `_mapgen`), and the curated `tutbatch` flags `optimal_lost>0`. Verify a suite is clean with
+  `tools/_check_lost.gd` (runs each `solution` at the shipped seed hash(id)); every shipped
+  level must show `lost=0`.
+- **Decorative windows.** Random `blocked` cells are sprinkled on every level for facade
+  detail (they render as lit-glass windows — `grid5._draw_solid`, ~60% windowed). They are
+  placed OFF every room/dock/route cell so they never affect a solution or difficulty; sparse
+  tutorials get more, dense levels fewer. Injected post-solve by `scratchpad/assemble2.py`.
 - **Parse-check headless first** (`godot --headless ... scenes/v5_main.tscn --quit-after N`)
   before the windowed run — a parse error makes the windowed scene hang silently.
 - **Commit + push often**, directly to `main`, only after verifying green.

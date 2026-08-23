@@ -524,20 +524,47 @@ func _draw() -> void:
 		draw_rect(body, Color(0, 0, 0, 0.45), false, 2.0)
 		draw_rect(Rect2(Vector2(-bw / 2.0 + 1.0, feet - 21.0), Vector2(bw - 2.0, 13.0)),
 				Color(1, 1, 1, 0.85))
-	# Destination blob above the head: a disc in the (FINAL) DESTINATION room's colour — no
-	# letter (too little resolution for one, and the room colour already says where they're
-	# headed). Shown for the WHOLE trip — it appears when they first queue up (activated) and
-	# stays through boarding, riding and transfers, only vanishing once they ARRIVE (the
-	# between-dwell after being served) or the trip ends.
+	# STATUS BADGE above the head: the (final) DESTINATION room's colour (where they're headed)
+	# drawn as a CLOCK WIPE that empties as their patience falls — a full disc when fresh, a
+	# shrinking pie as they wait. Low patience pulses + flushes warm; a NO-ROUTE rider (the
+	# network can't reach their destination) turns the whole badge red and pulses fast — the
+	# replacement for the old "?". Shown for the whole trip (queue -> board -> ride -> transfer),
+	# vanishing only once they arrive (between-dwell) or the trip ends.
 	if active and activated and not between:
-		var badge_y := feet - side - 6.0
-		draw_circle(Vector2(0, badge_y), 9.0 * rs, Color(0.08, 0.08, 0.10, 0.95))  # dark border ring
-		draw_circle(Vector2(0, badge_y), 7.0 * rs, Grid5.room_color(dest_room))
-	if no_path and activated and not between and riding == null:
-		var by := -32.0
-		draw_circle(Vector2(0, by), 9.0, Color(1, 1, 1, 0.92))
-		draw_string(ThemeDB.fallback_font, Vector2(-4.0, by + 5.0), "?",
-				HORIZONTAL_ALIGNMENT_CENTER, -1.0, 15, Color(0.1, 0.1, 0.1))
+		var center := Vector2(0, feet - side - 6.0)
+		var frac := clampf(patience / maxf(1.0, patience_max), 0.0, 1.0)
+		var no_route := no_path and riding == null
+		var bcol: Color = Grid5.room_color(dest_room)
+		var r := 9.0 * rs
+		if no_route:
+			var beat := 0.5 + 0.5 * sin(vis_t * 11.0)
+			bcol = Color(0.96, 0.26, 0.22).lerp(Color(1.0, 0.86, 0.32), 0.25 * beat)
+			r *= 1.0 + 0.20 * beat
+		elif frac < 0.28:
+			var beat := 0.5 + 0.5 * sin(vis_t * 8.0)
+			bcol = bcol.lerp(Color(0.98, 0.35, 0.30), 0.55 * beat)
+			r *= 1.0 + 0.14 * beat
+		draw_circle(center, r + 2.0, Color(0.08, 0.08, 0.10, 0.95))  # dark border ring
+		draw_circle(center, r, Color(bcol, 0.22))                     # faint full track
+		_draw_pie(center, r, frac, Color(bcol, 0.98))                 # remaining-patience wedge
+
+
+## A filled pie wedge from 12 o'clock, sweeping clockwise over `frac` of the circle — the
+## clock-wipe that empties as patience falls (frac 1 = full disc, 0 = gone).
+func _draw_pie(center: Vector2, r: float, frac: float, col: Color) -> void:
+	if frac <= 0.001:
+		return
+	if frac >= 0.999:
+		draw_circle(center, r, col)
+		return
+	var steps := maxi(3, int(ceil(frac * 24.0)))
+	var pts := PackedVector2Array()
+	pts.append(center)
+	var a0 := -PI / 2.0
+	for i in steps + 1:
+		var a := a0 + TAU * frac * (float(i) / float(steps))
+		pts.append(center + Vector2(cos(a), sin(a)) * r)
+	draw_colored_polygon(pts, col)
 
 
 ## The delivery man's hand-cart: a low wheeled bed carrying 2 taped boxes, drawn to

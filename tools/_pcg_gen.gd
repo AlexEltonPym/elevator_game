@@ -153,7 +153,7 @@ func _place(type: String, cols: int, rows: int, occ: Dictionary, docks_all: Dict
 # basement — an empty open shaft by default (rooms may sit there but need not); the ground
 # floor (people-entry / lobby) is GROUND_ROW. Surface floors = rows above the basement, with
 # a guaranteed minimum so a building always has real vertical space (even if unused).
-const BASEMENT := 1
+const BASEMENT := 0   # basement retired (read poorly); buildings sit on the ground floor
 const MIN_SURFACE := 4
 
 func _generate(seed_v: int, n_rooms := 0) -> Dictionary:
@@ -430,6 +430,15 @@ func _classify(lv: Dictionary, expert_budget := EXPERT_BUDGET, novice_tries := N
 	var rh := _red_herring(lv, mres.best_routes)
 	if rh != "":
 		return {"tier": "REDHERRING", "note": "red herring: " + rh, "expert_tips": expert_tips}
+	# 0-LOST GATE: a level whose BEST plan still drops riders is not cleanly completable, so it
+	# is INFEASIBLE (user: a perfect run should never have failed journeys — designed in, not
+	# capped at runtime). Score the expert plan; any loss on any gate seed rejects it.
+	var best_lost := 0
+	for st in tsim.score_seeds(0, mres.best_routes, seeds, STEP).get("stats", []):
+		best_lost = maxi(best_lost, int(st.get("lost", 0)))
+	if best_lost > 0:
+		return {"tier": "LOSSY", "note": "best plan loses %d rider(s)" % best_lost,
+				"expert_tips": expert_tips}
 	var adept_tips: float = mres.adept_score
 	var adept_cover: int = mres.adept_cover
 	# NOVICE accessibility: fraction of random plans reaching EXPERT_FRAC of the ceiling.
@@ -548,8 +557,9 @@ func _mapgen(outer_budget: int, expert_budget: int, jpath: String, seed_offset :
 		total += 1
 		var bd := _design_bd(lv)
 		var nkey := _bd_key(bd)
-		if res.tier == "BROKEN" or res.tier == "REDHERRING" or float(res.get("expert_tips", 0.0)) < 120.0:
+		if res.tier == "BROKEN" or res.tier == "REDHERRING" or res.tier == "LOSSY" or float(res.get("expert_tips", 0.0)) < 120.0:
 			# INFEASIBLE map: keep one representative per niche (the two-map FI structure).
+			# LOSSY (best plan drops riders) joins BROKEN/REDHERRING here — the infeasible set.
 			if not infeasible.has(nkey):
 				infeasible[nkey] = {"key": nkey, "seed": seed_v, "req": nrooms, "nrooms": int(lv.rooms.size()),
 						"reason": str(res.get("note", res.tier)), "sig": _type_sig(lv)}
@@ -1621,7 +1631,14 @@ func _solve_four(lv: Dictionary, budgets: Array) -> Dictionary:
 	MainScript.SIM_DT = GAME_DT
 	var adept: float = sim.score_seeds(0, ad_routes, test, GAME_DT).score
 	var expert: float = sim.score_seeds(0, ex_routes, test, GAME_DT).score
-	var optimal: float = sim.score_seeds(0, op_routes, test, GAME_DT).score
+	var op_res: Dictionary = sim.score_seeds(0, op_routes, test, GAME_DT)
+	var optimal: float = op_res.score
+	# LOST-ON-OPTIMUM gate: a level whose BEST plan still drops riders is discarded (the user
+	# wants 0-lost designed IN, not capped at runtime). Track the worst lost across the scored
+	# seeds so the batch can flag/reject it.
+	var op_lost := 0
+	for st in op_res.get("stats", []):
+		op_lost = maxi(op_lost, int(st.get("lost", 0)))
 	# NOVICE: representative clumsy-but-working plan = median of the POSITIVE random plans.
 	var widths := RG.card_widths(lv)
 	var all_docks := RG.docks()
@@ -1650,6 +1667,7 @@ func _solve_four(lv: Dictionary, budgets: Array) -> Dictionary:
 	# expert_routes = the OPTIMAL plan (the pre-drawable solution). tier_routes = the four
 	# skill-tier plans [1-star, 2-star, 3-star, 4-star] for the secret dev shortcut.
 	return {"novice": novice, "adept": adept, "expert": expert, "optimal": optimal,
+			"optimal_lost": op_lost,
 			"expert_routes": op_routes, "optimal_routes": op_routes,
 			"tier_routes": [nov_routes, ad_routes, ex_routes, op_routes]}
 
@@ -1848,11 +1866,13 @@ func _tutbatch(cfgpath: String) -> void:
 		var budgets: Array = spec.get("budgets", [120, 400, 800])
 		var s := _solve_four(lv, budgets)
 		var stars := _star_thresholds(s)
+		var op_lost := int(s.get("optimal_lost", 0))
 		var flag := ""
-		if s.novice <= 0.0 or s.expert <= s.novice * 1.05 or stars[0] <= 0:
-			flag = "  <-- SUSPECT"
-		print("REPORT %s (seed %d, %dx%d): nov=%.0f ad=%.0f ex=%.0f op=%.0f -> stars=%s%s" % [
-				lv.id, seed_v, lv.cols, lv.rows, s.novice, s.adept, s.expert, s.optimal, str(stars), flag])
+		# Reject: degenerate spread, zero first tier, OR the best plan still LOSES riders.
+		if s.novice <= 0.0 or s.expert <= s.novice * 1.05 or stars[0] <= 0 or op_lost > 0:
+			flag = "  <-- SUSPECT (lost=%d)" % op_lost if op_lost > 0 else "  <-- SUSPECT"
+		print("REPORT %s (seed %d, %dx%d): nov=%.0f ad=%.0f ex=%.0f op=%.0f lost=%d -> stars=%s%s" % [
+				lv.id, seed_v, lv.cols, lv.rows, s.novice, s.adept, s.expert, s.optimal, op_lost, str(stars), flag])
 		_dump_tut(lv, stars, s)
 		print("=== END %s ===" % lv.id)
 

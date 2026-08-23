@@ -67,6 +67,7 @@ func _rebuild() -> void:
 	prev.icon = Ui5.arrow_tex("w")
 	prev.position = Vector2(16, 26)
 	prev.size = Vector2(80, 76)
+	prev.disabled = page == 0
 	prev.pressed.connect(func(): _flip(-1))
 	add_child(prev)
 
@@ -74,6 +75,7 @@ func _rebuild() -> void:
 	next.icon = Ui5.arrow_tex("e")
 	next.position = Vector2(vp.x - 96, 26)
 	next.size = Vector2(80, 76)
+	next.disabled = page == Levels5.WORLDS.size() - 1
 	next.pressed.connect(func(): _flip(1))
 	add_child(next)
 
@@ -153,5 +155,7 @@ func _input(event: InputEvent) -> void:
 
 
 func _flip(dir: int) -> void:
-	page = posmod(page + dir, Levels5.WORLDS.size())
+	# CLAMP, don't wrap: the pager stops at the first/last world instead of looping back to
+	# the tutorial from the end (user: the arrows shouldn't wrap around).
+	page = clampi(page + dir, 0, Levels5.WORLDS.size() - 1)
 	_rebuild()

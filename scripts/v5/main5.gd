@@ -397,7 +397,9 @@ func _shift_end() -> void:
 	hud.show_win(served, lost)
 
 
-## Stars earned this run for the current tip total (0..4; 4 = secret optimal).
+## Stars earned this run for the current tip total (0..4; 4 = secret optimal). Levels are
+## GENERATED so their best solution loses nobody (the PCG gate discards any level whose
+## optimum still drops riders), so a clean shift is achievable by design — no runtime cap here.
 func star_count() -> int:
 	return Levels5.stars_for(level, tips)
 

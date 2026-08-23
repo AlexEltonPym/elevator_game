@@ -28,7 +28,7 @@ const SIDE_MARGIN := 24.0        # min gap left & right of the building
 const TOP_MARGIN := 30.0         # min sky above the building (under the top HUD)
 const PLAY_TOP := 98.0           # bottom edge of the top HUD bar
 const PLAY_BOTTOM := 1010.0      # top edge of the bottom card panel
-const UNDERGROUND := 128.0       # visible dirt band below the ground line
+const UNDERGROUND := 64.0        # thin dirt lip below the ground line (basement retired)
 const DIRT_LIP := 18.0           # min dirt kept below a basement's lowest row
 const GROUND_LINE := PLAY_BOTTOM - UNDERGROUND  # fixed street line (screen y)
 
@@ -494,7 +494,7 @@ func _draw_solid(rect: Rect2, c: Vector2i) -> void:
 	draw_rect(rect, Color(0.33, 0.32, 0.36))
 	draw_rect(Rect2(rect.position, Vector2(rect.size.x, 4.0)), Color(0.41, 0.40, 0.45))
 	draw_rect(Rect2(rect.position.x, rect.end.y - 4.0, rect.size.x, 4.0), Color(0.20, 0.19, 0.23))
-	if posmod(c.x * 73 + c.y * 131, 10) == 0:
+	if posmod(c.x * 73 + c.y * 131, 10) < 6:
 		_draw_window(rect)
 	else:
 		draw_rect(Rect2(rect.position.x, rect.get_center().y - 1.0, rect.size.x, 2.0),
@@ -645,7 +645,8 @@ func _draw() -> void:
 		else:
 			_draw_route(route.cells, game.CARDS[i].color, i,
 					game.selected_card == i, route.served_rooms().size() < 2, route.closed)
-	_draw_overlap_caps()
+	# (dropoff capacity pips removed — they read as clutter on the docks; the shareable-tile
+	# tint alone signals where routes may double up.)
 	# Live drag preview on top — the express stroke previews as the heatmap line too.
 	if game.drawing and game.stroke.size() > 0 and game.selected_card >= 0:
 		if game.cars[game.selected_card].speed > Car5.STANDARD_SPEED:
@@ -921,34 +922,6 @@ func _draw_corridor(rect: Rect2, c: Vector2i) -> void:
 
 
 
-## Draw each capped tile's capacity as pips along the top: `cap` squares, filled in
-## a covering car's colour up to the summed route-width currently threaded through
-## it, empty for the room that remains. So the player sees the tight tiles fill up.
-func _draw_overlap_caps() -> void:
-	for c in Grid5._overlap_cap:
-		var cap: int = Grid5._overlap_cap[c]
-		if cap < 4:
-			continue # disjoint tiles (the default) show no capacity pips
-		var used := 0
-		var fill_col := Color(0.86, 0.72, 0.34)
-		for i in game.routes.size():
-			var r = game.routes[i]
-			if r != null and r.index_of(c) >= 0:
-				used += int(game.cars[i].width)
-				fill_col = game.CARDS[i].color
-		var rect := cell_rect(c)
-		var pip := 8.0
-		var gap := 3.0
-		var total := cap * pip + (cap - 1) * gap
-		var x0 := rect.position.x + (rect.size.x - total) / 2.0
-		var y := rect.position.y + 6.0
-		for k in cap:
-			var pr := Rect2(x0 + k * (pip + gap), y, pip, pip)
-			if k < used:
-				draw_rect(pr, Color(fill_col, 0.95))
-			else:
-				draw_rect(pr, Color(0.86, 0.72, 0.34, 0.22))
-			draw_rect(pr, Color(0.86, 0.72, 0.34, 0.7), false, 1.0)
 
 
 func _draw_route(cells: Array, col: Color, index: int, selected: bool, _warn: bool,
