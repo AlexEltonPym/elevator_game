@@ -644,12 +644,35 @@ func _process(delta: float) -> void:
 	queue_redraw()
 
 
+## Ghost motion blur: when a fast lift is near its top speed, draw a few fading copies of the
+## car body trailing OPPOSITE its travel — a soft afterimage. Just the ghosts, no speed
+## lines / heatmap (those read as a speed indicator). The node isn't rotated, so the world
+## travel direction is also the local offset direction.
+func _draw_ghosts(body: Rect2) -> void:
+	if not running() or speed <= STANDARD_SPEED:
+		return
+	var hot := clampf((vel / speed - 0.80) / 0.20, 0.0, 1.0)
+	if hot <= 0.0:
+		return
+	var seg_from := Grid5.cell_center(route.cells[idx])
+	var seg_to := Grid5.cell_center(route.cells[_wrap_idx(idx + dir)])
+	var tdir := seg_to - seg_from
+	tdir = tdir.normalized() if tdir.length() > 0.01 else Vector2(0.0, -1.0)
+	var back := -tdir  # trails opposite travel
+	var spread := 14.0 + 46.0 * hot
+	for i in [3, 2, 1]:
+		var t := float(i) / 3.0
+		draw_rect(Rect2(body.position + back * spread * t, body.size),
+				Color(color.lightened(0.30), 0.30 * hot * (1.0 - 0.5 * t)))
+
+
 func _draw() -> void:
 	if car_state == CarState.UNDEPLOYED:
 		return
 	var half := body_w() / 2.0
 	var hh := BODY / 2.0
 	var body := Rect2(-half, -hh, body_w(), BODY)
+	_draw_ghosts(body)  # afterimage motion blur behind a fast-moving car (drawn under the body)
 	var parked := not running()
 	var fill_a := 0.5 if door_state != DoorState.CLOSED else 0.26
 	if idle:
