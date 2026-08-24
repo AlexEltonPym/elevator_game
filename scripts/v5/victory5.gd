@@ -1,9 +1,9 @@
 extends Control
-## Overcooked-style end-of-shift victory overlay: a panel pops in, the title lands, the
-## earned stars fill one-by-one, a rating stamp hits (FAIL:( / PASSED / GOOD / GREAT! /
-## PERFECT! for 0..4 tiers), the tip total counts up with a served/lost breakdown, then the
-## Next/Retry/Menu buttons fade in. Tap anywhere to fast-forward. Skinned with the Kenney UI
-## pack via Ui5 (falls back to flat styles if the pack is absent).
+## End-of-shift score screen: a panel pops in, the earned stars fill, then an ITEMISED tip
+## breakdown reveals one group at a time (Passengers / Executives / Deliveries / Lost) while the
+## running TOTAL counts up — stars pop as the total crosses their thresholds (synced). A rating
+## stamp lands, a "next star" line shows how far off the next tier is, then the buttons fade in.
+## Tap anywhere to fast-forward.
 
 const StarRow5 := preload("res://scripts/v5/star_row5.gd")
 const Ui5 := preload("res://scripts/v5/ui5.gd")
@@ -24,11 +24,14 @@ var _sc := 0            # star_count 0..4
 var _earned := 0        # stars filled (0..3)
 var _accent := Color(0.42, 0.62, 0.88)
 
+var _groups: Array = []   # [{label, n, amt(int, signed), col, row, amt_label}]
+var _popped := [false, false, false]
+
 var _tips_label: Label
+var _next_label: Label
 var _star_row
 var _rating_label: Label
-var _break_served: HBoxContainer
-var _break_lost: HBoxContainer
+var _rows_box: VBoxContainer
 var _finished := false
 var _master: Tween
 var _dim: ColorRect
@@ -46,12 +49,38 @@ func show_result(cfg: Dictionary) -> void:
 	_lost = _game.lost
 	_sc = _game.star_count()
 	_earned = clampi(_sc, 0, 3)
+	_groups = _build_groups()
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	var vp := get_viewport().get_visible_rect().size
 	position = Vector2.ZERO
 	size = vp
 	_build(cfg)
 	_animate()
+
+
+## Aggregate the served log by category (+ lost) into signed breakdown groups.
+func _build_groups() -> Array:
+	var agg := {"pax": [0, 0.0], "exec": [0, 0.0], "cargo": [0, 0.0]}
+	for e in _game.log_served:
+		var c := str(e.get("cat", "pax"))
+		if not agg.has(c):
+			c = "pax"
+		agg[c][0] += 1
+		agg[c][1] += float(e.get("tip", 0.0))
+	var out: Array = []
+	var defs := [
+		["pax", "Passengers", Color(0.80, 0.88, 0.96)],
+		["exec", "Executives", Color(0.97, 0.62, 0.30)],
+		["cargo", "Deliveries", Color(0.96, 0.82, 0.30)],
+	]
+	for d in defs:
+		var a = agg[d[0]]
+		if a[0] > 0:
+			out.append({"label": d[1], "n": a[0], "amt": roundi(a[1]), "col": d[2]})
+	if _lost > 0:
+		out.append({"label": "Lost", "n": _lost, "amt": -_lost * int(_game.LOST_TIP),
+				"col": Color(0.96, 0.5, 0.46)})
+	return out
 
 
 func _font(l: Control, sz: int, col: Color) -> void:
@@ -79,57 +108,77 @@ func _build(cfg: Dictionary) -> void:
 	_panel = PanelContainer.new()
 	_panel.add_theme_stylebox_override("panel", Ui5.panel_box())
 	center.add_child(_panel)
-	_panel.pivot_offset = Vector2(230, 300)
+	_panel.pivot_offset = Vector2(230, 320)
 	_panel.scale = Vector2(0.6, 0.6)
 	_panel.modulate.a = 0.0
 
 	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 16)
-	box.custom_minimum_size.x = 452
+	box.add_theme_constant_override("separation", 14)
+	box.custom_minimum_size.x = 470
 	_panel.add_child(box)
 
 	_title = Label.new()
 	_title.text = "SHIFT COMPLETE"
 	_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_font(_title, 34, Color(0.86, 0.9, 1.0))
+	_font(_title, 32, Color(0.86, 0.9, 1.0))
 	_title.modulate.a = 0.0
 	box.add_child(_title)
 
 	var star_wrap := CenterContainer.new()
-	star_wrap.custom_minimum_size.y = 96
+	star_wrap.custom_minimum_size.y = 92
 	box.add_child(star_wrap)
 	_star_row = StarRow5.new()
-	_star_row.setup(3, 82.0, _sc >= 4)
-	_star_row.tooltip_text = _star_tooltip()
+	_star_row.setup(3, 80.0, _sc >= 4)
 	star_wrap.add_child(_star_row)
 
 	var rat: Dictionary = RATING[_sc]
 	_rating_label = Label.new()
 	_rating_label.text = str(rat.text)
 	_rating_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_font(_rating_label, 52, rat.col)
+	_font(_rating_label, 50, rat.col)
 	_rating_label.add_theme_color_override("font_outline_color", Color(0.15, 0.1, 0.0, 0.9))
 	_rating_label.add_theme_constant_override("outline_size", 8)
-	_rating_label.pivot_offset = Vector2(226, 34)
+	_rating_label.pivot_offset = Vector2(235, 32)
 	_rating_label.scale = Vector2(2.3, 2.3)
 	_rating_label.modulate.a = 0.0
 	box.add_child(_rating_label)
 
+	# The running TOTAL (big).
 	_tips_label = Label.new()
 	_tips_label.text = "$0"
 	_tips_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_font(_tips_label, 54, Color(0.55, 0.95, 0.55) if _tips_total > 0 else Color(0.95, 0.5, 0.45))
+	_font(_tips_label, 60, Color(0.55, 0.95, 0.55) if _tips_total >= 0 else Color(0.95, 0.5, 0.45))
+	_tips_label.pivot_offset = Vector2(235, 36)
 	_tips_label.modulate.a = 0.0
 	box.add_child(_tips_label)
 
-	var served_tips := _tips_total + _lost * int(_game.LOST_TIP)
-	_break_served = _make_break("%d riders served" % _served, "+%d" % served_tips,
-			Color(0.72, 0.86, 0.72))
-	box.add_child(_break_served)
-	if _lost > 0:
-		_break_lost = _make_break("%d lost" % _lost, "−%d" % (_lost * int(_game.LOST_TIP)),
-				Color(0.95, 0.55, 0.5))
-		box.add_child(_break_lost)
+	# Itemised breakdown rows (bigger text), each hidden until its turn.
+	_rows_box = VBoxContainer.new()
+	_rows_box.add_theme_constant_override("separation", 6)
+	box.add_child(_rows_box)
+	for g in _groups:
+		var row := HBoxContainer.new()
+		row.modulate.a = 0.0
+		var left := Label.new()
+		left.text = "%d × %s" % [g.n, g.label]
+		_font(left, 28, g.col)
+		left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(left)
+		var right := Label.new()
+		right.text = ("+%d" % g.amt) if g.amt >= 0 else ("−%d" % (-g.amt))
+		_font(right, 28, g.col)
+		right.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		row.add_child(right)
+		_rows_box.add_child(row)
+		g["row"] = row
+
+	# Next-star line.
+	_next_label = Label.new()
+	_next_label.text = _next_star_text()
+	_next_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_font(_next_label, 22, Color(0.72, 0.78, 0.9))
+	_next_label.modulate.a = 0.0
+	box.add_child(_next_label)
 
 	var btn_row := HBoxContainer.new()
 	btn_row.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -162,31 +211,24 @@ func _build(cfg: Dictionary) -> void:
 	add_child(_catcher)
 
 
-## Tooltip listing the tip total each star needs (from the level's `stars` thresholds).
-func _star_tooltip() -> String:
+func _next_star_text() -> String:
 	var th: Array = _game.level.get("stars", []) if _game != null else []
-	if th.size() < 3:
-		return ""
-	var s := "1 star  %d tips\n2 stars  %d tips\n3 stars  %d tips" % [int(th[0]), int(th[1]), int(th[2])]
-	if th.size() >= 4:
-		s += "\nperfect  %d tips" % int(th[3])
-	return s
+	if _sc >= 4 or th.size() < 4:
+		return ""   # perfect (or no thresholds): nothing to chase
+	var need: int = int(th[_sc]) - _tips_total
+	if need < 1:
+		need = 1
+	return "$%d more for the next star" % need
 
 
-func _make_break(left: String, right: String, col: Color) -> HBoxContainer:
-	var h := HBoxContainer.new()
-	h.modulate.a = 0.0
-	var l := Label.new()
-	l.text = left
-	_font(l, 20, col)
-	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	h.add_child(l)
-	var r := Label.new()
-	r.text = right
-	_font(r, 20, col)
-	r.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	h.add_child(r)
-	return h
+## Update the running total label + pop any newly-earned star it has crossed.
+func _set_total(v: float) -> void:
+	_tips_label.text = "$%d" % roundi(v)
+	var th: Array = _game.level.get("stars", [])
+	for i in mini(3, th.size()):
+		if not _popped[i] and i < _earned and v >= float(th[i]):
+			_popped[i] = true
+			_star_row.pop(i)
 
 
 func _animate() -> void:
@@ -195,22 +237,27 @@ func _animate() -> void:
 	_master.parallel().tween_property(_panel, "modulate:a", 1.0, 0.25)
 	_master.parallel().tween_property(_panel, "scale", Vector2.ONE, 0.42) \
 			.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	_master.tween_property(_title, "modulate:a", 1.0, 0.2)
-	for i in _earned:
-		_master.tween_callback(_star_row.pop.bind(i))
-		_master.tween_interval(0.26)
+	_master.tween_property(_title, "modulate:a", 1.0, 0.18)
+	_master.tween_property(_tips_label, "modulate:a", 1.0, 0.12)
+	# Reveal each group in turn while the total counts up (stars pop as thresholds are crossed).
+	var running := 0.0
+	for g in _groups:
+		_master.tween_property(g.row, "modulate:a", 1.0, 0.12)
+		var target: float = running + float(g.amt)
+		_master.tween_method(_set_total, running, target, 0.4) \
+				.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		# a satisfying pop on the total as the group lands
+		_master.parallel().tween_property(_tips_label, "scale", Vector2(1.14, 1.14), 0.12)
+		_master.tween_property(_tips_label, "scale", Vector2.ONE, 0.12).set_trans(Tween.TRANS_SINE)
+		running = target
+		_master.tween_interval(0.14)
+	_master.tween_callback(func(): _set_total(float(_tips_total)))
 	# rating stamp
 	_master.tween_property(_rating_label, "modulate:a", 1.0, 0.01)
 	_master.parallel().tween_property(_rating_label, "scale", Vector2.ONE, 0.3) \
 			.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	_master.tween_interval(0.12)
-	# tips count-up
-	_master.tween_property(_tips_label, "modulate:a", 1.0, 0.15)
-	_master.tween_method(func(v): _tips_label.text = "$%d" % int(v),
-			0.0, float(_tips_total), 0.7).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	_master.tween_property(_break_served, "modulate:a", 1.0, 0.15)
-	if _break_lost != null:
-		_master.tween_property(_break_lost, "modulate:a", 1.0, 0.15)
+	_master.tween_interval(0.1)
+	_master.tween_property(_next_label, "modulate:a", 1.0, 0.2)
 	_master.tween_property(_btns, "modulate:a", 1.0, 0.25)
 	_master.tween_callback(_reveal_done)
 
@@ -229,16 +276,18 @@ func _finalize() -> void:
 	_dim.color = Color(0, 0, 0, 0.86)
 	_panel.modulate.a = 1.0
 	_panel.scale = Vector2.ONE
-	for i in _earned:
-		_star_row.pop(i)
 	_title.modulate.a = 1.0
+	for i in _earned:
+		_popped[i] = true
+		_star_row.pop(i)
 	_rating_label.modulate.a = 1.0
 	_rating_label.scale = Vector2.ONE
 	_tips_label.modulate.a = 1.0
+	_tips_label.scale = Vector2.ONE
 	_tips_label.text = "$%d" % _tips_total
-	_break_served.modulate.a = 1.0
-	if _break_lost != null:
-		_break_lost.modulate.a = 1.0
+	for g in _groups:
+		g.row.modulate.a = 1.0
+	_next_label.modulate.a = 1.0
 	_btns.modulate.a = 1.0
 	if is_instance_valid(_catcher):
 		_catcher.queue_free()

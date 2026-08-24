@@ -36,7 +36,7 @@ var MAX_LOST := 8
 const TIP_MAX := 10.0     # tip for an instantly-served rider
 const TIP_RATE := 0.18    # tip lost per second waited (spawn -> delivery)
 const TIP_FLOOR := 1.0    # a slow but completed trip still tips this
-const LOST_TIP := 8.0     # penalty per lost rider
+const LOST_TIP := 10.0    # penalty per lost rider
 var shift_len := 0.0      # 0 = classic quota/max-lost level; >0 = shift/tip level
 var shift_closed := false # true once the doors close (last orders)
 var tips := 0.0           # running tip total (the score)
@@ -127,7 +127,7 @@ func _ready() -> void:
 	# delivery/injected levels) keep theirs. The solver drives this same main5, so its
 	# thresholds match live play.
 	if (level.get("trips", []) as Array).is_empty():
-		level["trips"] = Demand5.derive(level.rooms, level_seed())
+		level["trips"] = Demand5.derive(level.rooms, level_seed(), level.get("demand", {}))
 	Grid5.load_level(level)
 	if not headless:
 		for n in [grid, cars_node, passengers_node]:
@@ -200,10 +200,12 @@ func _process(delta: float) -> void:
 # first-frame delta. The headless solver drives this same advance(), so its thresholds are
 # exactly what the game reproduces. SIM_DT is a static so the solver can search coarse for
 # speed then score at the game's step; the game leaves it at the fine default.
-static var SIM_DT := 0.1
+static var SIM_DT: float = 0.1
 var _sim_accum := 0.0
 
 func advance(dt: float) -> void:
+	if SIM_DT == null or SIM_DT <= 0.0:
+		SIM_DT = 0.1
 	if dt <= 0.0:
 		return
 	_sim_accum += dt
@@ -312,7 +314,9 @@ func to_plan() -> void:
 	_reset_spawner()
 	hud.hide_overlay()
 	hud.refresh_cards()
-	_maybe_play_demo()
+	# Special-mechanic intro card(s) first (cargo / executives), THEN the draw demo.
+	if not _maybe_intro_cards():
+		_maybe_play_demo()
 
 
 func start_run() -> void:
@@ -361,7 +365,73 @@ func abort_run() -> void:
 ## lift chip and draws each route (from the level's solution), teaching tap->draw->repeat (and,
 ## on T-2/T-3, two lifts / a shared dock) without text. Persisted per level so it shows once;
 ## tap to skip. Visual only — the board stays empty, the player draws for real.
-const DEMO_LEVELS := ["T-1", "T-2", "T-3", "T-4"]
+const IntroCard5 := preload("res://scripts/v5/intro_card5.gd")
+const RouteArrow5 := preload("res://scripts/v5/route_arrow5.gd")
+
+## The mechanic-intro levels: their card shows EVERY time you open them (not persisted) as an
+## overlay at PLAN start. T-5 teaches cargo, T-6 teaches executives.
+const INTRO_CARDS := {
+	"T-1": ["offices"], "T-2": ["atrium"], "T-3": ["overlap"],
+	"T-4": ["cargo"], "T-5": ["executive"], "T-6": ["finale"],
+}
+
+## Show the intro card(s) for this level. Returns true if any card was shown (so the draw demo
+## waits until they're done).
+func _maybe_intro_cards() -> bool:
+	if headless:
+		return false
+	var queue: Array = INTRO_CARDS.get(str(level.get("id", "")), []).duplicate()
+	if queue.is_empty():
+		return false
+	_show_intro_queue(queue)
+	return true
+
+
+func _show_intro_queue(queue: Array) -> void:
+	if queue.is_empty():
+		_maybe_play_demo()   # (special-mechanic levels aren't in DEMO_LEVELS; this is a no-op there)
+		return
+	var m: String = queue.pop_front()
+	var card = IntroCard5.new()
+	var val := 0
+	if str(m) == "finale":
+		var th: Array = level.get("stars", [])
+		if th.size() >= 4:
+			val = int(th[3])
+	card.setup(str(m), val)
+	hud.add_child(card)
+	card.dismissed.connect(func():
+		_show_route_arrow(str(m))
+		_show_intro_queue(queue))
+
+
+## After a passenger-mechanic card dismisses, trace a demo-style arrow along the special lift's
+## route on the board (cargo lift for cargo; express for executives) — "connect these, this lift".
+func _show_route_arrow(mech: String) -> void:
+	if headless:
+		return
+	var want := ""
+	if mech == "cargo":
+		want = "cargo"
+	elif mech == "executive":
+		want = "express"
+	if want == "":
+		return
+	var sol: Array = level.get("solution", [])
+	for i in CARDS.size():
+		if str(CARDS[i].get("type", "standard")) == want and i < sol.size():
+			var pts: Array = []
+			for xy in sol[i]:
+				var cell := Vector2i(int(xy[0]), int(xy[1]))
+				pts.append(Grid5.view_offset + Grid5.view_scale * Grid5.cell_center(cell))
+			if pts.size() >= 2:
+				var arrow = RouteArrow5.new()
+				arrow.setup(pts, CARDS[i].color)
+				hud.add_child(arrow)
+			return
+
+
+const DEMO_LEVELS := ["T-1", "T-2", "T-3"]  # T-4 (cargo) will get explanatory text instead
 
 func _maybe_play_demo() -> void:
 	if headless or not DEMO_LEVELS.has(str(level.get("id", ""))):
@@ -371,22 +441,33 @@ func _maybe_play_demo() -> void:
 		return
 	# Hand-authored ghost paths (`demo`) override the solution-derived trace: the solver's
 	# route order can zig-zag or draw bottom-to-top, which reads oddly as a taught gesture.
-	# `demo` is the same [route -> [[x,y]...]] shape, drawn verbatim in card order.
+	# `demo` is the same [route -> [[x,y]...]] shape, drawn verbatim in card order. Built into a
+	# per-card `paths` array (null where a card has no demo path) for the guided overlay, which
+	# marks the level demo-seen once the player actually connects a lift.
 	var sol: Array = level.get("demo", level.get("solution", []))
 	if sol.is_empty():
 		return
-	var steps: Array = []
-	for ri in mini(sol.size(), CARDS.size()):
-		var pts: Array = []
-		for xy in sol[ri]:
-			var cell := Vector2i(int(xy[0]), int(xy[1]))
-			pts.append(Grid5.view_offset + Grid5.view_scale * Grid5.cell_center(cell))
-		if not pts.is_empty():
-			steps.append({"color": CARDS[ri].color, "chip": hud.chip_center(ri), "pts": pts})
-	if steps.is_empty():
+	var paths: Array = []
+	var any := false
+	for ri in CARDS.size():
+		if ri < sol.size() and not (sol[ri] as Array).is_empty():
+			var pts: Array = []
+			var served := {}
+			for xy in sol[ri]:
+				var cell := Vector2i(int(xy[0]), int(xy[1]))
+				pts.append(Grid5.view_offset + Grid5.view_scale * Grid5.cell_center(cell))
+				for rid in Grid5.dock_rooms(cell):
+					served[rid] = true
+			# `rooms` = how many rooms this lift's demo route serves; the guide re-teaches the
+			# lift until the player's route covers that many (shortening it below re-triggers it).
+			paths.append({"color": CARDS[ri].color, "chip": hud.chip_center(ri),
+					"pts": pts, "rooms": served.size()})
+			any = true
+		else:
+			paths.append(null)
+	if not any:
 		return
-	Levels5.mark_demo_seen(id)
-	hud.play_demo(steps)
+	hud.start_guided_demo(paths)
 
 
 func next_level() -> void:
@@ -543,6 +624,15 @@ func route_warning(i: int) -> bool:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	# During the run you can't edit, but tapping the board (away from a chip) DESELECTS the
+	# highlighted line. (Chip taps are GUI events, so they don't reach here.)
+	if state == State.PLAYING:
+		var tap: bool = (event is InputEventScreenTouch and event.pressed) \
+				or (event is InputEventMouseButton and event.pressed)
+		if tap and selected_card >= 0:
+			selected_card = -1
+			hud.refresh_cards()
+		return
 	if not can_edit():
 		return
 	if event is InputEventScreenTouch:
@@ -555,7 +645,8 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func select_card(i: int) -> void:
-	if not can_edit():
+	# Selectable in PLAN (to draw) and during PLAYING (to just HIGHLIGHT the running line).
+	if state != State.PLAN and state != State.PLAYING:
 		return
 	selected_card = -1 if selected_card == i else i
 	drawing = false
@@ -1006,18 +1097,29 @@ func finish_alight(p) -> void:
 func on_served(p) -> void:
 	if waiting.has(p.cur_room):
 		waiting[p.cur_room].erase(p)
-	log_served.append({"type": p.ptype, "wait": p.wait_time, "rides": p.rides})
+	# SPECIAL TIPS (user): CARGO pays 5x on the LOADED leg (delivery man with a cart, not the
+	# empty walk home). EXECUTIVES pay 2x — impatient VIPs who tip big for a quick lift. `cat`
+	# groups the served log for the score screen: pax / exec / cargo.
+	var mult := 1.0
+	var cat := "pax"
+	if p.ptype == "delivery" and not p.returning:
+		mult = 5.0
+		cat = "cargo"
+	elif p.ptype == "executive":
+		mult = 2.0
+		cat = "exec"
+	var tip: float = _tip_of(p.wait_time) * mult
+	log_served.append({"type": p.ptype, "cat": cat, "wait": p.wait_time, "rides": p.rides, "tip": tip})
 	served += 1
-	# CARGO PAYS 5x (user): a completed cargo run is worth five times a passenger's tip. Only
-	# the LOADED leg counts (delivery man with a cart, not yet on his empty walk home) — the
-	# empty return is a plain w1 person and tips normally.
-	var mult := 5.0 if (p.ptype == "delivery" and not p.returning) else 1.0
-	tips += _tip_of(p.wait_time) * mult
+	tips += tip
 	# A tip coin flies from the served passenger up to the TIPS counter (visual only, so it
 	# reads that tips come from passengers). Cargo shows its 5x as a burst of 5 coins.
 	# Deterministic arc side; skipped in headless.
 	if not headless:
-		hud.fly_coin(p.global_position, 1.0 if served % 2 == 0 else -1.0, int(mult))
+		# Coins scale with the TIP earned (~1 per $4), so a big exec/cargo payout throws a fat
+		# stream of coins. Capped so a busy shift stays cheap.
+		var coins: int = clampi(roundi(tip / 4.0), 3, 16)
+		hud.fly_coin(p.global_position, 1.0 if served % 2 == 0 else -1.0, coins)
 	if _cover_on:
 		_served_rooms[p.cur_room] = true
 	p.begin_between()

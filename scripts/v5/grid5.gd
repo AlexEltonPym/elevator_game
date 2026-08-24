@@ -25,9 +25,9 @@ const GRID_Y_H := 900.0
 # is always visible dirt below (room for a basement). The ground line is a FIXED screen y —
 # every level shares one horizon (sky above, grass + dirt below).
 const SIDE_MARGIN := 24.0        # min gap left & right of the building
-const TOP_MARGIN := 30.0         # min sky above the building (under the top HUD)
+const TOP_MARGIN := 200.0        # sky reserved above the building (under the top HUD)
 const PLAY_TOP := 98.0           # bottom edge of the top HUD bar
-const PLAY_BOTTOM := 1010.0      # top edge of the bottom card panel
+const PLAY_BOTTOM := 1150.0      # top edge of the bottom card panel (chips only; no RUN bar)
 const UNDERGROUND := 64.0        # thin dirt lip below the ground line (basement retired)
 const DIRT_LIP := 18.0           # min dirt kept below a basement's lowest row
 const GROUND_LINE := PLAY_BOTTOM - UNDERGROUND  # fixed street line (screen y)

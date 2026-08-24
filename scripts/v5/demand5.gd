@@ -36,8 +36,16 @@ static func _abut(rooms: Array, owner: Dictionary, i: int, j: int) -> bool:
 	return false
 
 
-## Derive the trip list for a set of rooms, deterministic in `seed`.
-static func derive(rooms: Array, seed: int) -> Array:
+## A per-level weight multiplier for trips touching a room TYPE (from the level's `demand`
+## field). Used to TUNE the mix without hand-writing trips — e.g. crank up `penthouse` on the
+## express tutorial so serving executives is genuinely the lucrative play. Default 1.0.
+static func _boost(boost: Dictionary, ta: String, tb: String) -> float:
+	return maxf(float(boost.get(ta, 1.0)), float(boost.get(tb, 1.0)))
+
+
+## Derive the trip list for a set of rooms, deterministic in `seed`. `boost` optionally scales
+## trip weights per room type (level `demand` field).
+static func derive(rooms: Array, seed: int, boost: Dictionary = {}) -> Array:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed
 	var owner := {}
@@ -70,29 +78,33 @@ static func derive(rooms: Array, seed: int) -> Array:
 			var aff := _aff(rooms[i].type, rooms[j].type)
 			if aff <= 0.0:
 				continue
-			var w1: float = snappedf(aff * (0.75 + 0.5 * rng.randf()), 0.01)
-			var w2: float = snappedf(aff * 0.8 * (0.75 + 0.5 * rng.randf()), 0.01)
-			trips.append({"w": w1, "from": letter.call(i), "to": letter.call(j)})
-			trips.append({"w": w2, "from": letter.call(j), "to": letter.call(i)})
+			var bw := _boost(boost, rooms[i].type, rooms[j].type)
+			var w1: float = snappedf(aff * bw * (0.75 + 0.5 * rng.randf()), 0.01)
+			var w2: float = snappedf(aff * bw * 0.8 * (0.75 + 0.5 * rng.randf()), 0.01)
+			var t1 := {"w": w1, "from": letter.call(i), "to": letter.call(j)}
+			var t2 := {"w": w2, "from": letter.call(j), "to": letter.call(i)}
+			# EXECUTIVES: any trip touching a PENTHOUSE carries impatient, big-tipping VIPs.
+			if rooms[i].type == "penthouse" or rooms[j].type == "penthouse":
+				t1["type"] = "executive"
+				t2["type"] = "executive"
+			trips.append(t1)
+			trips.append(t2)
 			used[i] = true
 			used[j] = true
-	# FREIGHT: each delivery bay ships to each cafe (cargo run; returns empty to a lobby).
-	var ret := -1
-	for i in demand:
-		if rooms[i].type == "lobby":
-			ret = i
-			break
-	if ret < 0 and not demand.is_empty():
-		ret = demand[0]
+	# FREIGHT: each delivery bay ships to each cafe (cargo run), then the empty man EXITS back to
+	# his own storage BAY — a clean round trip on the cargo lift (user: exit via delivery, not
+	# forced through a lobby). The cargo lift already serves the bay, so it's always reachable.
 	# A whole room is a delivery bay, so freight is a PROMINENT share of demand (weight on
 	# par with a strong commute), not a rounding error — else a "Freight" level barely
 	# ships anything and the cargo lift has no reason to reach the bay.
 	for d in deliveries:
+		var ret: int = d   # exit back to his own storage bay (cargo round trip)
 		for cf in cafes:
 			if _abut(rooms, owner, d, cf):
 				continue
-			var w: float = snappedf(1.2 * (0.75 + 0.5 * rng.randf()), 0.01)
-			trips.append({"w": w, "from": letter.call(d), "to": letter.call(cf),
+			trips.append({"w": snappedf(1.2 * _boost(boost, rooms[d].type, rooms[cf].type) \
+					* (0.75 + 0.5 * rng.randf()), 0.01),
+					"from": letter.call(d), "to": letter.call(cf),
 					"type": "delivery", "return": letter.call(ret)})
 	# NO DEAD ROOMS: connect any unserved demand room to its best non-abutting partner.
 	for i in demand:

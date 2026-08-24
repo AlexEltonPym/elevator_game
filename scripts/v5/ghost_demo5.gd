@@ -1,96 +1,120 @@
 extends Control
-## A ghost-hand tutorial demo (textless): a translucent fingertip taps a lift chip, then
-## drags a route through the building — one lift at a time — teaching tap -> draw -> repeat
-## (and, on later tutorials, two lifts / a shared dock) purely by SHOWING. It's a cutscene
-## overlay drawn over the (empty) board; when it ends it fades and hands control back and the
-## player draws for real. Tap anywhere to skip. Nothing here touches the sim.
+## Interactive tutorial hint overlay. It does NOT auto-play a whole plan; the hud drives it
+## from the player's real progress (see hud5._update_demo):
+##   FULL - nothing picked yet: finger taps the lift chip THEN drags out its route (the whole
+##          "click lift -> drag out lift" gesture), looping.
+##   DRAW - a lift is selected: finger only drags out that lift's route (no chip tap).
+##   IDLE - hidden (a lift connects A->B; the glowing play button takes over).
+## It stays reactive the whole PLAN phase: clearing / deselecting returns it to the right stage.
+## Non-blocking: the player taps/drags the real UI underneath the whole time.
 
-signal done
-
-var _steps: Array = []      # [{color:Color, chip:Vector2, pts:Array[Vector2]}] (screen space)
-var _routes: Array = []     # [{color, pts, rev:float}] — revealed progressively as it "draws"
-var _finger := Vector2(-200, -200)
+var _mode := "idle"          # current cycle: "full" | "draw" | "idle"
+var _chip := Vector2.ZERO
+var _pts: Array = []
+var _color := Color(1, 1, 1)
+var _want = null             # {mode, chip, pts, color, key} desired next; picked up at boundaries
+var _running := false
+var _finger := Vector2(-500, -500)
+var _rev := 0.0              # 0..1 draw reveal
 var _ripple_at := Vector2.ZERO
-var _ripple := 0.0          # 0..1 expanding tap ring (0 = none)
-var _active := false
+var _ripple := 0.0
+var _spin := 0.0
 var _tw: Tween
+
+const R := 40.0              # fingertip ring radius (2x the old 20)
 
 
 func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
-	mouse_filter = Control.MOUSE_FILTER_STOP
+	mouse_filter = Control.MOUSE_FILTER_IGNORE  # pass input through to the real UI
 
 
-## `steps`: one per lift to demonstrate, in order. Plays a chained cutscene that LOOPS (so the
-## player can watch it as many times as they like); a tap anywhere stops it and hands over.
-func play(steps: Array) -> void:
-	_steps = steps
-	_routes = []
-	for s in steps:
-		_routes.append({"color": s.color, "pts": s.pts, "rev": 0.0})
-	if steps.is_empty() or (steps[0].pts as Array).is_empty():
-		_finish(); return
-	_finger = steps[0].chip
-	_active = true
-	modulate.a = 1.0
-	_tw = create_tween().set_loops()   # ambient loop until the player taps to take over
-	_tw.tween_callback(_reset_loop)
-	_tw.tween_interval(0.5)
-	for si in steps.size():
-		var s: Dictionary = steps[si]
-		_tw.tween_property(self, "_finger", s.chip, 0.72).set_trans(Tween.TRANS_SINE)   # to chip
-		_tw.tween_callback(_do_ripple.bind(s.chip))                                     # tap
-		_tw.tween_interval(0.55)
-		_tw.tween_property(self, "_finger", s.pts[0], 0.72).set_trans(Tween.TRANS_SINE) # to start
-		_tw.tween_callback(_do_ripple.bind(s.pts[0]))                                   # press
-		_tw.tween_interval(0.22)
-		var dur: float = clampf(0.19 * s.pts.size(), 0.85, 2.8)
-		_tw.tween_method(_drag.bind(si), 0.0, 1.0, dur).set_trans(Tween.TRANS_SINE)     # drag
-		_tw.tween_callback(_do_ripple.bind(s.pts[s.pts.size() - 1]))                    # release
-		_tw.tween_interval(0.7)
-	_tw.tween_interval(1.3)   # hold the finished plan, then the loop restarts
+## FULL: tap the chip, then drag out the route (whole gesture). Used when no lift is picked yet.
+func guide_full(chip: Vector2, pts: Array, color: Color) -> void:
+	_want_cycle("full", chip, pts, color,
+			"full:%d,%d:%d" % [int(chip.x), int(chip.y), pts.size()])
 
 
-## Clear the revealed routes + reset the finger so each loop redraws from scratch.
-func _reset_loop() -> void:
-	for r in _routes:
-		r.rev = 0.0
-	_finger = _steps[0].chip
+## DRAW: only drag out the route (no chip tap). Used once the player has selected the lift.
+func guide_draw(pts: Array, color: Color) -> void:
+	if pts.is_empty():
+		guide_idle(); return
+	_want_cycle("draw", Vector2.ZERO, pts, color,
+			"draw:%d:%d,%d" % [pts.size(), int(pts[0].x), int(pts[0].y)])
 
 
-func _drag(t: float, si: int) -> void:
-	_routes[si].rev = t
-	_finger = _point_at(_steps[si].pts, t)
+## Request a mode/route. The change is NOT applied mid-stroke: the running cycle finishes, then
+## the next cycle picks up this request. So tapping the lift while the finger is drawing the same
+## line just drops the chip-tap next loop — it never teleports or restarts.
+func _want_cycle(mode: String, chip: Vector2, pts: Array, color: Color, key: String) -> void:
+	if pts.is_empty():
+		guide_idle(); return
+	if _want != null and _want.key == key:
+		return
+	_want = {"mode": mode, "chip": chip, "pts": pts, "color": color, "key": key}
+	if not _running:
+		_begin_cycle()
+
+
+func guide_idle() -> void:
+	_want = null
+	if _mode == "idle" and not _running:
+		return
+	_mode = "idle"
+	_running = false
+	if _tw != null:
+		_tw.kill(); _tw = null
+	_finger = Vector2(-500, -500)
+	_rev = 0.0
+	queue_redraw()
+
+
+## Start the next animation cycle from the latest request (called at each loop boundary).
+func _begin_cycle() -> void:
+	if _want == null:
+		_running = false
+		guide_idle()
+		return
+	_mode = _want.mode; _chip = _want.chip; _pts = _want.pts; _color = _want.color
+	_running = true
+	if _tw != null:
+		_tw.kill()
+	var dur: float = clampf(0.16 * _pts.size(), 0.7, 2.4)
+	_tw = create_tween()  # ONE cycle; re-arms itself via _begin_cycle at the end
+	if _mode == "full":
+		# tap the chip, THEN drag out the route (whole gesture).
+		_tw.tween_callback(func(): _rev = 0.0; _finger = _chip)
+		_tw.tween_callback(_do_ripple.bind(_chip))                    # tap the chip
+		_tw.tween_interval(0.45)
+		_tw.tween_property(self, "_finger", _pts[0], 0.5).set_trans(Tween.TRANS_SINE)
+		_tw.tween_callback(_do_ripple.bind(_pts[0]))                  # press at start
+		_tw.tween_interval(0.2)
+	else: # "draw" — only the drag, no chip tap
+		_tw.tween_callback(func(): _rev = 0.0; _finger = _pts[0])
+		_tw.tween_callback(_do_ripple.bind(_pts[0]))                  # press at start
+		_tw.tween_interval(0.25)
+	_tw.tween_method(_drag, 0.0, 1.0, dur).set_trans(Tween.TRANS_SINE)  # draw
+	_tw.tween_callback(_do_ripple.bind(_pts[_pts.size() - 1]))        # release
+	_tw.tween_interval(1.1)
+	_tw.tween_callback(_begin_cycle)                                  # next cycle: latest request
+
+
+func _drag(t: float) -> void:
+	_rev = t
+	_finger = _point_at(_pts, t)
 
 
 func _do_ripple(at: Vector2) -> void:
 	_ripple_at = at
 	var rt := create_tween()
-	rt.tween_method(func(v): _ripple = v, 0.001, 1.0, 0.4)
+	rt.tween_method(func(v): _ripple = v, 0.001, 1.0, 0.45)
 	rt.tween_callback(func(): _ripple = 0.0)
 
 
-func _process(_dt: float) -> void:
-	if _active:
+func _process(dt: float) -> void:
+	if _mode != "idle":
+		_spin += dt * 0.6
 		queue_redraw()
-
-
-func _gui_input(event: InputEvent) -> void:
-	if _active and ((event is InputEventMouseButton and event.pressed) \
-			or (event is InputEventScreenTouch and event.pressed)):
-		accept_event()
-		_finish()
-
-
-func _finish() -> void:
-	if not _active and _tw == null:
-		return
-	_active = false
-	if _tw != null and _tw.is_running():
-		_tw.kill()
-	_tw = null
-	done.emit()
-	queue_free()
 
 
 ## Point at `frac` (0..1) of a polyline's total arc length.
@@ -111,30 +135,36 @@ func _point_at(pts: Array, frac: float) -> Vector2:
 
 
 func _draw() -> void:
-	# Revealed route lines (a completed lift stays full; the current one grows as it "draws").
-	for r in _routes:
-		if float(r.rev) <= 0.001:
-			continue
-		var pts: Array = r.pts
+	# The route line growing as the finger "draws" it (FULL and DRAW modes).
+	if _mode != "idle" and _rev > 0.001 and _pts.size() >= 2:
 		var total := 0.0
-		for i in pts.size() - 1:
-			total += pts[i].distance_to(pts[i + 1])
-		var target: float = float(r.rev) * total
-		var line := PackedVector2Array([pts[0]])
+		for i in _pts.size() - 1:
+			total += _pts[i].distance_to(_pts[i + 1])
+		var target: float = _rev * total
+		var line := PackedVector2Array([_pts[0]])
 		var acc := 0.0
-		for i in pts.size() - 1:
-			var seg: float = pts[i].distance_to(pts[i + 1])
+		for i in _pts.size() - 1:
+			var seg: float = _pts[i].distance_to(_pts[i + 1])
 			if acc + seg >= target:
-				line.append(pts[i].lerp(pts[i + 1], (target - acc) / maxf(seg, 0.001)))
+				line.append(_pts[i].lerp(_pts[i + 1], (target - acc) / maxf(seg, 0.001)))
 				break
-			line.append(pts[i + 1])
+			line.append(_pts[i + 1])
 			acc += seg
 		if line.size() >= 2:
-			draw_polyline(line, Color(r.color, 0.8), 7.0, true)
-	# Tap ripple + fingertip (a big, soft "hand" so it reads clearly at a glance).
+			draw_polyline(line, Color(_color, 0.8), 8.0, true)
+	if _mode == "idle":
+		return
+	# Tap ripple + a big NO-FILL dashed-border fingertip (two counter-rotating dashed rings).
 	if _ripple > 0.001:
-		draw_arc(_ripple_at, 12.0 + 48.0 * _ripple, 0.0, TAU, 32,
-				Color(1, 1, 1, (1.0 - _ripple) * 0.6), 4.0)
-	draw_circle(_finger, 34.0, Color(1, 1, 1, 0.12))
-	draw_circle(_finger, 21.0, Color(0.95, 0.97, 1.0, 0.90))
-	draw_arc(_finger, 21.0, 0.0, TAU, 28, Color(0.2, 0.3, 0.45, 0.65), 3.0)
+		draw_arc(_ripple_at, 20.0 + 70.0 * _ripple, 0.0, TAU, 40,
+				Color(1, 1, 1, (1.0 - _ripple) * 0.6), 5.0)
+	_dashed_ring(_finger, R, Color(0.97, 0.98, 1.0, 0.95), 5.0, 12, 0.55, _spin)
+	_dashed_ring(_finger, R * 1.35, Color(1, 1, 1, 0.32), 3.0, 16, 0.5, -_spin * 0.7)
+
+
+## A hollow ring of `segs` dashes (each covering `on` of its arc), rotated by `phase`.
+func _dashed_ring(c: Vector2, rad: float, col: Color, w: float, segs: int, on: float, phase: float) -> void:
+	var step := TAU / float(segs)
+	for i in segs:
+		var a0 := phase + i * step
+		draw_arc(c, rad, a0, a0 + step * on, 6, col, w, true)

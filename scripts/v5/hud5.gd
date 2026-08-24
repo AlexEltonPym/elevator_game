@@ -11,6 +11,12 @@ const SpeedBtn5 := preload("res://scripts/v5/speedbtn5.gd")
 const Coin5 := preload("res://scripts/v5/coin5.gd")
 const GhostDemo5 := preload("res://scripts/v5/ghost_demo5.gd")
 
+# Bottom panel: chips only, pinned to the very bottom (matches Grid5.PLAY_BOTTOM so the
+# building drops down and more sky shows above it).
+const PANEL_TOP := 1150.0
+const CHIP_H := 116.0
+const CHIP_Y := 1156.0
+
 var game = null # main5.gd
 
 
@@ -35,14 +41,16 @@ var level_label: Label
 var served_label: Label
 var lost_label: Label
 var menu_btn: Button
-var speed_play: Control  # SpeedBtn5 (1x)
-var speed_ff: Control    # SpeedBtn5 (5x)
-var hint_label: Label
+var back_btn: TextureButton   # revert to plan (only shown mid-run)
+var speed_play: Control   # SpeedBtn5 (play / run at 1x)
+var speed_ff: Control     # SpeedBtn5 (fast-forward / run at 5x)
 var chip_buttons: Array = []
-var chip_pips: Array = []
+var chip_dels: Array = []   # per-chip "×" delete buttons
 var _last_serves: Array = [] # per-card serve counts last shown on the chips
-var clear_btn: Button
-var action_btn: Button
+var _demo_playing := false
+var _demo_done := false
+var _demo_paths: Array = []   # per-card {chip, pts, color} or null
+var _demo_ghost = null        # GhostDemo5 overlay
 var overlay: Control = null
 var _chips_built := false
 var headless := false
@@ -72,26 +80,40 @@ func _build_top() -> void:
 	level_label.text = "R-1"
 	served_label = _make_label(Vector2(110, 12), 24, Color(0.45, 0.95, 0.55))
 	lost_label = _make_label(Vector2(110, 52), 24, Color(1.0, 0.5, 0.45))
-	# SPEED PICKER: play (1x) + fast-forward (5x). 1x reads smooth thanks to render
-	# interpolation (main5.render_alpha), so it's a real "slow, watch it" pace, not a stutter.
-	var accent := Color(0.42, 0.72, 0.55)  # green "go" tint for the active speed
+	# PLAY (1x) + FAST-FORWARD (5x) are the RUN trigger now: a tap in PLAN starts the run at
+	# that speed; in PLAYING it just switches speed. Green "go" buttons. 1x reads smooth thanks
+	# to render interpolation (main5.render_alpha), so it's a real "slow, watch it" pace.
 	speed_play = SpeedBtn5.new()
 	speed_play.kind = SpeedBtn5.Kind.PLAY
-	speed_play.accent = accent
-	speed_play.position = Vector2(392, 18)
-	speed_play.size = Vector2(64, 62)
-	speed_play.tapped.connect(func(): if game != null: game.set_speed(1.0))
+	speed_play.position = Vector2(438, 18)
+	speed_play.size = Vector2(60, 62)
+	speed_play.tapped.connect(func(): _on_speed(1.0))
 	add_child(speed_play)
 	speed_ff = SpeedBtn5.new()
 	speed_ff.kind = SpeedBtn5.Kind.FF
-	speed_ff.accent = accent
-	speed_ff.position = Vector2(464, 18)
-	speed_ff.size = Vector2(64, 62)
-	speed_ff.tapped.connect(func(): if game != null: game.set_speed(5.0))
+	speed_ff.position = Vector2(504, 18)
+	speed_ff.size = Vector2(60, 62)
+	speed_ff.tapped.connect(func(): _on_speed(5.0))
 	add_child(speed_ff)
+	# BACK-TO-PLAN (abort) replaces the old RUN/ABORT bar's abort role; shown only mid-run.
+	# Its PLAN-time empty slot is the room reserved for a future reset / mute button.
+	# Revert-to-plan: just the user-supplied icon (no red button behind it).
+	back_btn = TextureButton.new()
+	back_btn.texture_normal = load("res://assets/ui/ic_system_undo_01_128.png")
+	back_btn.ignore_texture_size = true
+	back_btn.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
+	back_btn.custom_minimum_size = Vector2(56, 52)
+	back_btn.size = Vector2(56, 52)
+	back_btn.position = Vector2(366, 22)
+	back_btn.focus_mode = Control.FOCUS_NONE
+	back_btn.visible = false
+	back_btn.pressed.connect(func():
+		if game != null:
+			game.abort_run())
+	add_child(back_btn)
 	menu_btn = Ui5.make_button("LEVELS", "Grey", 20)
-	menu_btn.position = Vector2(552, 6)
-	menu_btn.size = Vector2(154, 86)
+	menu_btn.position = Vector2(574, 6)
+	menu_btn.size = Vector2(132, 86)
 	menu_btn.pressed.connect(func():
 		if game != null:
 			game.to_level_select())
@@ -99,25 +121,14 @@ func _build_top() -> void:
 
 
 func _build_panel() -> void:
+	# A thin panel that holds ONLY the lift chips (no hint text, no RUN bar). Everything sits
+	# at the very bottom so the building drops down and more sky shows above it.
 	var bg := ColorRect.new()
 	bg.color = Color(0.10, 0.10, 0.14)
-	bg.position = Vector2(0, 1010)
-	bg.size = Vector2(720, 270)
+	bg.position = Vector2(0, PANEL_TOP)
+	bg.size = Vector2(720, 1280 - PANEL_TOP)
 	add_child(bg)
-	hint_label = _make_label(Vector2(14, 1016), 18, Color(1, 1, 1, 0.6))
-	# prose hint reads better (and fits) in the default font, not the wide Kenney one.
-	hint_label.add_theme_font_override("font", ThemeDB.fallback_font)
-	clear_btn = Ui5.make_button("CLEAR", "Red", 24)
-	clear_btn.size = Vector2(150, 116)
-	clear_btn.position = Vector2(546, 1046)
-	clear_btn.visible = false
-	clear_btn.pressed.connect(_on_clear)
-	add_child(clear_btn)
-	action_btn = Ui5.make_button("RUN", "Green", 32)
-	action_btn.position = Vector2(14, 1174)
-	action_btn.size = Vector2(692, 96)
-	action_btn.pressed.connect(_on_action)
-	add_child(action_btn)
+	# (No CLEAR button — each chip carries its own little "×" to clear its route.)
 
 
 ## Build one chip per card (roster size varies). Deferred until `game` is set,
@@ -132,54 +143,81 @@ func _ensure_chips() -> void:
 		cw = 160.0
 	for i in n:
 		var btn := Button.new()
-		btn.position = Vector2(14 + i * 172, 1046)
-		btn.size = Vector2(cw, 116)
+		btn.position = Vector2(14 + i * 172, CHIP_Y)
+		btn.size = Vector2(cw, CHIP_H)
 		btn.add_theme_font_size_override("font_size", 26)
 		var cf = Ui5.font()
 		if cf != null:
 			btn.add_theme_font_override("font", cf)
+		btn.focus_mode = Control.FOCUS_NONE   # no thin white focus rectangle on the chip
 		var idx: int = i
 		btn.pressed.connect(func(): game.select_card(idx))
 		add_child(btn)
 		chip_buttons.append(btn)
-		var pip := ColorRect.new()
-		pip.size = Vector2(22, 22)
-		pip.position = Vector2(btn.size.x - 32, 10)
-		pip.color = Color(0.42, 0.42, 0.48)
-		btn.add_child(pip)
-		chip_pips.append(pip)
-	# CLEAR sits after the last chip.
-	clear_btn.position = Vector2(14 + n * 172, 1046)
-	if clear_btn.position.x + clear_btn.size.x > 706:
-		clear_btn.position.x = 546
+		# Round "×" delete bubble (top-right): a BORDERED red Kenney bubble + a clean drawn white
+		# X (no outlined-sprite border). Shown only when placed; as a child button it eats its tap.
+		var dsz := 40.0
+		var del := TextureButton.new()
+		del.texture_normal = Ui5.tex("Red/Default/button_round_flat.png")   # solid red bubble
+		del.ignore_texture_size = true
+		del.stretch_mode = TextureButton.STRETCH_SCALE
+		del.custom_minimum_size = Vector2(dsz, dsz)
+		del.size = Vector2(dsz, dsz)
+		del.position = Vector2(cw - dsz + 2, -3)   # nudged up + right
+		del.focus_mode = Control.FOCUS_NONE
+		del.visible = false
+		for ang in [45.0, -45.0]:
+			var bar := ColorRect.new()
+			bar.color = Color(1, 1, 1)
+			bar.size = Vector2(dsz * 0.50, dsz * 0.145)
+			bar.pivot_offset = bar.size * 0.5
+			bar.position = Vector2(dsz * 0.5, dsz * 0.5) - bar.size * 0.5
+			bar.rotation = deg_to_rad(ang)
+			bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			del.add_child(bar)
+		var di: int = i
+		del.pressed.connect(func(): if game != null: game.clear_route(di))
+		btn.add_child(del)
+		chip_dels.append(del)
 
 
-func _on_clear() -> void:
-	if game != null and game.selected_card >= 0:
-		game.clear_route(game.selected_card)
-
-
-func _on_action() -> void:
+## A PLAY / FAST-FORWARD tap: in PLAN it starts the run at that speed (once the plan is ready);
+## mid-run it just switches speed.
+func _on_speed(s: float) -> void:
 	if game == null:
 		return
 	if game.state == game.State.PLAN:
 		if game.ready_to_run():
+			game.set_speed(s)
 			game.start_run()
 	elif game.state == game.State.PLAYING:
-		game.abort_run()
+		game.set_speed(s)
 
 
-func _refresh_action() -> void:
-	action_btn.visible = game.state == game.State.PLAN or game.state == game.State.PLAYING
-	if not action_btn.visible:
+## Keep the play/ff buttons and the mid-run BACK button in sync with the game state, and pulse
+## the play button whenever there is a ready plan to run (the demo drives the pulse itself).
+func _refresh_controls() -> void:
+	if game == null or speed_play == null:
 		return
-	var running: bool = game.state == game.State.PLAYING
-	var ready: bool = running or game.ready_to_run()
-	action_btn.text = "ABORT - BACK TO PLAN" if running else "RUN"
-	action_btn.disabled = not ready
-	var kcol := "Red" if running else ("Green" if ready else "Grey")
-	Ui5.skin_button(action_btn, kcol, 34)
-	action_btn.add_theme_stylebox_override("disabled", action_btn.get_theme_stylebox("normal"))
+	var planning: bool = game.state == game.State.PLAN
+	var playing: bool = game.state == game.State.PLAYING
+	var can_press: bool = playing or (planning and game.ready_to_run())
+	speed_play.set_enabled(can_press)
+	speed_ff.set_enabled(can_press)
+	speed_play.set_active(playing and game.time_scale < 3.0)
+	speed_ff.set_active(playing and game.time_scale >= 3.0)
+	if back_btn != null:
+		back_btn.visible = playing
+	# The × delete bubbles are edit-only — hide them the moment the run starts (refresh_cards
+	# might not fire on the state change if no serve-count changed).
+	if not planning:
+		for d in chip_dels:
+			if is_instance_valid(d):
+				d.visible = false
+	# The play-button glow is a DEMO cue only — driven by _update_demo during the guided demo.
+	# Outside the demo (all non-demo levels, and demo levels once seen) it never pulses.
+	if not _demo_playing:
+		speed_play.set_highlight(false)
 
 
 func refresh_cards() -> void:
@@ -194,26 +232,29 @@ func refresh_cards() -> void:
 		if route != null:
 			served = route.served_rooms().size()
 		btn.text = str(card.name)
-		var pip: ColorRect = chip_pips[i]
-		if route == null:
-			pip.color = Color(0.42, 0.42, 0.48)
-		elif served < 2:
-			pip.color = Color(0.90, 0.65, 0.20)
-		else:
-			pip.color = Color(0.35, 0.80, 0.42)
+		var placed: bool = route != null
 		var selected: bool = game.selected_card == i
 		var sb := StyleBoxFlat.new()
-		sb.bg_color = Color(card.color, 1.0).darkened(0.45).lightened(0.2 if selected else 0.0)
-		sb.set_corner_radius_all(8)
+		# DISCOLOUR to show "used": a placed lift desaturates toward grey; an unplaced one keeps
+		# its full lift colour (inviting). Selected reads via the white border + a slight lift.
+		var base := Color(card.color, 1.0).darkened(0.45)
+		if placed:
+			base = base.lerp(Color(0.24, 0.24, 0.27), 0.6)   # DISCOLOUR = used
+		sb.bg_color = base
+		sb.set_corner_radius_all(12)
+		# Selected = ONLY a thick rounded border (no white fill rect, no bg tint change).
 		if selected:
-			sb.border_color = Color.WHITE
-			sb.set_border_width_all(4)
+			sb.border_color = Color(0.98, 0.98, 1.0)
+			sb.set_border_width_all(5)
 		else:
-			sb.border_color = card.color
+			sb.border_color = card.color.darkened(0.35 if placed else 0.0)
 			sb.set_border_width_all(2)
 		for s in ["normal", "hover", "pressed", "disabled"]:
 			btn.add_theme_stylebox_override(s, sb)
-		btn.disabled = not game.can_edit()
+		# Chips stay clickable in PLAY too (to highlight the running line).
+		btn.disabled = false
+		if i < chip_dels.size():
+			chip_dels[i].visible = placed and game.can_edit()
 
 
 ## Screen-space centre of lift chip `i` (where the ghost-hand demo "taps"). Falls back to the
@@ -222,18 +263,82 @@ func chip_center(i: int) -> Vector2:
 	if i >= 0 and i < chip_buttons.size() and chip_buttons[i] != null:
 		var b: Control = chip_buttons[i]
 		return b.position + b.size * 0.5
-	return Vector2(93.0 + i * 172.0, 1104.0)
+	return Vector2(93.0 + i * 172.0, CHIP_Y + CHIP_H * 0.5)
 
 
-## Play the ghost-hand tutorial demo over the board (see ghost_demo5.gd). `steps` are built by
-## main5 from the level's solution (chip centre + route cells -> screen). Added last so the
-## finger draws over the chips; it blocks input until it ends or is tapped to skip.
-func play_demo(steps: Array) -> void:
+## Start the INTERACTIVE guided demo (see ghost_demo5.gd). `paths` is per-card
+## ({chip, pts, color} or null). Unlike the old passive loop, this reacts to the player:
+## it shows a TAP hint on the lift to pick, then a DRAW hint for the selected lift, and once
+## any lift connects A->B (ready_to_run) it hides the finger and lights the play button.
+## Non-blocking — the player interacts with the real UI the whole time.
+func start_guided_demo(paths: Array) -> void:
 	if headless:
 		return
-	var d := GhostDemo5.new()
-	add_child(d)
-	d.play(steps)
+	_demo_paths = paths
+	_demo_playing = true
+	_demo_done = false
+	_demo_ghost = GhostDemo5.new()
+	add_child(_demo_ghost)
+	_update_demo()
+
+
+## A demo lift whose route doesn't yet cover the rooms its demo route intends — re-guides it if
+## the player shortens it below that (min 2 rooms for a real A->B connection).
+func _demo_undrawn(i: int) -> bool:
+	var r = game.routes[i]
+	var need: int = maxi(2, int(_demo_paths[i].get("rooms", 2)))
+	return r == null or r.served_rooms().size() < need
+
+
+## First card that still needs drawing (no route / serves < 2) and has a demo path.
+func _first_demo_target() -> int:
+	for i in _demo_paths.size():
+		if _demo_paths[i] != null and _demo_undrawn(i):
+			return i
+	return -1
+
+
+func _update_demo() -> void:
+	if _demo_ghost == null or not is_instance_valid(_demo_ghost) or game == null:
+		return
+	# The demo runs the whole PLAN phase and stays reactive: only when the player actually RUNS
+	# (leaves PLAN) is it finished and marked seen. Clearing / deselecting mid-plan just returns
+	# it to the matching stage.
+	if game.state != game.State.PLAN:
+		Levels5.mark_demo_seen(str(game.level.get("id", "")))
+		_end_demo()
+		return
+	# Pick which lift to guide. If the player has SELECTED an undrawn demo lift, follow THAT one
+	# (they may pick green before blue) and show only its drag-out. Otherwise guide the first
+	# undrawn lift with the full tap+drag gesture. Either way the other lift adapts: once one is
+	# drawn it drops out of the target list. Play glows only when every demo lift is drawn.
+	var sel: int = game.selected_card
+	var target := -1
+	var by_selection := false
+	if sel >= 0 and sel < _demo_paths.size() and _demo_paths[sel] != null and _demo_undrawn(sel):
+		target = sel
+		by_selection = true
+	else:
+		target = _first_demo_target()
+	if target < 0:
+		speed_play.set_highlight(true)
+		_demo_ghost.guide_idle()
+		return
+	speed_play.set_highlight(false)
+	var p: Dictionary = _demo_paths[target]
+	if by_selection:
+		_demo_ghost.guide_draw(p.pts, p.color)
+	else:
+		_demo_ghost.guide_full(p.chip, p.pts, p.color)
+
+
+func _end_demo(clear_glow := true) -> void:
+	_demo_playing = false
+	if _demo_ghost != null and is_instance_valid(_demo_ghost):
+		_demo_ghost.queue_free()
+	_demo_ghost = null
+	if clear_glow and speed_play != null:
+		speed_play.set_highlight(false)
 
 
 ## A served passenger sends a tip coin arcing from its spot (screen pos) up to the TIPS
@@ -244,13 +349,15 @@ func fly_coin(from: Vector2, side: float, count := 1) -> void:
 		return
 	# count>1 = a cargo 5x burst: fan the coins out with a per-coin offset + stagger so it
 	# visibly reads as five coins, not one.
-	for i in maxi(count, 1):
+	var n := maxi(count, 1)
+	for i in n:
 		var off := Vector2.ZERO
 		var delay := 0.0
-		if count > 1:
-			off = Vector2((float(i) / float(count - 1) - 0.5) * 34.0, -float(i) * 7.0)
-			delay = float(i) * 0.07
-		_fly_one(from + off, side * (1.0 if i % 2 == 0 else -1.0), delay, i == count - 1)
+		if n > 1:
+			var frac := float(i) / float(n - 1)
+			off = Vector2((frac - 0.5) * 58.0, -float(i % 4) * 9.0)   # fan out, gentle vertical scatter
+			delay = float(i) * clampf(0.5 / float(n), 0.02, 0.06)     # total stagger ~0.5s
+		_fly_one(from + off, side * (1.0 if i % 2 == 0 else -1.0), delay, i == n - 1)
 
 
 func _fly_one(from: Vector2, side: float, delay: float, bump: bool) -> void:
@@ -259,16 +366,20 @@ func _fly_one(from: Vector2, side: float, delay: float, bump: bool) -> void:
 	coin.modulate.a = 0.0
 	add_child(coin)
 	var to: Vector2 = served_label.global_position + Vector2(46.0, 16.0)
-	var mid: Vector2 = from.lerp(to, 0.5) + Vector2(side * 26.0, -96.0)
+	var mid: Vector2 = from.lerp(to, 0.5) + Vector2(side * 30.0, -120.0)
 	var tw := create_tween()
 	if delay > 0.0:
 		tw.tween_interval(delay)
+	# NOTE: the quadratic bezier is inlined — calling the static _qbez() from inside this lambda
+	# failed ("base Nil") and silently aborted the callback, leaving every coin at alpha 0 (why
+	# they were invisible). Inlining keeps the arc self-contained.
 	tw.tween_method(func(t: float):
-		coin.position = _qbez(from, mid, to, t)
-		var s := lerpf(1.05, 0.55, t)
+		var u := 1.0 - t
+		coin.position = u * u * from + 2.0 * u * t * mid + t * t * to
+		var s := lerpf(1.15, 0.6, t)
 		coin.scale = Vector2(s, s)
-		coin.modulate.a = 1.0 if t < 0.82 else lerpf(1.0, 0.0, (t - 0.82) / 0.18),
-			0.0, 1.0, 0.52).set_trans(Tween.TRANS_SINE)
+		coin.modulate.a = 1.0 if t < 0.85 else lerpf(1.0, 0.0, (t - 0.85) / 0.15),
+			0.0, 1.0, 0.72).set_trans(Tween.TRANS_SINE)
 	tw.tween_callback(func():
 		if is_instance_valid(coin):
 			coin.queue_free()
@@ -302,15 +413,11 @@ func refresh_stats() -> void:
 	else:
 		served_label.text = "Served %d/%d" % [game.served, game.QUOTA]
 		lost_label.text = "Lost %d/%d" % [game.lost, game.MAX_LOST]
-	if speed_play != null:
-		speed_play.set_active(game.time_scale < 3.0)
-		speed_ff.set_active(game.time_scale >= 3.0)
-	clear_btn.visible = game.can_edit() and game.selected_card >= 0 \
-			and game.routes[game.selected_card] != null
 	if _serves_changed():
 		refresh_cards()
-	_refresh_action()
-	_refresh_hint()
+	_refresh_controls()
+	if _demo_playing:
+		_update_demo()
 
 
 ## The serve-count (rooms reached via dock cells) each committed route reports
@@ -326,29 +433,6 @@ func _serves_changed() -> bool:
 	_last_serves = cur
 	return true
 
-func _refresh_hint() -> void:
-	hint_label.add_theme_color_override("font_color", Color(1, 1, 1, 0.6))
-	if game.state == game.State.PLAYING:
-		hint_label.text = "Running - the network is locked. Watch it, then ABORT to replan."
-		return
-	if game.state != game.State.PLAN:
-		hint_label.text = ""
-		return
-	if game.reject_msg != "" and Time.get_ticks_msec() < game.reject_until_ms:
-		hint_label.text = game.reject_msg
-		hint_label.add_theme_color_override("font_color", Color(1.0, 0.6, 0.5))
-		return
-	# Incomplete routes (serve <2 rooms) fail SILENTLY - no red/amber scold. RUN just stays
-	# greyed until at least one lift is validly placed and no drawn route is unfinished (you
-	# don't have to place every lift). (reject_msg above is different: an illegal action.)
-	var sel: int = game.selected_card
-	if sel >= 0:
-		if game.routes[sel] != null:
-			hint_label.text = "Drag a route's end to extend or trim it; or draw a new one."
-		else:
-			hint_label.text = "Drag beside the rooms' door marks to serve them; release to commit."
-	else:
-		hint_label.text = "PLAN ready - tap a lift chip to draw, or press RUN."
 
 
 # ---------------------------------------------------------------- overlays

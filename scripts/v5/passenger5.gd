@@ -42,6 +42,11 @@ const PTYPES := {
 	# generous — freight isn't in a rush.
 	"delivery": {"width": 3, "patience": 130.0, "walk_mult": 2.0,
 			"color": Color(0.74, 0.53, 0.30)},
+	# EXECUTIVE (v5): a penthouse-bound VIP. width 1 (fits any lift) but IMPATIENT (low
+	# patience) and pays BIG — so the reward is getting them up fast, which the EXPRESS does
+	# best. Marked on any penthouse-involving trip by Demand5; restyled as a redhead in a suit.
+	"executive": {"width": 1, "patience": 55.0, "walk_mult": 1.0,
+			"color": Color(0.78, 0.26, 0.30)},
 }
 
 enum Walk { NONE, MILL, BOARD, ALIGHT, TRANSFER }
@@ -75,6 +80,8 @@ const NPC_H := 34.0
 const _NPC_PATH := ["res://assets/pixel/pixelspaces/Pre-made NPCs/Male.png",
 		"res://assets/pixel/pixelspaces/Pre-made NPCs/Female.png"]
 static var _npc_tex: Array = []
+static var _npc_tex_red: Array = []    # EXECUTIVE variant: blue hair -> RED (ginger)
+static var _npc_tex_green: Array = []   # DELIVERY variant: blue hair -> GREEN (persists cargo-less)
 static var _npc_loaded := false
 
 static func _load_npc() -> void:
@@ -82,7 +89,30 @@ static func _load_npc() -> void:
 		return
 	_npc_loaded = true
 	for p in _NPC_PATH:
-		_npc_tex.append(load(p) if ResourceLoader.exists(p) else null)
+		var t: Texture2D = load(p) if ResourceLoader.exists(p) else null
+		_npc_tex.append(t)
+		_npc_tex_red.append(_recolor(t, "red"))
+		_npc_tex_green.append(_recolor(t, "green"))
+
+
+## A hair-recoloured clone of an NPC sheet: the blue hair (blue-dominant pixels) is remapped by
+## swapping channels — red = swap R<->B (ginger), green = swap G<->B — which preserves the
+## light/dark shading. Skin (red-dominant) and outlines are left alone. Pure "tint shenanigans",
+## no shader, baked once at load. This is how a special passenger keeps its identity even after
+## it sheds its cart (a cargo-less delivery man is still green-haired).
+static func _recolor(tex: Texture2D, mode: String) -> Texture2D:
+	if tex == null:
+		return null
+	var img: Image = tex.get_image().duplicate()
+	for y in img.get_height():
+		for x in img.get_width():
+			var c := img.get_pixel(x, y)
+			if c.a > 0.1 and c.b > c.r + 0.12 and c.b > c.g * 0.82:
+				if mode == "red":
+					img.set_pixel(x, y, Color(c.b, c.g, c.r, c.a))
+				else:
+					img.set_pixel(x, y, Color(c.r, c.b, c.g, c.a))
+	return ImageTexture.create_from_image(img)
 
 var _sheet := 0
 var _anim_i := 0
@@ -512,7 +542,16 @@ func _draw() -> void:
 		draw_set_transform(Vector2(0, feet - 16.0 * rs), 0.0, Vector2(fx * rs, rs))
 		_draw_cart(col)
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-	var tex: Texture2D = _npc_tex[_sheet] if _sheet < _npc_tex.size() else null
+	# Special passengers keep a distinct HAIR colour (persists cart-less too): executives are
+	# red-haired, delivery men green-haired; everyone else is the default blue sheet.
+	var tex: Texture2D = null
+	if _sheet < _npc_tex.size():
+		if ptype == "executive":
+			tex = _npc_tex_red[_sheet]
+		elif ptype == "delivery":
+			tex = _npc_tex_green[_sheet]
+		else:
+			tex = _npc_tex[_sheet]
 	if tex != null:
 		var dest := Rect2(-side / 2.0, feet - side, side, side)  # feet on the floor line
 		var src := Rect2(_cols[_anim_i] * 16, 0, 16, 16)
@@ -542,14 +581,11 @@ func _draw() -> void:
 		var no_route := no_path and riding == null
 		var bcol: Color = Grid5.room_color(dest_room)
 		var r := 9.0 * rs
-		if no_route:
-			var beat := 0.5 + 0.5 * sin(vis_t * 11.0)
-			bcol = Color(0.96, 0.26, 0.22).lerp(Color(1.0, 0.86, 0.32), 0.25 * beat)
-			r *= 1.0 + 0.20 * beat
-		elif frac < 0.28:
-			var beat := 0.5 + 0.5 * sin(vis_t * 8.0)
-			bcol = bcol.lerp(Color(0.98, 0.35, 0.30), 0.55 * beat)
-			r *= 1.0 + 0.14 * beat
+		# NO-ROUTE and LOW-PATIENCE both PULSE the badge but KEEP its destination colour (no red
+		# recolour) — no-route pulses faster so the two still read a little differently.
+		if no_route or frac < 0.28:
+			var beat := 0.5 + 0.5 * sin(vis_t * (11.0 if no_route else 8.0))
+			r *= 1.0 + 0.24 * beat
 		draw_circle(center, r + 2.0, Color(0.08, 0.08, 0.10, 0.95))  # dark border ring
 		draw_circle(center, r, Color(bcol, 0.22))                     # faint full track
 		_draw_pie(center, r, frac, Color(bcol, 0.98))                 # remaining-patience wedge

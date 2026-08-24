@@ -1604,7 +1604,7 @@ func _solve_four(lv: Dictionary, budgets: Array) -> Dictionary:
 	# Derive demand the same way main5 does (rooms + fixed seed) so RG's primitives and the
 	# sim agree with live play; shipped levels store no trips.
 	if (lv.get("trips", []) as Array).is_empty():
-		lv["trips"] = Demand5.derive(lv.rooms, hash(str(lv.get("id", ""))))
+		lv["trips"] = Demand5.derive(lv.rooms, hash(str(lv.get("id", ""))), lv.get("demand", {}))
 	Levels5.injected = lv
 	Levels5.headless = true
 	SimApi5.load_maze(lv)

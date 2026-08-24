@@ -86,8 +86,16 @@ If a rule here seems wrong for a task, ask — do not silently violate it.
   author a `trips` array on a shipped level — leave it off and the game derives it. This
   structurally prevents the bugs hand-trips caused: no atrium destinations (atriums are
   transfer bridges — zero demand), no dead rooms (every demand room is connected), no
-  lift trips between walkable-adjacent rooms. Tune demand by editing the type-affinity
-  model in `Demand5`, not per level. (Fixtures/tests may still set explicit trips.)
+  lift trips between walkable-adjacent rooms. Tune GLOBAL demand by editing the type-affinity
+  model in `Demand5`. (Fixtures/tests may still set explicit trips.)
+
+- **Per-level demand TUNING is allowed via a `demand` MULTIPLIER, never hand-written trips**
+  (user 2026-08-24). A level may carry a `demand` field: a room-TYPE → weight-multiplier dict
+  (e.g. `"demand": {"penthouse": 3.0}` on the express tutorial so executives dominate and
+  serving them fast is the lucrative play). It scales the DERIVED trip weights per type — it
+  does NOT let you author individual trips, so the structural guarantees hold (no atrium
+  destinations, no dead rooms, no walk-across pairs). Changing it re-derives demand, so it
+  rebaselines the fingerprint and the level must be re-solved.
 
 - **TRANSFERS ONLY VIA HUBS** (user 2026-08-23): a rider may only get off to CHANGE LIFTS at
   a **lobby, cafe, storage (delivery), or atrium**. Transferring through an office/penthouse
@@ -137,7 +145,7 @@ If a rule here seems wrong for a task, ask — do not silently violate it.
 
 ## Process / verification (engineering rules)
 
-- **Fingerprint discipline.** `FINGERPRINT5-ALL 4276812684` must stay byte-identical for any
+- **Fingerprint discipline.** `FINGERPRINT5-ALL 3658339676` must stay byte-identical for any
   RENDERING-only change (verify with `tools/v5/run_fingerprint5.gd`). A SIM/CONTENT change
   legitimately rebaselines it — flag that explicitly and keep `V5 SMOKE ALL PASS`.
 - **Suite = HAND tutorials + PCG crosslink (2026-08-23).** T-1..T-7 are HAND-AUTHORED (a

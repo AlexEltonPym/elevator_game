@@ -107,7 +107,6 @@ func _rebuild() -> void:
 		b.position = Vector2(margin, top + k * (h + gap))
 		b.size = Vector2(vp.x - 2.0 * margin, h)
 		b.clip_text = true
-		b.tooltip_text = _star_tooltip(lv)  # tips-per-star, shown on hover (stars included)
 		b.pressed.connect(func():
 			Levels5.autosolve = false
 			Levels5.current = idx
@@ -126,17 +125,6 @@ func _rebuild() -> void:
 			sbar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			sbar.position = Vector2(vp.x - margin - 118.0, top + k * (h + gap) + h * 0.5 - 13.0)
 			add_child(sbar)
-
-
-## Tooltip listing the tip total each star needs, from the level's `stars` thresholds.
-func _star_tooltip(lv: Dictionary) -> String:
-	var th: Array = lv.get("stars", [])
-	if th.size() < 3:
-		return ""
-	var s := "1 star  %d tips\n2 stars  %d tips\n3 stars  %d tips" % [int(th[0]), int(th[1]), int(th[2])]
-	if th.size() >= 4:
-		s += "\nperfect  %d tips" % int(th[3])
-	return s
 
 
 func _on_hover(idx: int) -> void:
