@@ -282,12 +282,13 @@ func start_guided_demo(paths: Array) -> void:
 	_update_demo()
 
 
-## A demo lift whose route doesn't yet cover the rooms its demo route intends — re-guides it if
-## the player shortens it below that (min 2 rooms for a real A->B connection).
+## A demo lift is DONE once it forms any valid A->B connection (serves >= 2 rooms) — "close
+## enough", regardless of direction or which exact rooms. We deliberately do NOT demand the demo
+## route's full room count: a rebel who draws a shorter/backwards/different-but-valid route has
+## learned the gesture, so the guide stops nagging it and the play cue stays lit.
 func _demo_undrawn(i: int) -> bool:
 	var r = game.routes[i]
-	var need: int = maxi(2, int(_demo_paths[i].get("rooms", 2)))
-	return r == null or r.served_rooms().size() < need
+	return r == null or r.served_rooms().size() < 2
 
 
 ## First card that still needs drawing (no route / serves < 2) and has a demo path.
