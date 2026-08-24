@@ -49,7 +49,8 @@ var chip_dels: Array = []   # per-chip "×" delete buttons
 var _last_serves: Array = [] # per-card serve counts last shown on the chips
 var _demo_playing := false
 var _demo_done := false
-var _demo_paths: Array = []   # per-card {chip, pts, color} or null
+var _demo_paths: Array = []   # per-card {chip, pts, cells, color, roomset} or null
+var _demo_intended := {}      # room id -> true: every room the demo plan must cover to finish
 var _demo_ghost = null        # GhostDemo5 overlay
 var overlay: Control = null
 var _chips_built := false
@@ -275,6 +276,11 @@ func start_guided_demo(paths: Array) -> void:
 	if headless:
 		return
 	_demo_paths = paths
+	_demo_intended = {}
+	for p in paths:
+		if p != null:
+			for rid in p.get("roomset", []):
+				_demo_intended[rid] = true
 	_demo_playing = true
 	_demo_done = false
 	_demo_ghost = GhostDemo5.new()
@@ -282,56 +288,116 @@ func start_guided_demo(paths: Array) -> void:
 	_update_demo()
 
 
-## A demo lift is DONE once it forms any valid A->B connection (serves >= 2 rooms) — "close
-## enough", regardless of direction or which exact rooms. We deliberately do NOT demand the demo
-## route's full room count: a rebel who draws a shorter/backwards/different-but-valid route has
-## learned the gesture, so the guide stops nagging it and the play cue stays lit.
-func _demo_undrawn(i: int) -> bool:
-	var r = game.routes[i]
-	return r == null or r.served_rooms().size() < 2
+## Rooms served across every committed route right now (room id -> true).
+func _covered_rooms() -> Dictionary:
+	var cov := {}
+	for i in game.routes.size():
+		var r = game.routes[i]
+		if r != null:
+			for rid in r.served_rooms():
+				cov[rid] = true
+	return cov
 
 
-## First card that still needs drawing (no route / serves < 2) and has a demo path.
-func _first_demo_target() -> int:
-	for i in _demo_paths.size():
-		if _demo_paths[i] != null and _demo_undrawn(i):
-			return i
-	return -1
+## The demo is COMPLETE only when every intended room (union of all jobs) is covered — so a
+## partial plan (e.g. a lift that stops one office short) can NOT finish it early.
+func _demo_complete(cov: Dictionary) -> bool:
+	for rid in _demo_intended:
+		if not cov.has(rid):
+			return false
+	return true
+
+
+## Does lift `i` still have work? Its assigned job (least-conflicting, see _best_demo_job) has a
+## room nobody has covered yet.
+func _lift_incomplete(i: int, cov: Dictionary) -> bool:
+	if _demo_paths[i] == null:
+		return false
+	var job: Dictionary = _best_demo_job(i)
+	for rid in job.get("roomset", []):
+		if not cov.has(rid):
+			return true
+	return false
+
+
+## If lift `target` already has a route sitting on part of `job`, the screen points to CONTINUE
+## from the route's free end through the job's remaining cells (teaches grab-to-extend: finish the
+## last bit, don't redraw). Empty if the lift isn't on this job or the job is already fully drawn.
+func _continue_pts(target: int, job: Dictionary) -> Array:
+	var r = game.routes[target]
+	if r == null:
+		return []
+	var jc: Array = job.get("cells", [])
+	if jc.size() < 2:
+		return []
+	var rset := {}
+	for c in r.cells:
+		rset[c] = true
+	var cov_idx: Array = []
+	for i in jc.size():
+		if rset.has(jc[i]):
+			cov_idx.append(i)
+	if cov_idx.is_empty() or cov_idx.size() == jc.size():
+		return []                                   # not on this job, or already fully drawn
+	var lo: int = cov_idx[0]
+	var hi: int = cov_idx[cov_idx.size() - 1]
+	var seg: Array = []
+	if hi < jc.size() - 1:                           # uncovered TAIL: continue from hi outward
+		for i in range(hi, jc.size()):
+			seg.append(jc[i])
+	elif lo > 0:                                     # uncovered HEAD: continue from lo, reversed
+		for i in range(lo, -1, -1):
+			seg.append(jc[i])
+	if seg.size() < 2:
+		return []
+	var pts: Array = []
+	for c in seg:
+		pts.append(Grid5.view_offset + Grid5.view_scale * Grid5.cell_center(c))
+	return pts
 
 
 func _update_demo() -> void:
 	if _demo_ghost == null or not is_instance_valid(_demo_ghost) or game == null:
 		return
 	# The demo runs the whole PLAN phase and stays reactive: only when the player actually RUNS
-	# (leaves PLAN) is it finished and marked seen. Clearing / deselecting mid-plan just returns
-	# it to the matching stage.
+	# (leaves PLAN) is it finished and marked seen.
 	if game.state != game.State.PLAN:
 		Levels5.mark_demo_seen(str(game.level.get("id", "")))
 		_end_demo()
 		return
-	# Pick which lift to guide. If the player has SELECTED an undrawn demo lift, follow THAT one
-	# (they may pick green before blue) and show only its drag-out. Otherwise guide the first
-	# undrawn lift with the full tap+drag gesture. Either way the other lift adapts: once one is
-	# drawn it drops out of the target list. Play glows only when every demo lift is drawn.
-	var sel: int = game.selected_card
-	var target := -1
-	var by_selection := false
-	if sel >= 0 and sel < _demo_paths.size() and _demo_paths[sel] != null and _demo_undrawn(sel):
-		target = sel
-		by_selection = true
-	else:
-		target = _first_demo_target()
-	if target < 0:
+	var cov := _covered_rooms()
+	# Done only when the WHOLE plan covers every intended room — then light play, hide the finger.
+	if _demo_complete(cov):
 		speed_play.set_highlight(true)
 		_demo_ghost.guide_idle()
 		return
 	speed_play.set_highlight(false)
-	# Guide `target` to whichever demo JOB the player hasn't already covered with the OTHER lift
-	# (so if they drew green on blue's intended path, blue gets steered to the remaining job
-	# instead of on top of green). Keep the target lift's own chip + colour.
+	# Pick a lift that still has work: prefer the one the player SELECTED, else the first incomplete.
+	var sel: int = game.selected_card
+	var target := -1
+	var by_selection := false
+	if sel >= 0 and sel < _demo_paths.size() and _lift_incomplete(sel, cov):
+		target = sel
+		by_selection = true
+	else:
+		for i in _demo_paths.size():
+			if _lift_incomplete(i, cov):
+				target = i
+				break
+	if target < 0:
+		# Not complete, yet no lift is flagged (rare) — just light play rather than nag.
+		speed_play.set_highlight(true)
+		_demo_ghost.guide_idle()
+		return
+	# Guide `target` to its least-conflicting job. If it's already partway along that job, CONTINUE
+	# from where it left off (finish the last bit); otherwise draw the whole job (tap+drag, or just
+	# drag when the player already selected the lift). Keep the lift's own chip + colour.
 	var mine: Dictionary = _demo_paths[target]
 	var job: Dictionary = _best_demo_job(target)
-	if by_selection:
+	var cont: Array = _continue_pts(target, job)
+	if cont.size() >= 2:
+		_demo_ghost.guide_draw(cont, mine.color)
+	elif by_selection:
 		_demo_ghost.guide_draw(job.pts, mine.color)
 	else:
 		_demo_ghost.guide_full(mine.chip, job.pts, mine.color)

@@ -77,9 +77,15 @@ func _begin_cycle() -> void:
 		return
 	_mode = _want.mode; _chip = _want.chip; _pts = _want.pts; _color = _want.color
 	_running = true
+	# Reset the reveal SYNCHRONOUSLY (not in the first tween callback) so a cycle that switched to a
+	# new route never renders one frame of the new line fully drawn (the "blue flash").
+	_rev = 0.0
+	_finger = _chip if _mode == "full" else _pts[0]
+	queue_redraw()
 	if _tw != null:
 		_tw.kill()
 	var dur: float = clampf(0.16 * _pts.size(), 0.7, 2.4)
+	var undur: float = clampf(0.09 * _pts.size(), 0.35, 1.1)   # undraw is quicker than the draw
 	_tw = create_tween()  # ONE cycle; re-arms itself via _begin_cycle at the end
 	if _mode == "full":
 		# tap the chip, THEN drag out the route (whole gesture).
@@ -95,13 +101,23 @@ func _begin_cycle() -> void:
 		_tw.tween_interval(0.25)
 	_tw.tween_method(_drag, 0.0, 1.0, dur).set_trans(Tween.TRANS_SINE)  # draw
 	_tw.tween_callback(_do_ripple.bind(_pts[_pts.size() - 1]))        # release
-	_tw.tween_interval(1.1)
+	_tw.tween_interval(0.65)                                          # brief hold, drawn
+	# UNDRAW: the finger quickly retraces the line back to the start, erasing it — instead of the
+	# line snapping away. Reads as "and back again", inviting the player to draw it themselves.
+	_tw.tween_method(_undrag, 0.0, 1.0, undur).set_trans(Tween.TRANS_SINE)
+	_tw.tween_interval(0.3)
 	_tw.tween_callback(_begin_cycle)                                  # next cycle: latest request
 
 
 func _drag(t: float) -> void:
 	_rev = t
 	_finger = _point_at(_pts, t)
+
+
+## Reverse of _drag: erase the line from the head back to the start, finger following.
+func _undrag(t: float) -> void:
+	_rev = 1.0 - t
+	_finger = _point_at(_pts, 1.0 - t)
 
 
 func _do_ripple(at: Vector2) -> void:

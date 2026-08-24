@@ -434,9 +434,10 @@ func _maybe_play_demo() -> void:
 					served[rid] = true
 			# `cells` lets the guide treat each demo route as a JOB and steer an undrawn lift to
 			# whichever job the player hasn't already covered (so it never guides a lift on top of
-			# the other one). `rooms` is the served-room count for reference.
+			# the other one). `roomset` is the rooms this job serves — the demo is DONE only when
+			# every intended room (union across jobs) is covered, so a partial plan can't finish it.
 			paths.append({"color": CARDS[ri].color, "chip": hud.chip_center(ri),
-					"pts": pts, "cells": cells, "rooms": served.size()})
+					"pts": pts, "cells": cells, "roomset": served.keys(), "rooms": served.size()})
 			any = true
 		else:
 			paths.append(null)
