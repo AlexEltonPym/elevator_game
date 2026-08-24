@@ -39,7 +39,7 @@ func _knearest(c: Color) -> String:
 
 var level_label: Label
 var served_label: Label
-var lost_label: Label
+var lost_label: RichTextLabel   # rich so the "s" unit can be shrunk (fakes lowercase; "60S" was misreading as "605")
 var menu_btn: Button
 var back_btn: TextureButton   # revert to plan (only shown mid-run)
 var speed_play: Control   # SpeedBtn5 (play / run at 1x)
@@ -80,7 +80,7 @@ func _build_top() -> void:
 	level_label = _make_label(Vector2(14, 28), 34, Color(0.95, 0.85, 0.5))
 	level_label.text = "R-1"
 	served_label = _make_label(Vector2(110, 12), 24, Color(0.45, 0.95, 0.55))
-	lost_label = _make_label(Vector2(110, 52), 24, Color(1.0, 0.5, 0.45))
+	lost_label = _make_rich_label(Vector2(110, 52), 24, Color(1.0, 0.5, 0.45))
 	# PLAY (1x) + FAST-FORWARD (5x) are the RUN trigger now: a tap in PLAN starts the run at
 	# that speed; in PLAYING it just switches speed. Green "go" buttons. 1x reads smooth thanks
 	# to render interpolation (main5.render_alpha), so it's a real "slow, watch it" pace.
@@ -528,7 +528,8 @@ func refresh_stats() -> void:
 	if game.shift_len > 0.0:
 		served_label.text = "Tips %d" % roundi(game.tips)
 		var remain: float = maxf(0.0, game.shift_len - game.elapsed)
-		lost_label.text = "Last orders" if game.shift_closed else "%ds left" % roundi(remain)
+		# Shrink the "s" so it reads as a lowercase unit, not a "5" tacked onto the number.
+		lost_label.text = "%d[font_size=15]s[/font_size] left" % roundi(remain)
 	else:
 		served_label.text = "Served %d/%d" % [game.served, game.QUOTA]
 		lost_label.text = "Lost %d/%d" % [game.lost, game.MAX_LOST]
@@ -673,5 +674,24 @@ func _make_label(pos: Vector2, size: int, col: Color) -> Label:
 	var f = Ui5.font()
 	if f != null:
 		l.add_theme_font_override("font", f)
+	add_child(l)
+	return l
+
+
+## Like _make_label but a BBCode RichTextLabel, so a run can carry a smaller inline font size
+## (used for the seconds "s", which reads as a "5" at full caps height).
+func _make_rich_label(pos: Vector2, size: int, col: Color) -> RichTextLabel:
+	var l := RichTextLabel.new()
+	l.position = pos
+	l.bbcode_enabled = true
+	l.fit_content = true
+	l.scroll_active = false
+	l.autowrap_mode = TextServer.AUTOWRAP_OFF
+	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	l.add_theme_font_size_override("normal_font_size", size)
+	l.add_theme_color_override("default_color", col)
+	var f = Ui5.font()
+	if f != null:
+		l.add_theme_font_override("normal_font", f)
 	add_child(l)
 	return l
