@@ -98,8 +98,7 @@ func _begin_cycle() -> void:
 	if _tw != null:
 		_tw.kill()
 	var dur: float = clampf(0.16 * _pts.size(), 0.7, 2.4)
-	var undur: float = clampf(0.09 * _pts.size(), 0.35, 1.1)   # undraw is quicker than the draw
-	_tw = create_tween()  # ONE cycle; re-arms itself via _begin_cycle at the end
+	_tw = create_tween()  # ONE cycle; re-arms itself via _begin_cycle / _after_hold at the end
 	# TRAVEL: move the finger from wherever it is to this cycle's start anchor — never a jump.
 	if on_screen and _finger.distance_to(start) > 1.0:
 		var travel: float = clampf(_finger.distance_to(start) / 2200.0, 0.12, 0.5)
@@ -118,11 +117,24 @@ func _begin_cycle() -> void:
 	_tw.tween_method(_drag, 0.0, 1.0, dur).set_trans(Tween.TRANS_SINE)  # draw
 	_tw.tween_callback(_do_ripple.bind(_pts[_pts.size() - 1]))        # release
 	_tw.tween_interval(0.65)                                          # brief hold, drawn
-	# UNDRAW: the finger quickly retraces the line back to the start, erasing it — instead of the
-	# line snapping away. Reads as "and back again", inviting the player to draw it themselves.
-	_tw.tween_method(_undrag, 0.0, 1.0, undur).set_trans(Tween.TRANS_SINE)
-	_tw.tween_interval(0.3)
-	_tw.tween_callback(_begin_cycle)                                  # next cycle: latest request
+	_tw.tween_callback(_after_hold)                                   # then: redirect, or undraw+loop
+
+
+## After the stroke is drawn and held: if a DIFFERENT route is now wanted (the player half-drew a
+## line), DON'T retrace to the start — finish here at the top and let the next cycle slide the
+## finger straight from the top to the new anchor (the end of their squiggle). Otherwise loop
+## normally: undraw back to the start, then repeat.
+func _after_hold() -> void:
+	_drawing = false
+	if _want != null and _want.key != _cur_key:
+		_begin_cycle()   # kills this tween (its last step) and starts fresh from the current position
+		return
+	var undur: float = clampf(0.09 * _pts.size(), 0.35, 1.1)
+	var t := create_tween()
+	t.tween_method(_undrag, 0.0, 1.0, undur).set_trans(Tween.TRANS_SINE)  # retrace to the start
+	t.tween_interval(0.3)
+	t.tween_callback(_begin_cycle)
+	_tw = t
 
 
 func _drag(t: float) -> void:
