@@ -78,25 +78,33 @@ func _begin_cycle() -> void:
 	_mode = _want.mode; _chip = _want.chip; _pts = _want.pts; _color = _want.color
 	_running = true
 	# Reset the reveal SYNCHRONOUSLY (not in the first tween callback) so a cycle that switched to a
-	# new route never renders one frame of the new line fully drawn (the "blue flash").
+	# new route never renders one frame of the new line fully drawn (the "blue flash"). The FINGER
+	# is NOT snapped here — it travels (below), never teleports.
 	_rev = 0.0
-	_finger = _chip if _mode == "full" else _pts[0]
+	var start: Vector2 = _chip if _mode == "full" else _pts[0]
+	# Rule: the finger never teleports. If it's already on screen, it physically slides to the next
+	# anchor (fast, but a real move); only its FIRST appearance may snap into place.
+	var on_screen: bool = _finger.x > -100.0
+	if not on_screen:
+		_finger = start
 	queue_redraw()
 	if _tw != null:
 		_tw.kill()
 	var dur: float = clampf(0.16 * _pts.size(), 0.7, 2.4)
 	var undur: float = clampf(0.09 * _pts.size(), 0.35, 1.1)   # undraw is quicker than the draw
 	_tw = create_tween()  # ONE cycle; re-arms itself via _begin_cycle at the end
+	# TRAVEL: move the finger from wherever it is to this cycle's start anchor — never a jump.
+	if on_screen and _finger.distance_to(start) > 1.0:
+		var travel: float = clampf(_finger.distance_to(start) / 2200.0, 0.12, 0.5)
+		_tw.tween_property(self, "_finger", start, travel).set_trans(Tween.TRANS_SINE)
 	if _mode == "full":
-		# tap the chip, THEN drag out the route (whole gesture).
-		_tw.tween_callback(func(): _rev = 0.0; _finger = _chip)
+		# tap the chip (the finger has just arrived there), THEN drag out the route.
 		_tw.tween_callback(_do_ripple.bind(_chip))                    # tap the chip
-		_tw.tween_interval(0.45)
+		_tw.tween_interval(0.35)
 		_tw.tween_property(self, "_finger", _pts[0], 0.5).set_trans(Tween.TRANS_SINE)
 		_tw.tween_callback(_do_ripple.bind(_pts[0]))                  # press at start
 		_tw.tween_interval(0.2)
 	else: # "draw" — only the drag, no chip tap
-		_tw.tween_callback(func(): _rev = 0.0; _finger = _pts[0])
 		_tw.tween_callback(_do_ripple.bind(_pts[0]))                  # press at start
 		_tw.tween_interval(0.25)
 	_tw.tween_method(_drag, 0.0, 1.0, dur).set_trans(Tween.TRANS_SINE)  # draw
