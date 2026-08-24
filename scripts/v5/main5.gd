@@ -366,7 +366,6 @@ func abort_run() -> void:
 ## on T-2/T-3, two lifts / a shared dock) without text. Persisted per level so it shows once;
 ## tap to skip. Visual only — the board stays empty, the player draws for real.
 const IntroCard5 := preload("res://scripts/v5/intro_card5.gd")
-const RouteArrow5 := preload("res://scripts/v5/route_arrow5.gd")
 
 ## The mechanic-intro levels: their card shows EVERY time you open them (not persisted) as an
 ## overlay at PLAN start. T-5 teaches cargo, T-6 teaches executives.
@@ -401,34 +400,7 @@ func _show_intro_queue(queue: Array) -> void:
 	card.setup(str(m), val)
 	hud.add_child(card)
 	card.dismissed.connect(func():
-		_show_route_arrow(str(m))
 		_show_intro_queue(queue))
-
-
-## After a passenger-mechanic card dismisses, trace a demo-style arrow along the special lift's
-## route on the board (cargo lift for cargo; express for executives) — "connect these, this lift".
-func _show_route_arrow(mech: String) -> void:
-	if headless:
-		return
-	var want := ""
-	if mech == "cargo":
-		want = "cargo"
-	elif mech == "executive":
-		want = "express"
-	if want == "":
-		return
-	var sol: Array = level.get("solution", [])
-	for i in CARDS.size():
-		if str(CARDS[i].get("type", "standard")) == want and i < sol.size():
-			var pts: Array = []
-			for xy in sol[i]:
-				var cell := Vector2i(int(xy[0]), int(xy[1]))
-				pts.append(Grid5.view_offset + Grid5.view_scale * Grid5.cell_center(cell))
-			if pts.size() >= 2:
-				var arrow = RouteArrow5.new()
-				arrow.setup(pts, CARDS[i].color)
-				hud.add_child(arrow)
-			return
 
 
 const DEMO_LEVELS := ["T-1", "T-2", "T-3"]  # T-4 (cargo) will get explanatory text instead
