@@ -408,14 +408,12 @@ const DEMO_LEVELS := ["T-1", "T-2", "T-3"]  # T-4 (cargo) will get explanatory t
 func _maybe_play_demo() -> void:
 	if headless or not DEMO_LEVELS.has(str(level.get("id", ""))):
 		return
-	var id := str(level.get("id", ""))
-	if Levels5.demo_seen(id):
-		return
+	# The demo plays EVERY time a demo level opens (user: no "seen" gate) — it's an interactive,
+	# non-blocking hint, so re-showing it is harmless and helps while iterating.
 	# Hand-authored ghost paths (`demo`) override the solution-derived trace: the solver's
 	# route order can zig-zag or draw bottom-to-top, which reads oddly as a taught gesture.
-	# `demo` is the same [route -> [[x,y]...]] shape, drawn verbatim in card order. Built into a
-	# per-card `paths` array (null where a card has no demo path) for the guided overlay, which
-	# marks the level demo-seen once the player actually connects a lift.
+	# `demo` is the same [route -> [[x,y]...]] shape, drawn verbatim in card order, built into a
+	# per-card `paths` array (null where a card has no demo path) for the guided overlay.
 	var sol: Array = level.get("demo", level.get("solution", []))
 	if sol.is_empty():
 		return

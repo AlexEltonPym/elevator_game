@@ -359,10 +359,9 @@ func _continue_pts(target: int, job: Dictionary) -> Array:
 func _update_demo() -> void:
 	if _demo_ghost == null or not is_instance_valid(_demo_ghost) or game == null:
 		return
-	# The demo runs the whole PLAN phase and stays reactive: only when the player actually RUNS
-	# (leaves PLAN) is it finished and marked seen.
+	# The demo runs the whole PLAN phase and stays reactive; it just ends when the player leaves
+	# PLAN (hits RUN). No "seen" flag — it plays again next time the level opens (user request).
 	if game.state != game.State.PLAN:
-		Levels5.mark_demo_seen(str(game.level.get("id", "")))
 		_end_demo()
 		return
 	var cov := _covered_rooms()
