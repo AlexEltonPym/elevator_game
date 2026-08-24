@@ -14,6 +14,8 @@ var _pts: Array = []
 var _color := Color(1, 1, 1)
 var _want = null             # {mode, chip, pts, color, key} desired next; picked up at boundaries
 var _running := false
+var _cur_key := ""           # key of the cycle currently playing (for interrupt-vs-wait decisions)
+var _drawing := false        # true only while the DRAW stroke is under way (protected from restart)
 var _finger := Vector2(-500, -500)
 var _rev := 0.0              # 0..1 draw reveal
 var _ripple_at := Vector2.ZERO
@@ -43,9 +45,11 @@ func guide_draw(pts: Array, color: Color) -> void:
 			"draw:%d:%d,%d" % [pts.size(), int(pts[0].x), int(pts[0].y)])
 
 
-## Request a mode/route. The change is NOT applied mid-stroke: the running cycle finishes, then
-## the next cycle picks up this request. So tapping the lift while the finger is drawing the same
-## line just drops the chip-tap next loop — it never teleports or restarts.
+## Request a mode/route. A change to a DIFFERENT route restarts the cycle IMMEDIATELY as long as
+## the finger hasn't begun the draw stroke yet (still travelling/tapping) — so when a full-draw
+## turns into a finish-me-off, the finger heads straight to the continuation point instead of
+## going all the way to the start and only then redirecting. Once the DRAW stroke is under way it
+## is protected: the change waits for the loop boundary, so a stroke is never jerked mid-line.
 func _want_cycle(mode: String, chip: Vector2, pts: Array, color: Color, key: String) -> void:
 	if pts.is_empty():
 		guide_idle(); return
@@ -54,6 +58,8 @@ func _want_cycle(mode: String, chip: Vector2, pts: Array, color: Color, key: Str
 	_want = {"mode": mode, "chip": chip, "pts": pts, "color": color, "key": key}
 	if not _running:
 		_begin_cycle()
+	elif not _drawing and key != _cur_key:
+		_begin_cycle()   # redirect now (finger travels from where it is to the new anchor)
 
 
 func guide_idle() -> void:
@@ -75,8 +81,9 @@ func _begin_cycle() -> void:
 		_running = false
 		guide_idle()
 		return
-	_mode = _want.mode; _chip = _want.chip; _pts = _want.pts; _color = _want.color
+	_mode = _want.mode; _chip = _want.chip; _pts = _want.pts; _color = _want.color; _cur_key = _want.key
 	_running = true
+	_drawing = false   # pre-draw (travel/tap) phase: a route change may still redirect us
 	# Reset the reveal SYNCHRONOUSLY (not in the first tween callback) so a cycle that switched to a
 	# new route never renders one frame of the new line fully drawn (the "blue flash"). The FINGER
 	# is NOT snapped here — it travels (below), never teleports.
@@ -107,6 +114,7 @@ func _begin_cycle() -> void:
 	else: # "draw" — only the drag, no chip tap
 		_tw.tween_callback(_do_ripple.bind(_pts[0]))                  # press at start
 		_tw.tween_interval(0.25)
+	_tw.tween_callback(func(): _drawing = true)                      # stroke begins: protect it
 	_tw.tween_method(_drag, 0.0, 1.0, dur).set_trans(Tween.TRANS_SINE)  # draw
 	_tw.tween_callback(_do_ripple.bind(_pts[_pts.size() - 1]))        # release
 	_tw.tween_interval(0.65)                                          # brief hold, drawn
