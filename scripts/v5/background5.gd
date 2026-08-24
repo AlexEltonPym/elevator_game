@@ -59,19 +59,16 @@ func _process(_dt: float) -> void:
 	queue_redraw()
 
 
-# The day runs a bit PAST the shift bell so the timelapse doesn't finish mid-service: at
-# `shift_len` the sky is only at dusk (sun setting, first stars), and the remaining
-# last-orders drain carries it into full night — "ends AS the stars come out", not before.
-const DAY_PAD := 33.0
-
-## Day phase 0 (sunrise / planning) .. 1 (night), from the shift clock stretched by DAY_PAD.
+## Day phase 0 (sunrise / planning) .. 1 (night). The full arc spans the shift exactly: the day
+## ENDS at nightfall on the bell. (There's no last-orders drain any more, so the old DAY_PAD that
+## left the bell at dusk and let the drain finish it would now freeze the sky mid-afternoon.)
 func _phase() -> float:
 	if game == null:
 		return 0.0
 	var sl: float = game.shift_len
 	if sl <= 0.0:
 		return 0.0
-	return clampf(game.elapsed / (sl + DAY_PAD), 0.0, 1.0)
+	return clampf(game.elapsed / sl, 0.0, 1.0)
 
 
 ## Interpolated (top, horizon) sky colours at phase p.
