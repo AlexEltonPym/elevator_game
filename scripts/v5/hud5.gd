@@ -320,40 +320,83 @@ func _lift_incomplete(i: int, cov: Dictionary) -> bool:
 	return false
 
 
-## If lift `target` already has a route sitting on part of `job`, the screen points to CONTINUE
-## from the route's free end through the job's remaining cells (teaches grab-to-extend: finish the
-## last bit, don't redraw). Empty if the lift isn't on this job or the job is already fully drawn.
+## Cells the target lift may draw through for a continuation: passable + still under the overlap
+## cap for this lift's width.
+func _demo_enterable(cell: Vector2i, lift: int) -> bool:
+	if not Grid5.passable(cell):
+		return false
+	return game._overlap_used(cell, lift) + game.cars[lift].width <= Grid5.overlap_cap(cell)
+
+
+## Shortest 4-neighbour grid path [from..to] through enterable cells, avoiding `blocked` (the
+## lift's own drawn cells, so it extends OUTWARD rather than retracing the line). [] if none.
+func _grid_bfs(from: Vector2i, to: Vector2i, lift: int, blocked: Dictionary) -> Array:
+	if from == to:
+		return [from]
+	var prev := {from: from}
+	var q: Array = [from]
+	var head := 0
+	var dirs := [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]
+	while head < q.size():
+		var c: Vector2i = q[head]
+		head += 1
+		for d in dirs:
+			var n: Vector2i = c + d
+			if prev.has(n):
+				continue
+			if n == to:
+				if not Grid5.passable(n):
+					continue
+			elif blocked.has(n) or not _demo_enterable(n, lift):
+				continue
+			prev[n] = c
+			if n == to:
+				var path: Array = [n]
+				var cur: Vector2i = n
+				while cur != from:
+					cur = prev[cur]
+					path.push_front(cur)
+				return path
+			q.append(n)
+	return []
+
+
+## "FINISH THE LINE": from the LOOSE END of the target lift's route, the shortest grid path to an
+## uncovered dock of its job. This handles a squiggle that wandered off the demo path — it points
+## the player from where they actually stopped to the remaining dock, as long as a path still
+## exists (else []). Prefers extending the head (where they stopped); falls back to the tail.
 func _continue_pts(target: int, job: Dictionary) -> Array:
 	var r = game.routes[target]
-	if r == null:
+	if r == null or r.cells.is_empty():
 		return []
-	var jc: Array = job.get("cells", [])
-	if jc.size() < 2:
+	var cov := _covered_rooms()
+	var goals: Array = []                               # docks on this job still serving an uncovered room
+	for c in job.get("cells", []):
+		if Grid5.is_dock(c):
+			for rid in Grid5.dock_rooms(c):
+				if not cov.has(rid):
+					goals.append(c)
+					break
+	if goals.is_empty():
 		return []
-	var rset := {}
+	var blocked := {}
 	for c in r.cells:
-		rset[c] = true
-	var cov_idx: Array = []
-	for i in jc.size():
-		if rset.has(jc[i]):
-			cov_idx.append(i)
-	if cov_idx.is_empty() or cov_idx.size() == jc.size():
-		return []                                   # not on this job, or already fully drawn
-	var lo: int = cov_idx[0]
-	var hi: int = cov_idx[cov_idx.size() - 1]
-	var seg: Array = []
-	if hi < jc.size() - 1:                           # uncovered TAIL: continue from hi outward
-		for i in range(hi, jc.size()):
-			seg.append(jc[i])
-	elif lo > 0:                                     # uncovered HEAD: continue from lo, reversed
-		for i in range(lo, -1, -1):
-			seg.append(jc[i])
-	if seg.size() < 2:
-		return []
-	var pts: Array = []
-	for c in seg:
-		pts.append(Grid5.view_offset + Grid5.view_scale * Grid5.cell_center(c))
-	return pts
+		blocked[c] = true
+	# Try the head (cells.back(), where the player stopped) first; only then the tail.
+	for endc in [r.cells[r.cells.size() - 1], r.cells[0]]:
+		var bset: Dictionary = blocked.duplicate()
+		bset.erase(endc)
+		var best: Array = []
+		for g in goals:
+			var p := _grid_bfs(endc, g, target, bset)
+			if p.size() >= 2 and (best.is_empty() or p.size() < best.size()):
+				best = p
+		if not best.is_empty():
+			var pts: Array = []
+			for c in best:
+				pts.append(Grid5.view_offset + Grid5.view_scale * Grid5.cell_center(c))
+			return pts
+	return []
 
 
 func _update_demo() -> void:
