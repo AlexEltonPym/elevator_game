@@ -527,9 +527,13 @@ func refresh_stats() -> void:
 	level_label.text = str(game.level.get("id", "R-1"))
 	if game.shift_len > 0.0:
 		served_label.text = "Tips %d" % roundi(game.tips)
-		var remain: float = maxf(0.0, game.shift_len - game.elapsed)
-		# Shrink the "s" so it reads as a lowercase unit, not a "5" tacked onto the number.
-		lost_label.text = "%d[font_size=15]s[/font_size] left" % roundi(remain)
+		# The countdown only appears ONCE THE RUN STARTS — no clock pressure while planning.
+		if game.state == game.State.PLAYING:
+			var remain: float = maxf(0.0, game.shift_len - game.elapsed)
+			# Shrink the "s" so it reads as a lowercase unit, not a "5" tacked onto the number.
+			lost_label.text = "%d[font_size=15]s[/font_size] left" % roundi(remain)
+		else:
+			lost_label.text = ""
 	else:
 		served_label.text = "Served %d/%d" % [game.served, game.QUOTA]
 		lost_label.text = "Lost %d/%d" % [game.lost, game.MAX_LOST]
