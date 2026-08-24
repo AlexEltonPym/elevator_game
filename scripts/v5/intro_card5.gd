@@ -24,6 +24,7 @@ var _lift := ""
 var _lift_col := Color.WHITE
 var _btn: Button
 var _furn: Texture2D = null         # cached room furniture sprite for concept mini-rooms
+var _door: Texture2D = null         # cached PixelSpaces elevator landing door
 
 const CARD := Rect2(70, 300, 580, 660)
 
@@ -84,6 +85,9 @@ func _ready() -> void:
 		var fp: String = Grid5._PS + str(Grid5.ROOM_STYLE[_room_type].furn)
 		if ResourceLoader.exists(fp):
 			_furn = load(fp)
+		var dp: String = Grid5._PS + "Furniture/Elevator_closed.png"
+		if ResourceLoader.exists(dp):
+			_door = load(dp)
 
 
 func _process(dt: float) -> void:
@@ -135,31 +139,29 @@ func _draw_emblem(r: Rect2) -> void:
 	var style: Dictionary = Grid5.ROOM_STYLE[_room_type]
 	var bg: Color = style.bg
 	var line: Color = style.line
+	# A 2-cell room drawn at the GAME's scale (one emblem cell = `cell`, sprites at ART_K so
+	# native ratios match the board — the flower stays small, the bookshelf bigger).
+	var cell := 88.0
+	var k: float = Grid5.ART_K * cell / Grid5.CELL
+	var rw := cell * 2.0
 	var c := r.get_center()
-	var rw := 200.0
-	var rh := 108.0
-	var room := Rect2(c.x - rw / 2.0, c.y - rh / 2.0, rw, rh)
-	var floor_y := room.end.y - 12.0
+	var room := Rect2(c.x - rw / 2.0, c.y - cell / 2.0, rw, cell)
+	var floor_y := room.end.y - 7.0
 	_panel(room, bg, 10.0)                                                # room body (authoritative colour)
-	draw_rect(Rect2(room.position.x, floor_y, room.size.x, 12.0), bg.darkened(0.20))  # floor band
+	draw_rect(Rect2(room.position.x, floor_y, room.size.x, 7.0), bg.darkened(0.20))   # floor band
 	draw_line(Vector2(c.x, room.position.y + 8.0), Vector2(c.x, room.end.y - 8.0),
-			Color(line, 0.35), 2.0)                                       # 2-tile seam
+			Color(line, 0.30), 2.0)                                       # 2-tile seam
 	_panel(room, line, 10.0, false, 4.0)                                  # outline
-	# Landing door on the LEFT (the dock side), recessed into the wall.
-	var dw := 30.0
-	var dh := rh - 34.0
-	var door := Rect2(room.position.x + 14.0, floor_y - dh, dw, dh)
-	draw_rect(door.grow(3.0), line.darkened(0.15))                        # frame
-	draw_rect(door, Color(0.14, 0.15, 0.19))                              # dark car mouth
-	draw_line(Vector2(door.get_center().x, door.position.y),
-			Vector2(door.get_center().x, door.end.y), Color(0.30, 0.32, 0.36), 2.0)  # seam
-	# Furniture on the RIGHT (opposite the door), bottom-aligned on the floor.
+	# LEFT cell: the real elevator landing door, bottom-aligned (the dock side).
+	if _door != null:
+		var dsz := Vector2(_door.get_width(), _door.get_height()) * k
+		var dx := room.position.x + (cell - dsz.x) / 2.0
+		draw_texture_rect(_door, Rect2(Vector2(dx, floor_y - dsz.y), dsz), false)
+	# RIGHT cell: the room's real furniture (office bookshelf / atrium flora), bottom-aligned.
 	if _furn != null:
-		var sz := Vector2(_furn.get_width(), _furn.get_height()) * 3.6
-		var maxh := rh - 24.0
-		if sz.y > maxh:
-			sz *= maxh / sz.y
-		draw_texture_rect(_furn, Rect2(Vector2(room.end.x - 20.0 - sz.x, floor_y - sz.y), sz), false)
+		var fsz := Vector2(_furn.get_width(), _furn.get_height()) * k
+		var fx := room.position.x + cell + (cell - fsz.x) / 2.0
+		draw_texture_rect(_furn, Rect2(Vector2(fx, floor_y - fsz.y), fsz), false)
 
 
 ## A plain coloured plate + centred label — the fallback emblem for a type-less concept
