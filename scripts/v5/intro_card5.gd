@@ -129,27 +129,42 @@ func _draw() -> void:
 ## PixelSpaces furniture inside, a landing door on the dock side — so it reads like the room
 ## the player will actually see on the board (colour + shape + furniture, like Grid5._draw_room).
 ## Type-less concepts (the finale "$") fall back to a plain coloured plate + label.
+## Reproduces Grid5._draw_room for a 2-cell room: square cells with a floor slab + skylight,
+## the real furniture pushed to ONE side (opposite the dock, as on the board), a square outline
+## in the type colour, and the faint centred TYPE LABEL ("OFFICE"/"ATRIUM") in the same font —
+## so the emblem reads exactly like the room the player meets on the board.
 func _draw_emblem(r: Rect2) -> void:
 	if _room_type == "":
 		_draw_plate(r); return
 	var style: Dictionary = Grid5.ROOM_STYLE[_room_type]
 	var bg: Color = style.bg
 	var line: Color = style.line
-	# A 2-cell room drawn at the GAME's scale (one emblem cell = `cell`, sprites at ART_K so
-	# native ratios match the board — the flower stays small, the bookshelf bigger).
-	var cell := 88.0
-	var k: float = Grid5.ART_K * cell / Grid5.CELL
+	var cell: float = Grid5.CELL * 0.98                    # one board cell (near-native scale)
+	var k: float = Grid5.ART_K * cell / Grid5.CELL         # furniture at the board's ART_K ratio
 	var rw := cell * 2.0
 	var c := r.get_center()
 	var room := Rect2(c.x - rw / 2.0, c.y - cell / 2.0, rw, cell)
-	var floor_y := room.end.y - 7.0
-	_panel(room, bg, 10.0)                                                # room body (authoritative colour)
-	draw_rect(Rect2(room.position.x, floor_y, room.size.x, 7.0), bg.darkened(0.20))   # floor band
-	_panel(room, line, 10.0, false, 4.0)                                  # outline
-	# The room's real furniture (office bookshelf / atrium flora), centred, bottom-aligned.
+	# Body: two square cells, each with a floor slab (bottom) and a skylight strip (top).
+	for i in 2:
+		var cr := Rect2(room.position.x + i * cell, room.position.y, cell, cell).grow(-1.0)
+		draw_rect(cr, bg)
+		draw_rect(Rect2(cr.position + Vector2(0.0, cr.size.y - 6.0), Vector2(cr.size.x, 6.0)),
+				bg.darkened(0.35))                          # floor slab
+		draw_rect(Rect2(cr.position + Vector2(cr.size.x * 0.28, 3.0), Vector2(cr.size.x * 0.44, 5.0)),
+				bg.lightened(0.30))                         # skylight
+	# Furniture pushed to the RIGHT (opposite a left-side dock), bottom-aligned — as on the board.
 	if _furn != null:
-		var fsz := Vector2(_furn.get_width(), _furn.get_height()) * k
-		draw_texture_rect(_furn, Rect2(Vector2(c.x - fsz.x / 2.0, floor_y - fsz.y), fsz), false)
+		var fw := _furn.get_width() * k
+		var fh := _furn.get_height() * k
+		var floor_y := room.end.y - 1.0
+		draw_texture_rect(_furn, Rect2(Vector2(room.end.x - 6.0 - fw, floor_y - 6.0 - fh),
+				Vector2(fw, fh)), false)
+	# Square outline around the whole footprint (type colour).
+	draw_rect(room, Color(line, 0.9), false, 3.0)
+	# Faint centred TYPE LABEL, same fallback font/size/colour as Grid5._draw_room.
+	draw_string(ThemeDB.fallback_font, room.position + Vector2(0.0, room.size.y * 0.5 + 8.0),
+			_room_type.to_upper(), HORIZONTAL_ALIGNMENT_CENTER, room.size.x, 22,
+			Color(0.12, 0.12, 0.14, 0.55))
 
 
 ## A plain coloured plate + centred label — the fallback emblem for a type-less concept
