@@ -151,7 +151,10 @@ var return_room := -1
 var returning := false
 
 # Phase.
-var activated := false # past the spawn dwell => patience running
+var activated := false # past the spawn dwell => walking to the queue (bar appears, full)
+var _impatient := false # LATCHED true the first time they reach a queue; from then the patience
+# clock runs continuously (queue, transfer, ride) until they arrive. NOT running during the
+# initial walk from spawn to the first queue, so it never counts down before they're waiting.
 var between := false # post-arrival, pre-decision => no patience
 var milled := false # reached the queue => boardable
 var spawn_cell := Vector2i.ZERO # far cell (mill-walk sim distance is from here)
@@ -214,6 +217,7 @@ func begin_life(fresh := true) -> void:
 		position = back_pos
 	dwell_left = ACT_DWELL_MIN + (ACT_DWELL_MAX - ACT_DWELL_MIN) * _r(4.0)
 	activated = false
+	_impatient = false   # fresh trip: no countdown until they reach the queue
 	between = false
 	milled = false
 	queue_slot = -1
@@ -256,7 +260,20 @@ func is_waiting_to_board() -> bool:
 
 
 func tick(dt: float) -> void:
-	if not active or riding != null:
+	if not active:
+		return
+	# IMPATIENCE: once LATCHED (first queue reached) the clock runs continuously until they arrive —
+	# queueing, transferring, boarding, AND riding; a long ride eats the same clock. This runs BEFORE
+	# the riding early-return so it keeps ticking on the lift. They only GIVE UP (expire) while
+	# actually waiting — never mid-ride or mid-board (they're committed).
+	if _impatient:
+		patience -= dt
+		wait_time += dt
+		if patience <= 0.0 and riding == null and boarding_car == null and not between:
+			active = false
+			game.on_expired(self)
+			return
+	if riding != null:
 		return
 	if between:
 		between_left -= dt
@@ -275,17 +292,6 @@ func tick(dt: float) -> void:
 		if walk_left <= 0.0:
 			walk_left = 0.0
 			_on_walk_done()
-	if _patience_running():
-		patience -= dt
-		wait_time += dt
-		if patience <= 0.0 and active:
-			active = false
-			game.on_expired(self)
-
-
-func _patience_running() -> bool:
-	return active and activated and not between and riding == null \
-			and boarding_car == null and walk_kind != Walk.ALIGHT
 
 
 ## Dwell finished: patience starts, the passenger joins the queue TAIL and walks to
@@ -366,6 +372,7 @@ func start_alight_walk(alight_cell: Vector2i, room: int) -> void:
 	boarding_car = null
 	cur_room = room
 	milled = false
+	_impatient = false   # ARRIVED at the destination: stop the clock (the alight walk is cosmetic)
 	queue_cell = Grid5.room_queue(room)
 	back_pos = _pick_back()
 	walk_kind = Walk.ALIGHT
@@ -384,6 +391,7 @@ func _on_walk_done() -> void:
 	match walk_kind:
 		Walk.MILL, Walk.TRANSFER:
 			milled = true # reached the queue slot; boardable
+			_impatient = true # LATCH: from the first queue on, the clock runs until arrival
 			walk_kind = Walk.NONE
 		Walk.BOARD:
 			if boarding_car != null:
