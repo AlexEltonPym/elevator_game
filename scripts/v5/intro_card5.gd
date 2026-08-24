@@ -24,7 +24,6 @@ var _lift := ""
 var _lift_col := Color.WHITE
 var _btn: Button
 var _furn: Texture2D = null         # cached room furniture sprite for concept mini-rooms
-var _door: Texture2D = null         # cached PixelSpaces elevator landing door
 
 const CARD := Rect2(70, 300, 580, 660)
 
@@ -85,9 +84,6 @@ func _ready() -> void:
 		var fp: String = Grid5._PS + str(Grid5.ROOM_STYLE[_room_type].furn)
 		if ResourceLoader.exists(fp):
 			_furn = load(fp)
-		var dp: String = Grid5._PS + "Furniture/Elevator_closed.png"
-		if ResourceLoader.exists(dp):
-			_door = load(dp)
 
 
 func _process(dt: float) -> void:
@@ -149,19 +145,11 @@ func _draw_emblem(r: Rect2) -> void:
 	var floor_y := room.end.y - 7.0
 	_panel(room, bg, 10.0)                                                # room body (authoritative colour)
 	draw_rect(Rect2(room.position.x, floor_y, room.size.x, 7.0), bg.darkened(0.20))   # floor band
-	draw_line(Vector2(c.x, room.position.y + 8.0), Vector2(c.x, room.end.y - 8.0),
-			Color(line, 0.30), 2.0)                                       # 2-tile seam
 	_panel(room, line, 10.0, false, 4.0)                                  # outline
-	# LEFT cell: the real elevator landing door, bottom-aligned (the dock side).
-	if _door != null:
-		var dsz := Vector2(_door.get_width(), _door.get_height()) * k
-		var dx := room.position.x + (cell - dsz.x) / 2.0
-		draw_texture_rect(_door, Rect2(Vector2(dx, floor_y - dsz.y), dsz), false)
-	# RIGHT cell: the room's real furniture (office bookshelf / atrium flora), bottom-aligned.
+	# The room's real furniture (office bookshelf / atrium flora), centred, bottom-aligned.
 	if _furn != null:
 		var fsz := Vector2(_furn.get_width(), _furn.get_height()) * k
-		var fx := room.position.x + cell + (cell - fsz.x) / 2.0
-		draw_texture_rect(_furn, Rect2(Vector2(fx, floor_y - fsz.y), fsz), false)
+		draw_texture_rect(_furn, Rect2(Vector2(c.x - fsz.x / 2.0, floor_y - fsz.y), fsz), false)
 
 
 ## A plain coloured plate + centred label — the fallback emblem for a type-less concept
