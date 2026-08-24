@@ -388,18 +388,18 @@ func _update_demo() -> void:
 		speed_play.set_highlight(true)
 		_demo_ghost.guide_idle()
 		return
-	# Guide `target` to its least-conflicting job. If it's already partway along that job, CONTINUE
-	# from where it left off (finish the last bit); otherwise draw the whole job (tap+drag, or just
-	# drag when the player already selected the lift). Keep the lift's own chip + colour.
+	# Guide `target`. The gesture is EITHER continue-from-where-it-left-off (if it's partway along
+	# its job) or draw-the-whole-job. Crucially, if the target lift is NOT the selected one, the
+	# gesture must TAP ITS CHIP FIRST — you can't draw or grab-extend a lift you haven't selected.
+	# Only when it's already selected do we skip the tap and show just the drag.
 	var mine: Dictionary = _demo_paths[target]
 	var job: Dictionary = _best_demo_job(target)
 	var cont: Array = _continue_pts(target, job)
-	if cont.size() >= 2:
-		_demo_ghost.guide_draw(cont, mine.color)
-	elif by_selection:
-		_demo_ghost.guide_draw(job.pts, mine.color)
+	var draw_pts: Array = cont if cont.size() >= 2 else job.pts
+	if by_selection:
+		_demo_ghost.guide_draw(draw_pts, mine.color)
 	else:
-		_demo_ghost.guide_full(mine.chip, job.pts, mine.color)
+		_demo_ghost.guide_full(mine.chip, draw_pts, mine.color)
 
 
 ## Which demo JOB lift `target` is doing.
