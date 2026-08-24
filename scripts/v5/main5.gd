@@ -247,14 +247,10 @@ func _step(dt: float) -> void:
 			if p.active:
 				keep.append(p)
 		active_passengers = keep
-	# SHIFT model: at the bell, stop spawning (last orders); end once everyone still in
-	# the building has been served or timed out.
-	if shift_len > 0.0 and state == State.PLAYING:
-		if not shift_closed and elapsed >= shift_len:
-			shift_closed = true
-			auto_spawn = false
-		if shift_closed and not _any_active_pax():
-			_shift_end()
+	# SHIFT model: the day just ENDS at the bell — no "last orders" drain. Whatever's earned by
+	# then is the score; anyone still mid-trip is simply left unserved.
+	if shift_len > 0.0 and state == State.PLAYING and elapsed >= shift_len:
+		_shift_end()
 
 
 func current_interval() -> float:
@@ -454,7 +450,7 @@ func to_level_select() -> void:
 
 
 func _reset_spawner() -> void:
-	pulse_timer = 2.0
+	pulse_timer = 0.0   # first person spawns on the FIRST tick (no warm-up); the rest follow at the normal interval
 	burst_left = 0
 	burst_timer = 0.0
 	_cover_idx = 0
