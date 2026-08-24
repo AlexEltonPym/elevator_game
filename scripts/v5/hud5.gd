@@ -402,17 +402,40 @@ func _update_demo() -> void:
 		_demo_ghost.guide_full(mine.chip, job.pts, mine.color)
 
 
-## The demo job (route) for `target` with the LEAST cell overlap against every OTHER lift's
-## committed route — so a swapped/rebel assignment steers each undrawn lift to the free job.
+## Which demo JOB lift `target` is doing.
+## - If it ALREADY HAS A ROUTE, its job is whichever demo route its cells MOST overlap — i.e. what
+##   it's actually drawing (so green sitting on blue's path is credited with THAT job, not sent off
+##   to draw the other one in green).
+## - If it's UNPLACED, steer it to the job with the LEAST overlap against the OTHER lifts' routes
+##   (the free work), so a swapped assignment never guides it on top of the other lift.
 ## Ties (and the all-fresh case) prefer the target's own hardcoded job.
 func _best_demo_job(target: int) -> Dictionary:
+	var r = game.routes[target]
+	if r != null and r.cells.size() > 0:
+		var rset := {}
+		for c in r.cells:
+			rset[c] = true
+		var best: Dictionary = _demo_paths[target]
+		var best_ov := -1
+		for j in _demo_paths.size():
+			var dp = _demo_paths[j]
+			if dp == null:
+				continue
+			var ov := 0
+			for c in dp.get("cells", []):
+				if rset.has(c):
+					ov += 1
+			if ov > best_ov or (ov == best_ov and j == target):
+				best_ov = ov
+				best = dp
+		return best
 	var occupied := {}
 	for i in game.routes.size():
 		if i != target and game.routes[i] != null:
 			for c in game.routes[i].cells:
 				occupied[c] = true
-	var best: Dictionary = _demo_paths[target]
-	var best_ov := 1 << 30
+	var best2: Dictionary = _demo_paths[target]
+	var best_ov2 := 1 << 30
 	for j in _demo_paths.size():
 		var dp = _demo_paths[j]
 		if dp == null:
@@ -422,10 +445,10 @@ func _best_demo_job(target: int) -> Dictionary:
 			if occupied.has(c):
 				ov += 1
 		# strictly fewer conflicts wins; on a tie keep the target's own job.
-		if ov < best_ov or (ov == best_ov and j == target):
-			best_ov = ov
-			best = dp
-	return best
+		if ov < best_ov2 or (ov == best_ov2 and j == target):
+			best_ov2 = ov
+			best2 = dp
+	return best2
 
 
 func _end_demo(clear_glow := true) -> void:
