@@ -325,11 +325,11 @@ const LEVELS := [
 			{"name": "EXPRESS", "type": "express", "color": COL_C, "cap": 2},
 		],
 		"quota": 16, "max_lost": 10, "shift": 90.0,
-		"stars": [310, 450, 560, 615],   # cap-2 express (optimal 630): 4★ has ~15 headroom so a clean near-optimal route earns it, not a fiddly exact optimum
-		"solution": [[[1, 10], [1, 9], [2, 9], [3, 9], [4, 9], [4, 8], [4, 7], [4, 6], [4, 5], [4, 4], [4, 3], [4, 2], [5, 2], [5, 1], [5, 0], [4, 0]], [[1, 10], [0, 10], [0, 9], [0, 8], [1, 8], [2, 8], [2, 7], [2, 6], [2, 5], [2, 4], [2, 3], [2, 2], [2, 1], [3, 1], [4, 1], [4, 0]]],
-		"sols": [[[[4, 6], [4, 5], [4, 4], [4, 3], [4, 2], [4, 1], [3, 1], [2, 1], [1, 1], [1, 0]], [[1, 0], [0, 0], [0, 1], [0, 2], [0, 3], [0, 4], [0, 5], [0, 6], [0, 7], [0, 8], [0, 9], [0, 10], [1, 10], [1, 9], [2, 9], [3, 9], [3, 8], [3, 7], [3, 6], [3, 5], [3, 4], [3, 3], [4, 3]]], [[[1, 10], [1, 9], [2, 9], [3, 9], [4, 9], [4, 8], [4, 7], [4, 6], [4, 5], [4, 4], [4, 3], [4, 2], [4, 1], [4, 0]], [[1, 10], [0, 10], [0, 9], [0, 8], [1, 8], [2, 8], [3, 8], [3, 7], [3, 6], [3, 5], [3, 4], [3, 3], [2, 3], [2, 2], [2, 1], [1, 1], [1, 0]]], [[[1, 10], [1, 9], [2, 9], [3, 9], [4, 9], [4, 8], [4, 7], [4, 6], [4, 5], [4, 4], [4, 3], [4, 2], [5, 2], [5, 1], [5, 0], [4, 0]], [[1, 10], [0, 10], [0, 9], [0, 8], [1, 8], [2, 8], [2, 7], [2, 6], [2, 5], [2, 4], [2, 3], [2, 2], [2, 1], [3, 1], [4, 1], [4, 0]]], [[[1, 10], [1, 9], [2, 9], [3, 9], [4, 9], [4, 8], [4, 7], [4, 6], [4, 5], [4, 4], [4, 3], [4, 2], [5, 2], [5, 1], [5, 0], [4, 0]], [[1, 10], [0, 10], [0, 9], [0, 8], [1, 8], [2, 8], [2, 7], [2, 6], [2, 5], [2, 4], [2, 3], [2, 2], [2, 1], [3, 1], [4, 1], [4, 0]]]],
+		"stars": [240, 340, 440, 470],   # cap-2 express + penthouse demand 1.0: the CLEAN split (express=penthouse shuttle, local=offices) is the STRICT optimum (~492); a double-up/weave scores less (~457 -> 3★). 4★ has ~22 headroom (optimal 610): CLEAN split (express=penthouse shuttle, local=offices) is now the optimum; 4★ has ~25 headroom so a clean route earns it, a double-up route lands 3★: 4★ has ~15 headroom so a clean near-optimal route earns it, not a fiddly exact optimum
+		"solution": [[[4, 0], [4, 1], [4, 2], [4, 3], [4, 4], [4, 5], [4, 6], [4, 7], [4, 8]], [[1, 10], [1, 9], [1, 8], [0, 8], [0, 7], [0, 6], [0, 5], [0, 4], [0, 3], [0, 2], [0, 1], [0, 0], [1, 0]]],
+		"sols": [[[[4, 0], [4, 1], [4, 2], [4, 3], [4, 4], [4, 5], [4, 6], [4, 7], [4, 8]], [[1, 10], [1, 9], [1, 8], [0, 8], [0, 7], [0, 6], [0, 5], [0, 4], [0, 3], [0, 2], [0, 1], [0, 0], [1, 0]]]],
 		"patience": {"visitor": 62.0},
-		"demand": {"penthouse": 3.0},   # express tutorial: lots of executives -> serving them fast pays
+		"demand": {"penthouse": 1.0},   # express tutorial: lots of executives -> serving them fast pays
 		"spawn": {"interval_start": 2.4, "interval_end": 2.0, "ramp": 60.0,
 				"burst_min": 1, "burst_max": 2, "gap": 0.8},
 		"mix": {"visitor": 1.0},
