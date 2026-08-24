@@ -344,6 +344,18 @@ static func room_queue_dir(id: int) -> Vector2i:
 	return _rooms[id].queue_dir
 
 
+## The queue tile (a door cell) + its dir for a SPECIFIC dock cell of a room, so a
+## multi-dock room (e.g. the lobby: express dock left, local dock right) splits its
+## waiting line per dock — riders queue at the dock their lift actually stops at.
+## Falls back to the room's single default queue tile if the dock isn't a drop here.
+static func queue_tile_for_dock(id: int, dock: Vector2i) -> Dictionary:
+	if id >= 0 and id < _rooms.size():
+		for d in _rooms[id].drops:
+			if d.dock == dock:
+				return {"cell": d.cell, "dir": d.dir}
+	return {"cell": room_queue(id), "dir": room_queue_dir(id)}
+
+
 static func manhattan(a: Vector2i, b: Vector2i) -> int:
 	return absi(a.x - b.x) + absi(a.y - b.y)
 

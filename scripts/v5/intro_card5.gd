@@ -9,6 +9,7 @@ signal dismissed
 
 const Ui5 := preload("res://scripts/v5/ui5.gd")
 const Passenger5 := preload("res://scripts/v5/passenger5.gd")
+const Grid5 := preload("res://scripts/v5/grid5.gd")
 
 var _anim := 0                     # walk-cycle frame (animated in place)
 var _anim_t := 0.0
@@ -16,11 +17,13 @@ var mech := "executive"            # passenger cards: "executive"|"cargo"; conce
 var _concept := false              # concept cards show a room emblem, not a passenger sprite
 var _emblem := Color(0.4, 0.5, 0.9)
 var _emblem_label := ""
+var _room_type := ""               # concept cards: draw a real mini-room of this type (else a plain plate)
 var _title := ""
 var _copy := ""
 var _lift := ""
 var _lift_col := Color.WHITE
 var _btn: Button
+var _furn: Texture2D = null         # cached room furniture sprite for concept mini-rooms
 
 const CARD := Rect2(70, 300, 580, 660)
 
@@ -38,17 +41,17 @@ func setup(m: String, val: int = 0) -> void:
 			_copy = "Rush executives to the penthouse on the EXPRESS for big tips!"
 			_lift_col = Color(0.97, 0.58, 0.17)
 		"offices":
-			_concept = true; _title = "OFFICES"
+			_concept = true; _title = "OFFICES"; _room_type = "office"
 			_copy = "Connect passengers to their offices."
-			_emblem = Color(0.55, 0.72, 0.95); _emblem_label = "OFFICE"; _lift_col = _emblem
+			_emblem = Grid5.ROOM_STYLE["office"].bg; _lift_col = _emblem
 		"atrium":
-			_concept = true; _title = "THE ATRIUM"
+			_concept = true; _title = "THE ATRIUM"; _room_type = "atrium"
 			_copy = "Passengers can walk through public rooms like the atrium to switch lifts."
-			_emblem = Color(0.72, 0.6, 0.9); _emblem_label = "ATRIUM"; _lift_col = _emblem
+			_emblem = Grid5.ROOM_STYLE["atrium"].bg; _lift_col = _emblem
 		"overlap":
-			_concept = true; _title = "SHARE A DROPOFF"
+			_concept = true; _title = "SHARE A DROPOFF"; _room_type = "atrium"
 			_copy = "Two elevators can share one dropoff - use the atrium as an exchange."
-			_emblem = Color(0.72, 0.6, 0.9); _emblem_label = "ATRIUM"; _lift_col = _emblem
+			_emblem = Grid5.ROOM_STYLE["atrium"].bg; _lift_col = _emblem
 		"finale":
 			_concept = true; _title = "SHOWTIME"
 			_copy = "Bring it all together - earn $%d in tips for a perfect score!" % val
@@ -77,6 +80,10 @@ func _ready() -> void:
 	_btn.position = Vector2(CARD.position.x + (CARD.size.x - 300) / 2.0, CARD.position.y + 544)
 	_btn.pressed.connect(_finish)
 	add_child(_btn)
+	if _room_type != "":
+		var fp: String = Grid5._PS + str(Grid5.ROOM_STYLE[_room_type].furn)
+		if ResourceLoader.exists(fp):
+			_furn = load(fp)
 
 
 func _process(dt: float) -> void:
@@ -118,9 +125,46 @@ func _draw() -> void:
 				_title, HORIZONTAL_ALIGNMENT_LEFT, -1, 40, Color(0.96, 0.85, 0.5))
 
 
-## The ACTUAL NPC sprite, side-walking in place (red-haired for execs; plus a cart for cargo).
-## Concept cards: a room-coloured emblem block with a label instead of a passenger.
+## Concept cards. A room TYPE (office/atrium) draws a proper little 2x1 room — the real
+## PixelSpaces furniture inside, a landing door on the dock side — so it reads like the room
+## the player will actually see on the board (colour + shape + furniture, like Grid5._draw_room).
+## Type-less concepts (the finale "$") fall back to a plain coloured plate + label.
 func _draw_emblem(r: Rect2) -> void:
+	if _room_type == "":
+		_draw_plate(r); return
+	var style: Dictionary = Grid5.ROOM_STYLE[_room_type]
+	var bg: Color = style.bg
+	var line: Color = style.line
+	var c := r.get_center()
+	var rw := 200.0
+	var rh := 108.0
+	var room := Rect2(c.x - rw / 2.0, c.y - rh / 2.0, rw, rh)
+	var floor_y := room.end.y - 12.0
+	_panel(room, bg, 10.0)                                                # room body (authoritative colour)
+	draw_rect(Rect2(room.position.x, floor_y, room.size.x, 12.0), bg.darkened(0.20))  # floor band
+	draw_line(Vector2(c.x, room.position.y + 8.0), Vector2(c.x, room.end.y - 8.0),
+			Color(line, 0.35), 2.0)                                       # 2-tile seam
+	_panel(room, line, 10.0, false, 4.0)                                  # outline
+	# Landing door on the LEFT (the dock side), recessed into the wall.
+	var dw := 30.0
+	var dh := rh - 34.0
+	var door := Rect2(room.position.x + 14.0, floor_y - dh, dw, dh)
+	draw_rect(door.grow(3.0), line.darkened(0.15))                        # frame
+	draw_rect(door, Color(0.14, 0.15, 0.19))                              # dark car mouth
+	draw_line(Vector2(door.get_center().x, door.position.y),
+			Vector2(door.get_center().x, door.end.y), Color(0.30, 0.32, 0.36), 2.0)  # seam
+	# Furniture on the RIGHT (opposite the door), bottom-aligned on the floor.
+	if _furn != null:
+		var sz := Vector2(_furn.get_width(), _furn.get_height()) * 3.6
+		var maxh := rh - 24.0
+		if sz.y > maxh:
+			sz *= maxh / sz.y
+		draw_texture_rect(_furn, Rect2(Vector2(room.end.x - 20.0 - sz.x, floor_y - sz.y), sz), false)
+
+
+## A plain coloured plate + centred label — the fallback emblem for a type-less concept
+## (the finale "$").
+func _draw_plate(r: Rect2) -> void:
 	var s := 134.0
 	var c := r.get_center()
 	var em := Rect2(c.x - s / 2.0, c.y - s / 2.0, s, s)

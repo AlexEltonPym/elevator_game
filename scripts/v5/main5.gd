@@ -1216,26 +1216,40 @@ const QUEUE_FLOOR_OFFSET := 31.0 # cell bottom - 31 = the one floor line (car fr
 const QUEUE_MAX_VISIBLE_UNITS := 7.0
 
 
+## The queue tile+dir a passenger waits at: the door of the SPECIFIC dock its next lift
+## boards at (so a multi-dock room — e.g. the lobby: express left, local right — splits its
+## line so each rider stands at the dock its lift actually uses). Falls back to the room's
+## single default tile when the rider has no plan yet (no legs => the fingerprint no-route sim,
+## which stays identical).
+func _rider_qtile(p) -> Dictionary:
+	if not p.legs.is_empty():
+		var bc: Vector2i = p.legs[0].get("board_cell", Vector2i(-1, -1))
+		if bc.x >= 0:
+			return Grid5.queue_tile_for_dock(p.cur_room, bc)
+	return {"cell": Grid5.room_queue(p.cur_room), "dir": Grid5.room_queue_dir(p.cur_room)}
+
+
 ## World position for a figure whose reserved-span CENTRE is at `center_units` of linear
 ## queue depth: a straight line on the floor from the queue tile (unit 0, at the dock)
 ## extending back into the room.
-func _pos_at_units(rid: int, center_units: float) -> Vector2:
-	var qcell := Grid5.room_queue(rid)
+func _pos_at_units(qcell: Vector2i, qdir: Vector2i, center_units: float) -> Vector2:
 	var qc := Grid5.cell_center(qcell)
-	var toward := Grid5.cell_center(qcell + Grid5.room_queue_dir(rid)) - qc
+	var toward := Grid5.cell_center(qcell + qdir) - qc
 	var tx := signf(toward.x) if absf(toward.x) > 0.01 else 1.0
 	var floor_y := Grid5.cell_rect(qcell).end.y - QUEUE_FLOOR_OFFSET
 	# Pull the whole line one SPACING toward the dock so the front waits right at the doors.
 	return Vector2(qc.x - tx * (center_units - 1.0) * QUEUE_SPACING, floor_y)
 
 
-## Unit-widths of queue AHEAD of slot `idx` (its front edge). WIDTH-AWARE: a width-3
-## delivery man reserves a 3-wide span so waiting figures never overlap.
-func _queue_units_before(rid: int, idx: int) -> float:
+## Unit-widths of queue AHEAD of slot `idx` (its front edge) THAT SHARE THE SAME DOCK — so
+## each dock's sub-line packs independently. WIDTH-AWARE: a width-3 delivery man reserves a
+## 3-wide span so waiting figures never overlap.
+func _queue_units_before(rid: int, idx: int, tile: Vector2i) -> float:
 	var arr: Array = queues.get(rid, [])
 	var u := 0.0
 	for j in mini(idx, arr.size()):
-		u += float(arr[j].width)
+		if _rider_qtile(arr[j]).cell == tile:
+			u += float(arr[j].width)
 	return u
 
 
@@ -1244,14 +1258,15 @@ func _queue_units_before(rid: int, idx: int) -> float:
 ## figure (so it eases in smoothly when the queue advances). An all-width-1 queue inside
 ## the cap reduces EXACTLY to idx * SPACING (short queues render as before, just tighter).
 func _place_in_queue(p, rid: int, idx: int) -> void:
-	var before := _queue_units_before(rid, idx)
+	var t := _rider_qtile(p)
+	var before := _queue_units_before(rid, idx, t.cell)
 	var half := (float(p.width) - 1.0) * 0.5
 	if before < QUEUE_MAX_VISIBLE_UNITS:
 		p.visible = true
-		p.set_stand(_pos_at_units(rid, before + half))
+		p.set_stand(_pos_at_units(t.cell, t.dir, before + half))
 	else:
 		p.visible = false
-		p.set_stand(_pos_at_units(rid, QUEUE_MAX_VISIBLE_UNITS + half))
+		p.set_stand(_pos_at_units(t.cell, t.dir, QUEUE_MAX_VISIBLE_UNITS + half))
 
 
 # ---------------------------------------------------------------- corridors
