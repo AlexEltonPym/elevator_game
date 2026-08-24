@@ -326,11 +326,41 @@ func _update_demo() -> void:
 		_demo_ghost.guide_idle()
 		return
 	speed_play.set_highlight(false)
-	var p: Dictionary = _demo_paths[target]
+	# Guide `target` to whichever demo JOB the player hasn't already covered with the OTHER lift
+	# (so if they drew green on blue's intended path, blue gets steered to the remaining job
+	# instead of on top of green). Keep the target lift's own chip + colour.
+	var mine: Dictionary = _demo_paths[target]
+	var job: Dictionary = _best_demo_job(target)
 	if by_selection:
-		_demo_ghost.guide_draw(p.pts, p.color)
+		_demo_ghost.guide_draw(job.pts, mine.color)
 	else:
-		_demo_ghost.guide_full(p.chip, p.pts, p.color)
+		_demo_ghost.guide_full(mine.chip, job.pts, mine.color)
+
+
+## The demo job (route) for `target` with the LEAST cell overlap against every OTHER lift's
+## committed route — so a swapped/rebel assignment steers each undrawn lift to the free job.
+## Ties (and the all-fresh case) prefer the target's own hardcoded job.
+func _best_demo_job(target: int) -> Dictionary:
+	var occupied := {}
+	for i in game.routes.size():
+		if i != target and game.routes[i] != null:
+			for c in game.routes[i].cells:
+				occupied[c] = true
+	var best: Dictionary = _demo_paths[target]
+	var best_ov := 1 << 30
+	for j in _demo_paths.size():
+		var dp = _demo_paths[j]
+		if dp == null:
+			continue
+		var ov := 0
+		for c in dp.get("cells", []):
+			if occupied.has(c):
+				ov += 1
+		# strictly fewer conflicts wins; on a tie keep the target's own job.
+		if ov < best_ov or (ov == best_ov and j == target):
+			best_ov = ov
+			best = dp
+	return best
 
 
 func _end_demo(clear_glow := true) -> void:

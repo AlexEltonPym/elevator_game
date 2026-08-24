@@ -424,16 +424,19 @@ func _maybe_play_demo() -> void:
 	for ri in CARDS.size():
 		if ri < sol.size() and not (sol[ri] as Array).is_empty():
 			var pts: Array = []
+			var cells: Array = []
 			var served := {}
 			for xy in sol[ri]:
 				var cell := Vector2i(int(xy[0]), int(xy[1]))
+				cells.append(cell)
 				pts.append(Grid5.view_offset + Grid5.view_scale * Grid5.cell_center(cell))
 				for rid in Grid5.dock_rooms(cell):
 					served[rid] = true
-			# `rooms` = how many rooms this lift's demo route serves; the guide re-teaches the
-			# lift until the player's route covers that many (shortening it below re-triggers it).
+			# `cells` lets the guide treat each demo route as a JOB and steer an undrawn lift to
+			# whichever job the player hasn't already covered (so it never guides a lift on top of
+			# the other one). `rooms` is the served-room count for reference.
 			paths.append({"color": CARDS[ri].color, "chip": hud.chip_center(ri),
-					"pts": pts, "rooms": served.size()})
+					"pts": pts, "cells": cells, "rooms": served.size()})
 			any = true
 		else:
 			paths.append(null)
