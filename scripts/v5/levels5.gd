@@ -162,7 +162,7 @@ const COL_D := Color(0.80, 0.55, 0.92)
 ##   LEARN     — forgiving tutorial ramp, one concept per level
 ##   MECHANICS — thesis levels that prove/feature one mechanic
 ##   GENERIC   — middleground optimization: many legal plans, only some good
-const WORLDS := ["TUTORIAL", "CROSSLINK"]
+const WORLDS := ["TUTORIAL", "CROSSLINK", "SKYSCRAPER"]
 
 const LEVELS := [
 	# ===================== TUTORIAL =====================
@@ -631,7 +631,7 @@ const LEVELS := [
 		"sols": [[[[7, 7], [7, 6], [6, 6], [5, 6], [4, 6], [4, 7]], [[7, 7], [8, 7], [8, 6], [8, 5], [8, 4], [8, 3], [7, 3]], [[7, 3], [7, 2], [7, 1], [7, 0], [6, 0], [6, 1], [6, 2], [5, 2], [4, 2], [4, 3], [4, 4], [4, 5], [5, 5], [6, 5], [7, 5], [7, 4]]], [[[4, 6], [4, 7]], [[7, 7], [7, 6], [7, 5], [7, 4], [7, 3]], [[7, 7], [8, 7], [8, 6], [8, 5], [8, 4], [8, 3], [7, 3], [7, 2], [7, 1], [7, 0], [6, 0], [6, 1], [6, 2], [5, 2], [4, 2], [3, 2], [2, 2], [2, 3], [3, 3], [4, 3], [4, 4], [4, 5], [4, 6], [4, 7]]], [[[4, 6], [4, 7]], [[7, 7], [7, 6], [7, 5], [7, 4], [7, 3]], [[7, 7], [8, 7], [8, 6], [8, 5], [8, 4], [8, 3], [7, 3], [7, 2], [7, 1], [7, 0], [6, 0], [6, 1], [6, 2], [5, 2], [4, 2], [3, 2], [2, 2], [2, 3], [3, 3], [4, 3], [4, 4], [4, 5], [4, 6], [4, 7]]], [[[4, 6], [4, 7]], [[7, 7], [7, 6], [7, 5], [7, 4], [7, 3]], [[7, 7], [8, 7], [8, 6], [8, 5], [8, 4], [8, 3], [7, 3], [7, 2], [7, 1], [7, 0], [6, 0], [6, 1], [6, 2], [5, 2], [4, 2], [3, 2], [2, 2], [2, 3], [3, 3], [4, 3], [4, 4], [4, 5], [4, 6], [4, 7]]]],
 	},
 	{
-		"id": "XL11", "world": "CROSSLINK", "name": "The Gauntlet", "thesis": "", "intro": "",
+		"id": "XL11", "world": "SKYSCRAPER", "name": "The Gauntlet", "thesis": "", "intro": "",
 		"cols": 9, "rows": 12, "blocked": [],
 		"overlaps": [
 			{"cells": [Vector2i(0, 0), Vector2i(0, 1), Vector2i(0, 2), Vector2i(0, 5), Vector2i(0, 6), Vector2i(0, 7), Vector2i(0, 8), Vector2i(0, 9), Vector2i(0, 10), Vector2i(0, 11), Vector2i(1, 2), Vector2i(1, 5), Vector2i(1, 6), Vector2i(1, 9), Vector2i(1, 10), Vector2i(1, 11), Vector2i(2, 2), Vector2i(2, 4), Vector2i(2, 5), Vector2i(2, 6), Vector2i(2, 9), Vector2i(2, 10), Vector2i(2, 11), Vector2i(3, 2), Vector2i(3, 3), Vector2i(3, 4), Vector2i(3, 5), Vector2i(3, 6), Vector2i(3, 9), Vector2i(3, 11), Vector2i(4, 1), Vector2i(4, 2), Vector2i(4, 3), Vector2i(4, 6), Vector2i(4, 7), Vector2i(4, 9), Vector2i(4, 11), Vector2i(5, 0), Vector2i(5, 1), Vector2i(5, 2), Vector2i(5, 3), Vector2i(5, 6), Vector2i(5, 7), Vector2i(5, 9), Vector2i(6, 0), Vector2i(6, 2), Vector2i(6, 3), Vector2i(6, 6), Vector2i(6, 7), Vector2i(6, 8), Vector2i(6, 9), Vector2i(7, 0), Vector2i(7, 2), Vector2i(7, 3), Vector2i(7, 6), Vector2i(7, 7), Vector2i(7, 8), Vector2i(7, 9), Vector2i(7, 11), Vector2i(8, 0), Vector2i(8, 2), Vector2i(8, 3), Vector2i(8, 4), Vector2i(8, 5), Vector2i(8, 6), Vector2i(8, 7), Vector2i(8, 8), Vector2i(8, 9), Vector2i(8, 10), Vector2i(8, 11)], "max": 3},

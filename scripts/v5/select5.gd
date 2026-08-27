@@ -10,11 +10,12 @@ extends Control
 const WORLD_COL := {
 	"TUTORIAL": Color(0.42, 0.62, 0.88),
 	"CROSSLINK": Color(0.35, 0.74, 0.72),
+	"SKYSCRAPER": Color(0.92, 0.6, 0.35),
 }
 
 const StarBar5 := preload("res://scripts/v5/starbar5.gd")
 const Ui5 := preload("res://scripts/v5/ui5.gd")
-const WORLD_KCOL := {"TUTORIAL": "Blue", "CROSSLINK": "Green"}
+const WORLD_KCOL := {"TUTORIAL": "Blue", "CROSSLINK": "Green", "SKYSCRAPER": "Red"}
 
 var page := 0 # index into Levels5.WORLDS
 var _hovered := -1  # LEVELS index currently moused-over (for the 1-4 tier shortcut)
