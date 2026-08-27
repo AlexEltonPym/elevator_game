@@ -40,7 +40,7 @@ const GROUND_LINE := PLAY_BOTTOM - UNDERGROUND  # fixed street line (screen y)
 # whether you're on a 5×5 tutorial or a 10×15 tower. Envelope 10×15 (user 2026-08-27):
 # accepts a ~12% room shrink vs the old 9-wide fit to unlock genuinely bigger skyscrapers.
 const FIT_COLS := 10.0           # widest board the fixed cell size is sized for
-const FIT_ROWS := 15.0           # tallest board the fixed cell size is sized for
+const FIT_ROWS := 14.0           # tallest board the fixed cell size is sized for (user 2026-08-27: y-max 14)
 const FIXED_SCALE := minf((GRID_X - 2.0 * SIDE_MARGIN) / (FIT_COLS * CELL), (GROUND_LINE - PLAY_TOP) / (FIT_ROWS * CELL))
 
 ## Seconds of walk per tile of Manhattan distance. Board = queue tile -> boarding

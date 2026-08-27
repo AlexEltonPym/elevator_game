@@ -1659,6 +1659,37 @@ func _bigpick(jpath: String, rank: int, id: String, name: String) -> void:
 	print("\t\t\"stars\": [%d, %d, %d, %d]," % [stars[0], stars[1], stars[2], stars[3]])
 
 
+## Render a biggen archive design (by floor_ok-by-sweep rank) to a plan screenshot WITHOUT
+## solving — fast layout eyeballing. Same config + regeneration path as _bigpick.
+func _bigdraw(jpath: String, rank: int, png: String) -> void:
+	GEN_COLS = 10; GEN_MIN_SURFACE = 11; GEN_MAX_SURFACE = 15; GEN_LOCALS = 2; GEN_BIG = true; GEN_MAX_ROOMS = 10
+	var loaded := _mapgen_load(jpath)
+	var good: Array = []
+	for e in (loaded.archive as Dictionary).values():
+		if bool(e.get("floor_ok", false)):
+			good.append(e)
+	good.sort_custom(func(a, b): return float(a.get("sweep", 0)) > float(b.get("sweep", 0)))
+	if rank < 0 or rank >= good.size():
+		print("rank %d out of range (%d floor_ok)" % [rank, good.size()]); return
+	var pick: Dictionary = good[rank]
+	var lv := _generate(int(pick.seed), int(pick.req))
+	if lv.is_empty():
+		print("GEN-FAIL seed %d" % int(pick.seed)); return
+	lv["id"] = "SKYr%d" % rank
+	if (lv.get("trips", []) as Array).is_empty():
+		lv["trips"] = Demand5.derive(lv.rooms, hash(str(lv.id)), lv.get("demand", {}))
+	Levels5.injected = lv
+	Levels5.headless = false
+	Levels5.current = 0
+	var scene: Node = load("res://scenes/v5_main.tscn").instantiate()
+	root.add_child(scene)
+	for _p in 6:
+		await process_frame
+	await RenderingServer.frame_post_draw
+	root.get_texture().get_image().save_png(png)
+	print("bigdraw rank %d seed %d %dx%d %d rooms -> %s" % [rank, int(pick.seed), int(lv.cols), int(lv.rows), int(lv.rooms.size()), png])
+
+
 func _solve_four(lv: Dictionary, budgets: Array) -> Dictionary:
 	# Derive demand the same way main5 does (rooms + fixed seed) so RG's primitives and the
 	# sim agree with live play; shipped levels store no trips.
@@ -2080,6 +2111,9 @@ func _initialize() -> void:
 		quit(); return
 	if mode == "drawgen":
 		await _draw_gen(str(args[1]), str(args[2]), str(args[3]))
+		quit(); return
+	if mode == "bigdraw":
+		await _bigdraw(str(args[1]), int(args[2]), str(args[3]))
 		quit(); return
 	if mode == "solvegen":
 		_solve_gen(str(args[1]), str(args[2]), str(args[3]))

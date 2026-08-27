@@ -10,10 +10,10 @@ If a rule here seems wrong for a task, ask — do not silently violate it.
    fit-scaling: a bigger W×H is a physically bigger *building on screen*, not the same board
    shrunk to fit ("if a room is 32×32 px, it's always 32×32 px"). `Grid5.FIXED_SCALE` is one
    shared render scale, sized so the LARGEST supported board just fits the 720×1280 screen.
-   **Envelope: cols ≤ 10, rows ≤ 15** (`FIT_COLS`/`FIT_ROWS`). That envelope sets the scale at
-   ~0.732 (a deliberate ~12% room shrink vs the old 9-wide fit, accepted to unlock bigger
-   towers). Smaller boards occupy less of the frame (more sky); taller boards rise higher.
-   Do NOT exceed 10×15 — a bigger board trips the graceful-shrink fallback in `load_level`
+   **Envelope: cols ≤ 10, rows ≤ 14** (`FIT_COLS`/`FIT_ROWS`). That envelope sets the scale at
+   ~0.747 (width-bound; a deliberate ~10% room shrink vs the old 9-wide fit, accepted to unlock
+   bigger towers). Smaller boards occupy less of the frame (more sky); taller boards rise higher.
+   Do NOT exceed 10×14 — a bigger board trips the graceful-shrink fallback in `load_level`
    and breaks the fixed-size guarantee (that fallback is for accidents, not shipping levels).
 
 2. **All dropoffs are HORIZONTAL.** Every room drop uses dir `L` or `R` (dock = the open
