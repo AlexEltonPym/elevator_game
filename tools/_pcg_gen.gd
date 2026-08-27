@@ -156,11 +156,19 @@ func _place(type: String, cols: int, rows: int, occ: Dictionary, docks_all: Dict
 const BASEMENT := 0   # basement retired (read poorly); buildings sit on the ground floor
 const MIN_SURFACE := 4
 
+# BIG-LEVEL tunables (default = original behaviour; `biggen` mode cranks them up to explore large,
+# hard, high-skill-ceiling designs that use the new vertical space + a fuller card loadout).
+static var GEN_MAX_SURFACE := 9          # tallest board the generator will make (rows)
+static var GEN_LOCALS := 1               # number of STANDARD lifts (more => combinatorial routing depth)
+static var GEN_BIG := false              # big-mode wishlist (2nd penthouse/cafe, more offices)
+static var GEN_MAX_ROOMS := 8            # cap for the mapgen archive-mutation nrooms
+static var GEN_NROOM_CYCLE := [4, 5, 6, 6, 5, 7, 8]  # nrooms the mapgen loop cycles through
+
 func _generate(seed_v: int, n_rooms := 0) -> Dictionary:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed_v
 	var cols := 9
-	var surface := rng.randi_range(MIN_SURFACE, 9)   # >= 4 surface floors, varied height
+	var surface := rng.randi_range(MIN_SURFACE, GEN_MAX_SURFACE)   # >= 4 surface floors, varied height
 	var rows := surface + BASEMENT
 	if n_rooms <= 0:
 		n_rooms = clampi(4 + (seed_v % 4), 4, maxi(4, surface))   # 4..7, capped by height
@@ -185,10 +193,14 @@ func _generate(seed_v: int, n_rooms := 0) -> Dictionary:
 	var wish := ["cafe", "penthouse"]
 	if n_rooms >= 5:
 		wish.append("delivery")
+	if GEN_BIG and n_rooms >= 7:
+		wish.append("penthouse")   # a 2nd penthouse: more express demand + routing choices
 	while wish.size() < n_rooms - 1:
 		wish.append("office")
 	if n_rooms >= 6 and rng.randf() < 0.6 and wish.size() >= 1:
 		wish[wish.size() - 1] = "atrium"
+	if GEN_BIG and n_rooms >= 8 and rng.randf() < 0.5 and wish.size() >= 2:
+		wish[wish.size() - 2] = "atrium"   # a 2nd atrium bridge => deeper multi-transfer routing
 	for type in wish:
 		add.call(_place(type, cols, rows, occ, docks_all, rng, 60, false, BASEMENT))
 	# LEGALITY RULE: storage(delivery) implies cafe (it delivers to one); a cafe does NOT
@@ -256,7 +268,11 @@ func _wrap(cols: int, rows: int, rooms: Array, blocks := [], ground_row := 0) ->
 		has[rooms[i].type] = true
 		letter_of[rooms[i].type] = letter_of.get(rooms[i].type, [])
 		letter_of[rooms[i].type].append(char(65 + i))
-	var cards := [{"name": "LOCAL", "type": "standard", "color": Color(0.45,0.68,0.95)}]
+	var _local_cols := [Color(0.45,0.68,0.95), Color(0.46,0.84,0.52), Color(0.95,0.62,0.42), Color(0.85,0.55,0.9)]
+	var cards := []
+	for li in maxi(1, GEN_LOCALS):
+		cards.append({"name": "LIFT %d" % (li + 1) if GEN_LOCALS > 1 else "LOCAL",
+				"type": "standard", "color": _local_cols[li % _local_cols.size()]})
 	if has.has("penthouse"):
 		cards.append({"name": "EXPRESS", "type": "express", "color": Color(0.80,0.55,0.92), "speed": 1500.0, "accel": 1200.0})
 	if has.has("cafe") and has.has("delivery"):
@@ -537,14 +553,14 @@ func _mapgen(outer_budget: int, expert_budget: int, jpath: String, seed_offset :
 	# advance the stream so chunks don't repeat; seed_offset diverges parallel workers.
 	rng.seed = 20250820 + (total + seed_offset) * 1009
 	var did := 0                                  # NEW evals this chunk
-	var nroom_cycle := [4, 5, 6, 6, 5, 7, 8]
+	var nroom_cycle: Array = GEN_NROOM_CYCLE
 	while did < outer_budget:
 		var seed_v: int
 		var nrooms: int
 		if archive.size() >= 4 and rng.randf() < 0.35:
 			var vals: Array = archive.values()
 			var e: Dictionary = vals[rng.randi_range(0, vals.size() - 1)]
-			nrooms = clampi(int(e.req) + rng.randi_range(-1, 1), 4, 8)
+			nrooms = clampi(int(e.req) + rng.randi_range(-1, 1), 4, GEN_MAX_ROOMS)
 			seed_v = rng.randi_range(1, 900000)
 		else:
 			nrooms = nroom_cycle[total % nroom_cycle.size()]
@@ -1600,6 +1616,45 @@ func _round_down_clean(v: float) -> int:
 
 ## Solve a level for the four skill tiers (median held-out tips). Returns raw floats +
 ## the expert route-set (the pre-drawable solution). budgets = [adept, expert, optimal].
+## Inspect a biggen archive: list the top designs by SWEEP (with real dimensions), and if a rank
+## is given, re-solve that design at a high budget and emit it as a full LEVELS entry + stars.
+func _bigpick(jpath: String, rank: int, id: String, name: String) -> void:
+	GEN_MAX_SURFACE = 12; GEN_LOCALS = 2; GEN_BIG = true; GEN_MAX_ROOMS = 9
+	var loaded := _mapgen_load(jpath)
+	var els: Array = (loaded.archive as Dictionary).values()
+	# only designs with an accessible competent floor (a novice CAN solve), sorted by sweep.
+	var good: Array = []
+	for e in els:
+		if bool(e.get("floor_ok", false)):
+			good.append(e)
+	good.sort_custom(func(a, b): return float(a.get("sweep", 0)) > float(b.get("sweep", 0)))
+	print("=== top biggen designs (floor_ok, by sweep) ===")
+	print("rank seed     nr cols x rows  cards            sweep adept expert tier")
+	for i in mini(14, good.size()):
+		var e: Dictionary = good[i]
+		var lv := _generate(int(e.seed), int(e.req))
+		if lv.is_empty():
+			print("%2d   %-8d GEN-FAIL" % [i, int(e.seed)]); continue
+		var cn := []
+		for c in lv.cards: cn.append(str(c.type)[0])
+		print("%2d   %-8d %2d  %d x %-2d    [%s]%s  %5.0f %5.0f %6.0f %s" % [
+			i, int(e.seed), int(lv.rooms.size()), int(lv.cols), int(lv.rows), "".join(cn),
+			"    " if cn.size() < 4 else "", float(e.get("sweep",0)), float(e.get("adept",0)),
+			float(e.get("expert",0)), str(e.get("tier",""))])
+	if rank < 0 or rank >= good.size():
+		return
+	var pick: Dictionary = good[rank]
+	var lv := _generate(int(pick.seed), int(pick.req))
+	print("\n=== DUMPING rank %d: seed %d, %dx%d, %d rooms ===" % [rank, int(pick.seed), int(lv.cols), int(lv.rows), int(lv.rooms.size())])
+	var s := _solve_four(lv, [250, 900, 3200])
+	var stars := _star_thresholds(s)
+	print("REPORT %s: novice=%.0f adept=%.0f expert=%.0f optimal=%.0f -> stars=%s" % [
+		id, s.novice, s.adept, s.expert, s.optimal, str(stars)])
+	lv["id"] = id
+	_dump_level(lv, id, name, s.expert_routes)
+	print("\t\t\"stars\": [%d, %d, %d, %d]," % [stars[0], stars[1], stars[2], stars[3]])
+
+
 func _solve_four(lv: Dictionary, budgets: Array) -> Dictionary:
 	# Derive demand the same way main5 does (rooms + fixed seed) so RG's primitives and the
 	# sim agree with live play; shipped levels store no trips.
@@ -2044,6 +2099,27 @@ func _initialize() -> void:
 		var jp := str(args[3]) if args.size() > 3 else "mapgen.json"
 		var soff := int(args[4]) if args.size() > 4 else 0
 		_mapgen(outer, expert_b, jp, soff)
+		quit(); return
+	if mode == "biggen":
+		# BIG hard levels: full vertical space + 2 standard lifts + fuller room loadout, evolved
+		# for maximum SWEEP (novice-solvable floor, huge expert headroom). Same MAP-Elites loop.
+		var outer := int(args[1])
+		var expert_b := int(args[2]) if args.size() > 2 else 2400
+		var jp := str(args[3]) if args.size() > 3 else "biggen.json"
+		var soff := int(args[4]) if args.size() > 4 else 0
+		GEN_MAX_SURFACE = 12
+		GEN_LOCALS = 2
+		GEN_BIG = true
+		GEN_MAX_ROOMS = 9
+		GEN_NROOM_CYCLE = [6, 7, 8, 8, 9, 7, 8]
+		_mapgen(outer, expert_b, jp, soff)
+		quit(); return
+	if mode == "bigpick":
+		var jp := str(args[1]) if args.size() > 1 else "biggen.json"
+		var rank := int(args[2]) if args.size() > 2 else -1
+		var pid := str(args[3]) if args.size() > 3 else "BIG1"
+		var pname := str(args[4]) if args.size() > 4 else "Big Level"
+		_bigpick(jp, rank, pid, pname)
 		quit(); return
 	if mode == "fievo":
 		var outer := int(args[1])

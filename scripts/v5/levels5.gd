@@ -630,6 +630,45 @@ const LEVELS := [
 		"solution": [[[4, 6], [4, 7]], [[7, 7], [7, 6], [7, 5], [7, 4], [7, 3]], [[7, 7], [8, 7], [8, 6], [8, 5], [8, 4], [8, 3], [7, 3], [7, 2], [7, 1], [7, 0], [6, 0], [6, 1], [6, 2], [5, 2], [4, 2], [3, 2], [2, 2], [2, 3], [3, 3], [4, 3], [4, 4], [4, 5], [4, 6], [4, 7]]],
 		"sols": [[[[7, 7], [7, 6], [6, 6], [5, 6], [4, 6], [4, 7]], [[7, 7], [8, 7], [8, 6], [8, 5], [8, 4], [8, 3], [7, 3]], [[7, 3], [7, 2], [7, 1], [7, 0], [6, 0], [6, 1], [6, 2], [5, 2], [4, 2], [4, 3], [4, 4], [4, 5], [5, 5], [6, 5], [7, 5], [7, 4]]], [[[4, 6], [4, 7]], [[7, 7], [7, 6], [7, 5], [7, 4], [7, 3]], [[7, 7], [8, 7], [8, 6], [8, 5], [8, 4], [8, 3], [7, 3], [7, 2], [7, 1], [7, 0], [6, 0], [6, 1], [6, 2], [5, 2], [4, 2], [3, 2], [2, 2], [2, 3], [3, 3], [4, 3], [4, 4], [4, 5], [4, 6], [4, 7]]], [[[4, 6], [4, 7]], [[7, 7], [7, 6], [7, 5], [7, 4], [7, 3]], [[7, 7], [8, 7], [8, 6], [8, 5], [8, 4], [8, 3], [7, 3], [7, 2], [7, 1], [7, 0], [6, 0], [6, 1], [6, 2], [5, 2], [4, 2], [3, 2], [2, 2], [2, 3], [3, 3], [4, 3], [4, 4], [4, 5], [4, 6], [4, 7]]], [[[4, 6], [4, 7]], [[7, 7], [7, 6], [7, 5], [7, 4], [7, 3]], [[7, 7], [8, 7], [8, 6], [8, 5], [8, 4], [8, 3], [7, 3], [7, 2], [7, 1], [7, 0], [6, 0], [6, 1], [6, 2], [5, 2], [4, 2], [3, 2], [2, 2], [2, 3], [3, 3], [4, 3], [4, 4], [4, 5], [4, 6], [4, 7]]]],
 	},
+	{
+		"id": "XL11", "world": "CROSSLINK", "name": "The Gauntlet", "thesis": "", "intro": "",
+		"cols": 9, "rows": 12, "blocked": [],
+		"overlaps": [
+			{"cells": [Vector2i(0, 0), Vector2i(0, 1), Vector2i(0, 2), Vector2i(0, 5), Vector2i(0, 6), Vector2i(0, 7), Vector2i(0, 8), Vector2i(0, 9), Vector2i(0, 10), Vector2i(0, 11), Vector2i(1, 2), Vector2i(1, 5), Vector2i(1, 6), Vector2i(1, 9), Vector2i(1, 10), Vector2i(1, 11), Vector2i(2, 2), Vector2i(2, 4), Vector2i(2, 5), Vector2i(2, 6), Vector2i(2, 9), Vector2i(2, 10), Vector2i(2, 11), Vector2i(3, 2), Vector2i(3, 3), Vector2i(3, 4), Vector2i(3, 5), Vector2i(3, 6), Vector2i(3, 9), Vector2i(3, 11), Vector2i(4, 1), Vector2i(4, 2), Vector2i(4, 3), Vector2i(4, 6), Vector2i(4, 7), Vector2i(4, 9), Vector2i(4, 11), Vector2i(5, 0), Vector2i(5, 1), Vector2i(5, 2), Vector2i(5, 3), Vector2i(5, 6), Vector2i(5, 7), Vector2i(5, 9), Vector2i(6, 0), Vector2i(6, 2), Vector2i(6, 3), Vector2i(6, 6), Vector2i(6, 7), Vector2i(6, 8), Vector2i(6, 9), Vector2i(7, 0), Vector2i(7, 2), Vector2i(7, 3), Vector2i(7, 6), Vector2i(7, 7), Vector2i(7, 8), Vector2i(7, 9), Vector2i(7, 11), Vector2i(8, 0), Vector2i(8, 2), Vector2i(8, 3), Vector2i(8, 4), Vector2i(8, 5), Vector2i(8, 6), Vector2i(8, 7), Vector2i(8, 8), Vector2i(8, 9), Vector2i(8, 10), Vector2i(8, 11)], "max": 3},
+			{"cells": [Vector2i(4, 0), Vector2i(4, 4), Vector2i(7, 4), Vector2i(3, 10), Vector2i(2, 3), Vector2i(1, 7), Vector2i(1, 8), Vector2i(5, 8), Vector2i(8, 1)], "max": 6},
+		],
+		"rooms": [
+			{"type": "lobby", "cells": [Vector2i(1, 0), Vector2i(2, 0), Vector2i(3, 0), Vector2i(1, 1), Vector2i(2, 1), Vector2i(3, 1)], "drops": [{"cell": Vector2i(3, 0), "dir": R}]},
+			{"type": "cafe", "cells": [Vector2i(4, 5), Vector2i(5, 5), Vector2i(6, 5), Vector2i(7, 5), Vector2i(5, 4), Vector2i(6, 4)], "drops": [{"cell": Vector2i(5, 4), "dir": L}, {"cell": Vector2i(6, 4), "dir": R}]},
+			{"type": "penthouse", "cells": [Vector2i(7, 10), Vector2i(6, 10), Vector2i(5, 10), Vector2i(4, 10), Vector2i(6, 11), Vector2i(5, 11)], "drops": [{"cell": Vector2i(4, 10), "dir": L}]},
+			{"type": "delivery", "label": "storage", "cells": [Vector2i(0, 3), Vector2i(1, 3), Vector2i(0, 4), Vector2i(1, 4)], "drops": [{"cell": Vector2i(1, 3), "dir": R}]},
+			{"type": "office", "cells": [Vector2i(3, 7), Vector2i(2, 7)], "drops": [{"cell": Vector2i(2, 7), "dir": L}]},
+			{"type": "atrium", "cells": [Vector2i(2, 8), Vector2i(3, 8), Vector2i(4, 8)], "drops": [{"cell": Vector2i(2, 8), "dir": L}, {"cell": Vector2i(4, 8), "dir": R}]},
+			{"type": "office", "cells": [Vector2i(6, 1), Vector2i(7, 1)], "drops": [{"cell": Vector2i(7, 1), "dir": R}]},
+		],
+		"cards": [
+			{"name": "LIFT 1", "type": "standard", "color": COL_A},
+			{"name": "LIFT 2", "type": "standard", "color": Color(0.46, 0.84, 0.52)},
+			{"name": "EXPRESS", "type": "express", "color": COL_D, "speed": 1500.0, "accel": 1200.0},
+			{"name": "CARGO", "type": "cargo", "color": COL_C, "speed": 100.0, "accel": 80.0},
+		],
+		"quota": 20, "max_lost": 4, "shift": 90.0,
+		"stars": [222, 326, 431, 525],   # opt~583 (90s), 4-star ~90% headroom; deep sweep (adept~417 -> optimal~583)
+		"spawn": {"interval_start": 2.2, "interval_end": 1.7, "ramp": 40.0, "burst_min": 1, "burst_max": 2, "gap": 0.9, "cover": true},
+		"mix": {"visitor": 0.6, "shopper": 0.25, "patient": 0.15},
+		"trips": [
+			{"w": 0.10, "from": "A", "to": "B"},
+			{"w": 0.06, "from": "B", "to": "A"},
+			{"w": 0.16, "from": "A", "to": "C"},
+			{"w": 0.10, "from": "C", "to": "A"},
+			{"w": 0.10, "from": "A", "to": "E"},
+			{"w": 0.06, "from": "E", "to": "A"},
+			{"w": 0.10, "from": "A", "to": "G"},
+			{"w": 0.06, "from": "G", "to": "A"},
+			{"w": 0.14, "from": "D", "to": "B", "type": "delivery", "return": "A"},
+		],
+		"solution": [[[4, 0], [4, 1], [4, 2], [4, 3], [4, 4]], [[1, 7], [1, 8], [1, 9], [1, 10], [2, 10], [3, 10]], [[1, 7], [0, 7], [0, 8], [0, 9], [0, 10], [0, 11], [1, 11], [2, 11], [3, 11], [3, 10], [3, 9], [4, 9], [5, 9], [6, 9], [7, 9], [8, 9], [8, 8], [8, 7], [8, 6], [8, 5], [8, 4], [8, 3], [8, 2], [8, 1], [8, 0], [7, 0], [6, 0], [5, 0], [4, 0]], [[2, 3], [2, 4], [3, 4], [4, 4]]],
+	},
 ]
 
 
