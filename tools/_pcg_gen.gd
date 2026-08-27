@@ -158,6 +158,8 @@ const MIN_SURFACE := 4
 
 # BIG-LEVEL tunables (default = original behaviour; `biggen` mode cranks them up to explore large,
 # hard, high-skill-ceiling designs that use the new vertical space + a fuller card loadout).
+static var GEN_COLS := 9                  # board WIDTH (columns). 9 = classic; 10 = big skyscraper envelope
+static var GEN_MIN_SURFACE := MIN_SURFACE # shortest board the generator will make (rows); big mode raises it
 static var GEN_MAX_SURFACE := 9          # tallest board the generator will make (rows)
 static var GEN_LOCALS := 1               # number of STANDARD lifts (more => combinatorial routing depth)
 static var GEN_BIG := false              # big-mode wishlist (2nd penthouse/cafe, more offices)
@@ -167,8 +169,8 @@ static var GEN_NROOM_CYCLE := [4, 5, 6, 6, 5, 7, 8]  # nrooms the mapgen loop cy
 func _generate(seed_v: int, n_rooms := 0) -> Dictionary:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed_v
-	var cols := 9
-	var surface := rng.randi_range(MIN_SURFACE, GEN_MAX_SURFACE)   # >= 4 surface floors, varied height
+	var cols := GEN_COLS
+	var surface := rng.randi_range(GEN_MIN_SURFACE, GEN_MAX_SURFACE)   # >= GEN_MIN_SURFACE floors, varied height
 	var rows := surface + BASEMENT
 	if n_rooms <= 0:
 		n_rooms = clampi(4 + (seed_v % 4), 4, maxi(4, surface))   # 4..7, capped by height
@@ -1619,7 +1621,9 @@ func _round_down_clean(v: float) -> int:
 ## Inspect a biggen archive: list the top designs by SWEEP (with real dimensions), and if a rank
 ## is given, re-solve that design at a high budget and emit it as a full LEVELS entry + stars.
 func _bigpick(jpath: String, rank: int, id: String, name: String) -> void:
-	GEN_MAX_SURFACE = 12; GEN_LOCALS = 2; GEN_BIG = true; GEN_MAX_ROOMS = 9
+	# MUST match the biggen config exactly — designs are seed-regenerated here for display/dump,
+	# so any mismatch would rebuild a different level than was evolved.
+	GEN_COLS = 10; GEN_MIN_SURFACE = 11; GEN_MAX_SURFACE = 15; GEN_LOCALS = 2; GEN_BIG = true; GEN_MAX_ROOMS = 10
 	var loaded := _mapgen_load(jpath)
 	var els: Array = (loaded.archive as Dictionary).values()
 	# only designs with an accessible competent floor (a novice CAN solve), sorted by sweep.
@@ -2107,11 +2111,18 @@ func _initialize() -> void:
 		var expert_b := int(args[2]) if args.size() > 2 else 2400
 		var jp := str(args[3]) if args.size() > 3 else "biggen.json"
 		var soff := int(args[4]) if args.size() > 4 else 0
-		GEN_MAX_SURFACE = 12
+		# 10x15 skyscraper envelope (user 2026-08-27): full-width, tall (min 11 floors so it
+		# actually uses the vertical space), fuller room loadout for deep routing.
+		GEN_COLS = 10
+		GEN_MIN_SURFACE = 11
+		GEN_MAX_SURFACE = 15
 		GEN_LOCALS = 2
 		GEN_BIG = true
-		GEN_MAX_ROOMS = 9
-		GEN_NROOM_CYCLE = [6, 7, 8, 8, 9, 7, 8]
+		GEN_MAX_ROOMS = 10
+		# Moderate room count (7-9): tall enough to fill 10x15, but sparse enough that an ADEPT
+		# floor can serve nearly every room (floor_ok) — the difference between "hard but fair"
+		# and "novice can't get off the ground". More rooms => the solvable floor gets rarer.
+		GEN_NROOM_CYCLE = [7, 8, 9, 8, 7, 9, 8]
 		_mapgen(outer, expert_b, jp, soff)
 		quit(); return
 	if mode == "bigpick":
