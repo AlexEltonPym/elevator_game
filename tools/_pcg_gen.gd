@@ -1620,7 +1620,7 @@ func _round_down_clean(v: float) -> int:
 ## the expert route-set (the pre-drawable solution). budgets = [adept, expert, optimal].
 ## Inspect a biggen archive: list the top designs by SWEEP (with real dimensions), and if a rank
 ## is given, re-solve that design at a high budget and emit it as a full LEVELS entry + stars.
-func _bigpick(jpath: String, rank: int, id: String, name: String) -> void:
+func _bigpick(jpath: String, rank: int, id: String, name: String, op_budget := 3200) -> void:
 	# MUST match the biggen config exactly — designs are seed-regenerated here for display/dump,
 	# so any mismatch would rebuild a different level than was evolved.
 	GEN_COLS = 10; GEN_MIN_SURFACE = 11; GEN_MAX_SURFACE = 15; GEN_LOCALS = 2; GEN_BIG = true; GEN_MAX_ROOMS = 10
@@ -1650,7 +1650,7 @@ func _bigpick(jpath: String, rank: int, id: String, name: String) -> void:
 	var pick: Dictionary = good[rank]
 	var lv := _generate(int(pick.seed), int(pick.req))
 	print("\n=== DUMPING rank %d: seed %d, %dx%d, %d rooms ===" % [rank, int(pick.seed), int(lv.cols), int(lv.rows), int(lv.rooms.size())])
-	var s := _solve_four(lv, [250, 900, 3200])
+	var s := _solve_four(lv, [250, 900, op_budget])
 	var stars := _star_thresholds_floor(s)   # floor-anchored: 1-star = solvable adept floor
 	print("REPORT %s: novice=%.0f adept=%.0f expert=%.0f optimal=%.0f lost=%d -> stars=%s" % [
 		id, s.novice, s.adept, s.expert, s.optimal, int(s.get("optimal_lost", 0)), str(stars)])
@@ -2195,7 +2195,8 @@ func _initialize() -> void:
 		var rank := int(args[2]) if args.size() > 2 else -1
 		var pid := str(args[3]) if args.size() > 3 else "BIG1"
 		var pname := str(args[4]) if args.size() > 4 else "Big Level"
-		_bigpick(jp, rank, pid, pname)
+		var opb := int(args[5]) if args.size() > 5 else 3200
+		_bigpick(jp, rank, pid, pname, opb)
 		quit(); return
 	if mode == "fievo":
 		var outer := int(args[1])

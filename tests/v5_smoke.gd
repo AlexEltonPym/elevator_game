@@ -97,6 +97,15 @@ func _solution(id: String) -> Array:
 					_c([[1,7],[1,8],[1,9],[1,10],[2,10],[3,10]]),
 					_c([[1,7],[0,7],[0,8],[0,9],[0,10],[0,11],[1,11],[2,11],[3,11],[3,10],[3,9],[4,9],[5,9],[6,9],[7,9],[8,9],[8,8],[8,7],[8,6],[8,5],[8,4],[8,3],[8,2],[8,1],[8,0],[7,0],[6,0],[5,0],[4,0]]),
 					_c([[2,3],[2,4],[3,4],[4,4]])]
+	# Fallback: any level not hand-cased above runs its shipped `solution` field (converted to
+	# routes), so generated levels (e.g. the SKYSCRAPER world) are smoke-checked without needing
+	# a hand-written case each.
+	for lv in Levels5.LEVELS:
+		if str(lv.get("id", "")) == id:
+			var out: Array = []
+			for route in lv.get("solution", []):
+				out.append(_c(route))
+			return out
 	return []
 func _expect_serves(_id: String) -> Array:
 	# Per-level serve-count assertions are retired: the suite is PCG-generated, so there are

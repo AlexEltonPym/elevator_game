@@ -149,7 +149,7 @@ If a rule here seems wrong for a task, ask — do not silently violate it.
 
 ## Process / verification (engineering rules)
 
-- **Fingerprint discipline.** `FINGERPRINT5-ALL 1199199118` must stay byte-identical for any
+- **Fingerprint discipline.** `FINGERPRINT5-ALL 4226520704` must stay byte-identical for any
   RENDERING-only change (verify with `tools/v5/run_fingerprint5.gd`). A SIM/CONTENT change
   legitimately rebaselines it — flag that explicitly and keep `V5 SMOKE ALL PASS`.
 - **Suite = HAND tutorials + PCG crosslink (2026-08-23).** T-1..T-7 are HAND-AUTHORED (a
