@@ -1623,7 +1623,7 @@ func _round_down_clean(v: float) -> int:
 func _bigpick(jpath: String, rank: int, id: String, name: String, op_budget := 3200) -> void:
 	# MUST match the biggen config exactly — designs are seed-regenerated here for display/dump,
 	# so any mismatch would rebuild a different level than was evolved.
-	GEN_COLS = 10; GEN_MIN_SURFACE = 11; GEN_MAX_SURFACE = 15; GEN_LOCALS = 2; GEN_BIG = true; GEN_MAX_ROOMS = 10
+	GEN_COLS = 10; GEN_MIN_SURFACE = 11; GEN_MAX_SURFACE = 14; GEN_LOCALS = 2; GEN_BIG = true; GEN_MAX_ROOMS = 10
 	var loaded := _mapgen_load(jpath)
 	var els: Array = (loaded.archive as Dictionary).values()
 	# only designs with an accessible competent floor (a novice CAN solve), sorted by sweep.
@@ -1673,7 +1673,7 @@ func _bigpick(jpath: String, rank: int, id: String, name: String, op_budget := 3
 ## Render a biggen archive design (by floor_ok-by-sweep rank) to a plan screenshot WITHOUT
 ## solving — fast layout eyeballing. Same config + regeneration path as _bigpick.
 func _bigdraw(jpath: String, rank: int, png: String) -> void:
-	GEN_COLS = 10; GEN_MIN_SURFACE = 11; GEN_MAX_SURFACE = 15; GEN_LOCALS = 2; GEN_BIG = true; GEN_MAX_ROOMS = 10
+	GEN_COLS = 10; GEN_MIN_SURFACE = 11; GEN_MAX_SURFACE = 14; GEN_LOCALS = 2; GEN_BIG = true; GEN_MAX_ROOMS = 10
 	var loaded := _mapgen_load(jpath)
 	var good: Array = []
 	for e in (loaded.archive as Dictionary).values():
@@ -2180,7 +2180,7 @@ func _initialize() -> void:
 		# actually uses the vertical space), fuller room loadout for deep routing.
 		GEN_COLS = 10
 		GEN_MIN_SURFACE = 11
-		GEN_MAX_SURFACE = 15
+		GEN_MAX_SURFACE = 14   # 10x14 render envelope (grid5 FIT_ROWS); older archives were max-15
 		GEN_LOCALS = 2
 		GEN_BIG = true
 		GEN_MAX_ROOMS = 10
