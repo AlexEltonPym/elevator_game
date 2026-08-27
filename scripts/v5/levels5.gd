@@ -185,7 +185,7 @@ const LEVELS := [
 			{"name": "LIFT", "type": "standard", "color": COL_A},
 		],
 		"quota": 10, "max_lost": 8, "shift": 60.0,
-		"stars": [69, 101, 134, 163],   # opt~181, 4-star at ~90% (headroom)
+		"stars": [130, 155, 168, 178],   # opt 181 (clean straight line); tightened so a WOBBLY plan (~157) lands 1-2 star, only a tidy route reaches 3-4 (user: T-1 must be able to score <=2)
 		"solution": [[[2, 0], [2, 1], [2, 2], [2, 3], [2, 4]]],
 		"demo": [[[2, 0], [2, 1], [2, 2], [2, 3], [2, 4]]],  # lobby straight up to the shared office dock
 		"sols": [[[[2, 0], [2, 1], [2, 2], [2, 3], [2, 4]]], [[[2, 0], [2, 1], [2, 2], [2, 3], [2, 4]]], [[[2, 0], [2, 1], [2, 2], [2, 3], [2, 4]]], [[[2, 0], [2, 1], [2, 2], [2, 3], [2, 4]]]],
