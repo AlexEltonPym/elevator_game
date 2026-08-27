@@ -266,7 +266,7 @@ func tick(dt: float) -> void:
 	# queueing, transferring, boarding, AND riding; a long ride eats the same clock. This runs BEFORE
 	# the riding early-return so it keeps ticking on the lift. They only GIVE UP (expire) while
 	# actually waiting — never mid-ride or mid-board (they're committed).
-	if _impatient:
+	if _impatient and not _at_atrium_wait():
 		patience -= dt
 		wait_time += dt
 		if patience <= 0.0 and riding == null and boarding_car == null and not between:
@@ -341,6 +341,16 @@ func start_board_walk() -> void:
 	if walk_left <= 0.0:
 		walk_left = 0.0
 		_on_walk_done()
+
+
+## ATRIUM = IMPATIENCE-FREE ZONE (user 2026-08-28): while a mid-journey rider is at an atrium
+## and NOT on a lift (stepped off, walking across, or waiting for the next lift), the patience
+## clock is paused — so routing THROUGH the atrium transfer no longer bleeds patience and
+## becomes a real (often optimal) play instead of a penalty. Only atriums; other hub transfers
+## (lobby/cafe/storage) still tick. Riding out of the atrium resumes the clock.
+func _at_atrium_wait() -> bool:
+	return riding == null and boarding_car == null \
+		and cur_room >= 0 and Grid5.room_type(cur_room) == "atrium"
 
 
 ## Snappy transfer re-queue: a MID-JOURNEY rider that alights at a transfer room and

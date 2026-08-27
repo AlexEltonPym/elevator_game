@@ -404,6 +404,21 @@ func _continue_pts(target: int, job: Dictionary) -> Array:
 			for c in best:
 				pts.append(Grid5.view_offset + Grid5.view_scale * Grid5.cell_center(c))
 			return pts
+	# LAST RESORT: both loose ends are boxed in by the drawn line. Rather than flip to a
+	# full redraw-from-start over the top of the partial (the confusing "finish it, no wait,
+	# redraw A->B" UX), allow RETRACING own cells so we can still point onward from where the
+	# player actually stopped. A messy continuation beats a contradictory instruction.
+	var endc: Vector2i = r.cells[r.cells.size() - 1]
+	var best2: Array = []
+	for g in goals:
+		var p := _grid_bfs(endc, g, target, {})
+		if p.size() >= 2 and (best2.is_empty() or p.size() < best2.size()):
+			best2 = p
+	if not best2.is_empty():
+		var pts2: Array = []
+		for c in best2:
+			pts2.append(Grid5.view_offset + Grid5.view_scale * Grid5.cell_center(c))
+		return pts2
 	return []
 
 
@@ -446,7 +461,17 @@ func _update_demo() -> void:
 	var mine: Dictionary = _demo_paths[target]
 	var job: Dictionary = _best_demo_job(target)
 	var cont: Array = _continue_pts(target, job)
-	var draw_pts: Array = cont if cont.size() >= 2 else job.pts
+	var has_partial: bool = game.routes[target] != null and not game.routes[target].cells.is_empty()
+	var draw_pts: Array
+	if cont.size() >= 2:
+		draw_pts = cont            # finish from where they actually stopped
+	elif has_partial:
+		# A partial that genuinely can't be continued: DON'T redraw-from-start over the top of
+		# it (the bad UX). Just idle — the player can clear it, then the fresh draw guides.
+		_demo_ghost.guide_idle()
+		return
+	else:
+		draw_pts = job.pts         # no route yet -> draw the whole job fresh
 	if by_selection:
 		_demo_ghost.guide_draw(draw_pts, mine.color)
 	else:
