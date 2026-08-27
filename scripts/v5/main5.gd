@@ -69,6 +69,14 @@ var _cover_by_room := {}       # rid -> Array of trip rows originating at rid (e
 var _cover_idx := 0
 var _served_rooms := {}         # rid -> true once a passenger has been delivered there
 
+# FIXED MANIFEST (opt-in via level.manifest). An ORDERED list of exact passengers
+# [{type, from, to, return?}, ...] the spawner plays IN SEQUENCE (one per spawn tick) instead
+# of the weighted/derived trip picker — so a level's roster is authored, deterministic, and
+# previewable (the "who's coming" UI reads it). When the list is exhausted, spawning stops
+# (a fixed head-count). A level with no manifest keeps the derived-demand behaviour untouched.
+var _manifest: Array = []
+var _manifest_idx := 0
+
 var active_passengers: Array = []
 var reactivations := 0 # completed trips that spawned a fresh trip (stat / smoke)
 var _passengers_dirty := false
@@ -455,6 +463,8 @@ func _reset_spawner() -> void:
 	burst_timer = 0.0
 	_cover_idx = 0
 	_served_rooms = {}
+	_manifest = level.get("manifest", [])
+	_manifest_idx = 0
 	tips = 0.0
 	shift_closed = false
 	auto_spawn = true
@@ -968,6 +978,21 @@ func _pick_type() -> String:
 
 
 func _spawn_random() -> void:
+	# FIXED-MANIFEST MODE: play the authored roster in order, one per spawn tick, then stop.
+	if not _manifest.is_empty():
+		if _manifest_idx >= _manifest.size():
+			return  # roster exhausted -> no more spawns (fixed head-count)
+		var m: Dictionary = _manifest[_manifest_idx]
+		_manifest_idx += 1
+		var mo := Levels5.room_id_of_letter(level, str(m.get("from", "")))
+		var md := Levels5.room_id_of_letter(level, str(m.get("to", "")))
+		if mo < 0 or md < 0 or mo == md:
+			return
+		var mret := -1
+		if m.has("return"):
+			mret = Levels5.room_id_of_letter(level, str(m.get("return")))
+		spawn_passenger(str(m.get("type", "visitor")), mo, md, mret)
+		return
 	var t := _pick_type()
 	var trips: Array = level.trips
 	var picked: Dictionary

@@ -289,7 +289,22 @@ const LEVELS := [
 			{"name": "CARGO", "type": "cargo", "color": COL_D},
 		],
 		"quota": 15, "max_lost": 8, "shift": 60.0,
-		"stars": [58, 86, 113, 138],   # opt~153, 4-star at ~90% (headroom)
+		# FIXED ROSTER (cargo tutorial): 8 freight runs (bay A -> cafe B, back to the bay) + 2
+		# office commuters (lobby C -> offices D/E). Front-loads cargo so the freight lift is the
+		# star; the two passengers keep the local lift relevant.
+		"manifest": [
+			{"type": "delivery", "from": "A", "to": "B", "return": "A"},
+			{"type": "delivery", "from": "A", "to": "B", "return": "A"},
+			{"type": "visitor", "from": "C", "to": "D"},
+			{"type": "delivery", "from": "A", "to": "B", "return": "A"},
+			{"type": "delivery", "from": "A", "to": "B", "return": "A"},
+			{"type": "delivery", "from": "A", "to": "B", "return": "A"},
+			{"type": "visitor", "from": "C", "to": "E"},
+			{"type": "delivery", "from": "A", "to": "B", "return": "A"},
+			{"type": "delivery", "from": "A", "to": "B", "return": "A"},
+			{"type": "delivery", "from": "A", "to": "B", "return": "A"},
+		],
+		"stars": [90, 135, 180, 220],   # manifest roster (10 pax): hand solution ~244 live, 4-star at ~90%
 		"solution": [[[3, 4], [3, 3], [3, 2], [3, 1], [3, 0]], [[3, 6], [3, 5], [3, 4], [2, 4], [2, 3], [2, 2], [2, 1], [2, 0], [3, 0]]],
 		"demo": [[[2, 0], [2, 1], [2, 2], [2, 3], [2, 4], [2, 5], [2, 6], [3, 6]], [[3, 6], [3, 5], [3, 4], [3, 3], [3, 2], [3, 1], [3, 0]]],  # cargo runs bay up to the cafe; local threads the next column down to lobby
 		"sols": [[[[2, 0], [3, 0]], [[3, 4], [3, 3], [3, 2], [3, 1], [3, 0], [2, 0]]], [[[3, 4], [3, 3], [3, 2], [3, 1], [3, 0]], [[3, 6], [3, 5], [3, 4], [2, 4], [2, 3], [2, 2], [2, 1], [2, 0], [3, 0]]], [[[3, 4], [3, 3], [3, 2], [3, 1], [3, 0]], [[3, 6], [3, 5], [3, 4], [2, 4], [2, 3], [2, 2], [2, 1], [2, 0], [3, 0]]], [[[3, 4], [3, 3], [3, 2], [3, 1], [3, 0]], [[3, 6], [3, 5], [3, 4], [2, 4], [2, 3], [2, 2], [2, 1], [2, 0], [3, 0]]]],

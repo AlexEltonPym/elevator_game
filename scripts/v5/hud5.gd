@@ -10,6 +10,7 @@ const Ui5 := preload("res://scripts/v5/ui5.gd")
 const SpeedBtn5 := preload("res://scripts/v5/speedbtn5.gd")
 const Coin5 := preload("res://scripts/v5/coin5.gd")
 const GhostDemo5 := preload("res://scripts/v5/ghost_demo5.gd")
+const ManifestPreview5 := preload("res://scripts/v5/manifest_preview5.gd")
 
 # Bottom panel: chips only, pinned to the very bottom (matches Grid5.PLAY_BOTTOM so the
 # building drops down and more sky shows above it).
@@ -18,6 +19,7 @@ const CHIP_H := 116.0
 const CHIP_Y := 1156.0
 
 var game = null # main5.gd
+var _manifest_preview = null # "who's coming" next-up strip (ManifestPreview5)
 
 
 ## Nearest Kenney button colour for a card's route colour (chips read as their lift colour).
@@ -65,11 +67,17 @@ func _ready() -> void:
 	layer = 10
 	_build_top()
 	_build_panel()
+	_manifest_preview = ManifestPreview5.new()
+	_manifest_preview.game = game
+	add_child(_manifest_preview)
 
 
 func _process(_delta: float) -> void:
 	if game != null:
 		refresh_stats()
+		if _manifest_preview != null:
+			_manifest_preview.game = game
+			_manifest_preview.tick()
 
 
 func _build_top() -> void:
