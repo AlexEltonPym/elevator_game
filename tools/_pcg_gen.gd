@@ -1651,12 +1651,23 @@ func _bigpick(jpath: String, rank: int, id: String, name: String) -> void:
 	var lv := _generate(int(pick.seed), int(pick.req))
 	print("\n=== DUMPING rank %d: seed %d, %dx%d, %d rooms ===" % [rank, int(pick.seed), int(lv.cols), int(lv.rows), int(lv.rooms.size())])
 	var s := _solve_four(lv, [250, 900, 3200])
-	var stars := _star_thresholds(s)
-	print("REPORT %s: novice=%.0f adept=%.0f expert=%.0f optimal=%.0f -> stars=%s" % [
-		id, s.novice, s.adept, s.expert, s.optimal, str(stars)])
+	var stars := _star_thresholds_floor(s)   # floor-anchored: 1-star = solvable adept floor
+	print("REPORT %s: novice=%.0f adept=%.0f expert=%.0f optimal=%.0f lost=%d -> stars=%s" % [
+		id, s.novice, s.adept, s.expert, s.optimal, int(s.get("optimal_lost", 0)), str(stars)])
 	lv["id"] = id
 	_dump_level(lv, id, name, s.expert_routes)
 	print("\t\t\"stars\": [%d, %d, %d, %d]," % [stars[0], stars[1], stars[2], stars[3]])
+	# sols = the four skill-tier plans [novice, adept, expert, optimal] for the secret 1-4 shortcut.
+	var tiers := []
+	for tr in s.tier_routes:
+		var routestrs := []
+		for r in tr:
+			var cc := []
+			for xy in r.cells:
+				cc.append("[%d, %d]" % [int(xy[0]), int(xy[1])])
+			routestrs.append("[%s]" % ", ".join(cc))
+		tiers.append("[%s]" % ", ".join(routestrs))
+	print("\t\t\"sols\": [%s]," % ", ".join(tiers))
 
 
 ## Render a biggen archive design (by floor_ok-by-sweep rank) to a plan screenshot WITHOUT
@@ -1774,6 +1785,26 @@ func _star_thresholds(s: Dictionary) -> Array:
 	var t3: int = mini(_round_down_clean(0.90 * best), t4 - gap)
 	var t2: int = mini(_round_down_clean(0.72 * best), t3 - gap)
 	var t1: int = clampi(_round_down_clean(0.50 * best), gap, t2 - gap)
+	return [t1, t2, t3, t4]
+
+
+## FLOOR-ANCHORED thresholds for DEEP levels (huge adept->optimal gap). 1-star sits at the
+## solvable ADEPT floor (so completing the level competently earns a star), the secret 4th at
+## ~90% of the optimum (headroom), 2/3 evenly spread between — so the big optimization space
+## maps onto the star range instead of the floor scoring 0 stars. Falls back to the standard
+## formula for SHALLOW levels (floor already near optimum), where anchoring would collapse.
+func _star_thresholds_floor(s: Dictionary) -> Array:
+	var top: float = maxf(s.optimal, s.expert)
+	var floor_s: float = maxf(float(s.adept), 0.0)
+	var t1: int = _round_down_clean(0.90 * floor_s)
+	var t4: int = _round_down_clean(0.90 * top)
+	if t4 - t1 < 60:   # shallow: not enough span to anchor -> standard curve
+		return _star_thresholds(s)
+	var span: float = float(t4 - t1)
+	var t2: int = _round_down_clean(float(t1) + span / 3.0)
+	var t3: int = _round_down_clean(float(t1) + 2.0 * span / 3.0)
+	var gap := 10
+	t2 = maxi(t2, t1 + gap); t3 = maxi(t3, t2 + gap); t4 = maxi(t4, t3 + gap)
 	return [t1, t2, t3, t4]
 
 
