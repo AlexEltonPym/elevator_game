@@ -32,6 +32,17 @@ const UNDERGROUND := 64.0        # thin dirt lip below the ground line (basement
 const DIRT_LIP := 18.0           # min dirt kept below a basement's lowest row
 const GROUND_LINE := PLAY_BOTTOM - UNDERGROUND  # fixed street line (screen y)
 
+# A ROOM IS A FIXED PIXEL SIZE IN EVERY LEVEL (user 2026-08-27): a bigger W×H means a
+# physically bigger building on screen, NOT the same building scaled down to fit. So the
+# render scale is one shared constant — sized so the LARGEST supported board (FIT_COLS ×
+# FIT_ROWS) just fits the screen — instead of a per-level fit. Smaller boards occupy less of
+# the frame; taller boards rise higher into the sky. A cell is the same number of pixels
+# whether you're on a 5×5 tutorial or a 10×15 tower. Envelope 10×15 (user 2026-08-27):
+# accepts a ~12% room shrink vs the old 9-wide fit to unlock genuinely bigger skyscrapers.
+const FIT_COLS := 10.0           # widest board the fixed cell size is sized for
+const FIT_ROWS := 15.0           # tallest board the fixed cell size is sized for
+const FIXED_SCALE := minf((GRID_X - 2.0 * SIDE_MARGIN) / (FIT_COLS * CELL), (GROUND_LINE - PLAY_TOP) / (FIT_ROWS * CELL))
+
 ## Seconds of walk per tile of Manhattan distance. Board = queue tile -> boarding
 ## dock; alight = alighting dock -> queue tile. Priced identically in Pathfind5 so
 ## planning stays honest against the sim. Slowed to read calm/deliberate (v5.1h).
@@ -155,10 +166,17 @@ static func load_level(level: Dictionary) -> void:
 	var above_h := float(ROWS - GROUND_ROW) * CELL   # rows at/above the ground floor
 	var below_h := float(GROUND_ROW) * CELL          # basement rows (below the ground line)
 	var w_avail := GRID_X - 2.0 * SIDE_MARGIN
-	var above_avail := GROUND_LINE - (PLAY_TOP + TOP_MARGIN)
 	var below_avail := PLAY_BOTTOM - GROUND_LINE - DIRT_LIP
-	view_scale = minf(1.0, w_avail / bbox_w)
-	view_scale = minf(view_scale, above_avail / maxf(1.0, above_h))
+	# Fixed cell size: every level renders at the SAME scale (see FIXED_SCALE). The minf()s
+	# below are a GRACEFUL fallback only — they engage solely for an over-sized board (wider
+	# than FIT_COLS, or so tall it would collide with the top HUD) that shouldn't ship. A board
+	# inside the envelope (≤ FIT_COLS wide, short enough to clear the HUD) is untouched, so its
+	# rooms are the same pixels as every other level's. Tall towers are allowed to rise into the
+	# reserved sky (vroom spans the whole play area, not just below TOP_MARGIN).
+	var vroom := GROUND_LINE - PLAY_TOP
+	view_scale = FIXED_SCALE
+	view_scale = minf(view_scale, w_avail / bbox_w)
+	view_scale = minf(view_scale, vroom / maxf(1.0, above_h))
 	if below_h > 0.0:
 		view_scale = minf(view_scale, below_avail / below_h)
 	# Horizontal: centre across the full width (the width cap above guarantees the side border).
