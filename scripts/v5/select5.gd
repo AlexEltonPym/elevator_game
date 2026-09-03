@@ -11,11 +11,12 @@ const WORLD_COL := {
 	"TUTORIAL": Color(0.42, 0.62, 0.88),
 	"CROSSLINK": Color(0.35, 0.74, 0.72),
 	"SKYSCRAPER": Color(0.92, 0.6, 0.35),
+	"ATELIER": Color(0.85, 0.75, 0.35),
 }
 
 const StarBar5 := preload("res://scripts/v5/starbar5.gd")
 const Ui5 := preload("res://scripts/v5/ui5.gd")
-const WORLD_KCOL := {"TUTORIAL": "Blue", "CROSSLINK": "Green", "SKYSCRAPER": "Red"}
+const WORLD_KCOL := {"TUTORIAL": "Blue", "CROSSLINK": "Green", "SKYSCRAPER": "Red", "ATELIER": "Yellow"}
 
 var page := 0 # index into Levels5.WORLDS
 var _hovered := -1  # LEVELS index currently moused-over (for the 1-4 tier shortcut)

@@ -518,6 +518,16 @@ func _any_active_pax() -> bool:
 ## Shift complete: freeze the run on the tip total. Reuses the WIN state (there is no
 ## lose in a shift — you always finish; the tip total is the score, stars come later).
 func _shift_end() -> void:
+	# FIXED-MANIFEST levels: the roster is finite and finished spawning, so anyone still in the
+	# building at the bell was genuinely ABANDONED -- count them lost (same "skipping a room is a
+	# guaranteed loss" rule the PCG cover levels use). Without this the solver rationally skips
+	# low-value rooms because a rider whose patience outlasts the shift costs nothing. Returning
+	# (empty) delivery men have already made their delivery, so they don't count. Derived-demand
+	# levels (continuous spawning, always someone mid-trip at the bell) are untouched.
+	if not _manifest.is_empty():
+		for p in active_passengers.duplicate():
+			if p.active and not p.returning:
+				on_expired(p)
 	state = State.WIN
 	if not headless:
 		Levels5.record_stars(str(level.get("id", "")), star_count())

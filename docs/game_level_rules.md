@@ -111,6 +111,16 @@ If a rule here seems wrong for a task, ask — do not silently violate it.
   palette). `office|office` demand applies; the dead `apartment` keys in `Demand5.AFF` are
   harmless.
 
+- **FIXED MANIFESTS (user 2026-08-28) + the BELL RULE (2026-09-03).** A level may ship an
+  ordered `manifest` `[{type, from, to, return?}, ...]` the spawner plays in sequence (tutorials
+  T-4+, the ATELIER world); it replaces derived demand for that level and powers the "who's
+  coming" NEXT strip. Because the roster is FINITE, **any rider still in the building at the
+  bell counts as LOST** (`main5._shift_end`, manifest levels only; returning empty delivery men
+  excluded). Without this a rider whose patience outlasts the shift costs nothing, so the solver
+  rationally abandons low-value rooms and `_check_lost` reports a false lost=0. Derived-demand
+  levels (continuous spawning) are untouched. Size a roster so the shipped plan clears it
+  inside the shift.
+
 ## Visual language
 
 - **Tile standard — every non-room cell is exactly one of two things, one look each:**

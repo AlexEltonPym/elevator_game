@@ -162,7 +162,7 @@ const COL_D := Color(0.80, 0.55, 0.92)
 ##   LEARN     — forgiving tutorial ramp, one concept per level
 ##   MECHANICS — thesis levels that prove/feature one mechanic
 ##   GENERIC   — middleground optimization: many legal plans, only some good
-const WORLDS := ["TUTORIAL", "CROSSLINK", "SKYSCRAPER"]
+const WORLDS := ["TUTORIAL", "CROSSLINK", "SKYSCRAPER", "ATELIER"]
 
 const LEVELS := [
 	# ===================== TUTORIAL =====================
@@ -288,7 +288,7 @@ const LEVELS := [
 			{"name": "LIFT", "type": "standard", "color": COL_A},
 			{"name": "CARGO", "type": "cargo", "color": COL_D},
 		],
-		"quota": 15, "max_lost": 8, "shift": 60.0,
+		"quota": 15, "max_lost": 8, "shift": 80.0,
 		# FIXED ROSTER (cargo tutorial): 8 freight runs (bay A -> cafe B, back to the bay) + 2
 		# office commuters (lobby C -> offices D/E). Front-loads cargo so the freight lift is the
 		# star; the two passengers keep the local lift relevant.
@@ -304,10 +304,10 @@ const LEVELS := [
 			{"type": "delivery", "from": "A", "to": "B", "return": "A"},
 			{"type": "delivery", "from": "A", "to": "B", "return": "A"},
 		],
-		"stars": [90, 135, 180, 220],   # manifest roster (10 pax): hand solution ~244 live, 4-star at ~90%
-		"solution": [[[3, 4], [3, 3], [3, 2], [3, 1], [3, 0]], [[3, 6], [3, 5], [3, 4], [2, 4], [2, 3], [2, 2], [2, 1], [2, 0], [3, 0]]],
+		"stars": [140, 210, 280, 340],   # live ceiling 380, 4-star at ~90% (headroom)
+		"solution": [[[3, 0], [3, 1], [3, 2], [3, 3], [3, 4], [3, 5], [3, 6]], [[2, 0], [2, 1], [2, 2], [2, 3], [2, 4], [2, 5], [2, 6], [3, 6]]],
 		"demo": [[[2, 0], [2, 1], [2, 2], [2, 3], [2, 4], [2, 5], [2, 6], [3, 6]], [[3, 6], [3, 5], [3, 4], [3, 3], [3, 2], [3, 1], [3, 0]]],  # cargo runs bay up to the cafe; local threads the next column down to lobby
-		"sols": [[[[2, 0], [3, 0]], [[3, 4], [3, 3], [3, 2], [3, 1], [3, 0], [2, 0]]], [[[3, 4], [3, 3], [3, 2], [3, 1], [3, 0]], [[3, 6], [3, 5], [3, 4], [2, 4], [2, 3], [2, 2], [2, 1], [2, 0], [3, 0]]], [[[3, 4], [3, 3], [3, 2], [3, 1], [3, 0]], [[3, 6], [3, 5], [3, 4], [2, 4], [2, 3], [2, 2], [2, 1], [2, 0], [3, 0]]], [[[3, 4], [3, 3], [3, 2], [3, 1], [3, 0]], [[3, 6], [3, 5], [3, 4], [2, 4], [2, 3], [2, 2], [2, 1], [2, 0], [3, 0]]]],
+		"sols": [[[[3, 0], [3, 1], [3, 2]], [[3, 0], [2, 0], [2, 1], [2, 2], [3, 2], [3, 3], [3, 4], [3, 5], [3, 6]]], [[[3, 0], [3, 1], [3, 2], [3, 3], [3, 4], [3, 5], [3, 6]], [[2, 0], [2, 1], [2, 2], [2, 3], [2, 4], [2, 5], [2, 6], [3, 6]]], [[[3, 0], [3, 1], [3, 2], [3, 3], [3, 4], [3, 5], [3, 6]], [[2, 0], [2, 1], [2, 2], [2, 3], [2, 4], [2, 5], [2, 6], [3, 6]]], [[[3, 0], [3, 1], [3, 2], [3, 3], [3, 4], [3, 5], [3, 6]], [[2, 0], [2, 1], [2, 2], [2, 3], [2, 4], [2, 5], [2, 6], [3, 6]]]],
 		"patience": {"delivery": 62.0},
 		"spawn": {"interval_start": 3.4, "interval_end": 3.0, "ramp": 55.0,
 				"burst_min": 1, "burst_max": 2, "gap": 1.1},
@@ -899,6 +899,243 @@ const LEVELS := [
 		"solution": [[[6, 8], [7, 8], [7, 9], [8, 9], [9, 9], [9, 10]], [[6, 8], [7, 8]], [[9, 0], [9, 1], [9, 2], [8, 2], [7, 2], [6, 2], [6, 3], [6, 4], [6, 5], [6, 6], [6, 7], [6, 8]], [[3, 3], [3, 4], [3, 5], [3, 6], [3, 7], [3, 8]]],
 		"stars": [150, 220, 300, 380],   # floor-anchored, 4* at ~90% of live ceil 424
 		"sols": [[[[3, 8], [3, 7], [4, 7], [5, 7], [6, 7], [6, 6]], [[9, 10], [9, 9], [8, 9], [7, 9], [7, 8], [7, 7], [8, 7], [9, 7], [9, 6], [9, 5], [9, 4], [9, 3], [9, 2], [9, 1], [9, 0]], [[3, 8], [2, 8], [2, 9], [1, 9], [0, 9], [0, 10]], [[6, 8], [7, 8]]], [[[6, 6], [6, 7], [6, 8]], [[3, 8], [3, 7], [3, 6], [3, 5], [3, 4], [3, 3], [2, 3], [2, 4], [2, 5], [2, 6], [2, 7], [2, 8]], [[9, 10], [9, 9], [8, 9], [7, 9], [7, 8], [7, 7], [7, 6], [6, 6], [6, 5], [7, 5], [8, 5], [9, 5], [9, 4], [9, 3], [9, 2], [9, 1], [9, 0]], [[6, 8], [7, 8]]], [[[6, 8], [7, 8], [7, 9], [8, 9], [9, 9], [9, 10]], [[9, 0], [9, 1], [9, 2], [9, 3], [9, 4], [9, 5], [8, 5], [7, 5], [6, 5], [6, 6], [6, 7], [6, 8]], [[6, 8], [7, 8]], [[3, 3], [3, 4], [3, 5], [3, 6], [3, 7], [3, 8]]], [[[6, 8], [7, 8], [7, 9], [8, 9], [9, 9], [9, 10]], [[6, 8], [7, 8]], [[9, 0], [9, 1], [9, 2], [8, 2], [7, 2], [6, 2], [6, 3], [6, 4], [6, 5], [6, 6], [6, 7], [6, 8]], [[3, 3], [3, 4], [3, 5], [3, 6], [3, 7], [3, 8]]]],
+	},
+	{
+		"id": "A-1", "world": "ATELIER", "name": "Crossroads",
+		"cols": 8, "rows": 8, "ground_row": 0, "blocked": [Vector2i(3, 5), Vector2i(3, 6), Vector2i(3, 7), Vector2i(4, 5), Vector2i(4, 6), Vector2i(4, 7)],
+		"overlaps": [
+			{"cells": [Vector2i(4, 0), Vector2i(5, 0), Vector2i(6, 0), Vector2i(7, 0), Vector2i(3, 1), Vector2i(4, 1), Vector2i(0, 2), Vector2i(1, 2), Vector2i(2, 2), Vector2i(3, 2), Vector2i(4, 2), Vector2i(5, 2), Vector2i(6, 2), Vector2i(7, 2), Vector2i(0, 3), Vector2i(1, 3), Vector2i(6, 3), Vector2i(7, 3), Vector2i(0, 4), Vector2i(1, 4), Vector2i(6, 4), Vector2i(7, 4), Vector2i(0, 5), Vector2i(1, 5), Vector2i(2, 5), Vector2i(5, 5), Vector2i(6, 5), Vector2i(7, 5), Vector2i(0, 7), Vector2i(1, 7), Vector2i(2, 7), Vector2i(5, 7), Vector2i(6, 7), Vector2i(7, 7)], "max": 3},
+			{"cells": [Vector2i(2, 3), Vector2i(2, 6), Vector2i(3, 0), Vector2i(5, 1), Vector2i(5, 3), Vector2i(5, 6)], "max": 6},
+		],
+		"rooms": [
+			{"type": "lobby", "cells": [Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0), Vector2i(0, 1), Vector2i(1, 1), Vector2i(2, 1)], "drops": [{"cell": Vector2i(2, 0), "dir": R}]},
+			{"type": "cafe", "cells": [Vector2i(3, 3), Vector2i(4, 3), Vector2i(2, 4), Vector2i(3, 4), Vector2i(4, 4), Vector2i(5, 4)], "drops": [{"cell": Vector2i(3, 3), "dir": L}, {"cell": Vector2i(4, 3), "dir": R}]},
+			{"type": "office", "cells": [Vector2i(0, 6), Vector2i(1, 6)], "drops": [{"cell": Vector2i(1, 6), "dir": R}]},
+			{"type": "office", "cells": [Vector2i(6, 6), Vector2i(7, 6)], "drops": [{"cell": Vector2i(6, 6), "dir": L}]},
+			{"type": "office", "cells": [Vector2i(6, 1), Vector2i(7, 1)], "drops": [{"cell": Vector2i(6, 1), "dir": L}]},
+		],
+		"cards": [
+			{"name": "LIFT 1", "type": "standard", "color": COL_A},
+			{"name": "LIFT 2", "type": "standard", "color": COL_B},
+		],
+		"quota": 10, "max_lost": 8, "shift": 70.0,
+		"spawn": {"interval_start": 2.6, "interval_end": 2.3, "ramp": 50.0, "burst_min": 1, "burst_max": 2, "gap": 0.9},
+		"mix": {"visitor": 1.0},
+		"manifest": [
+			{"type": "visitor", "from": "A", "to": "C"},
+			{"type": "visitor", "from": "A", "to": "E"},
+			{"type": "visitor", "from": "A", "to": "B"},
+			{"type": "visitor", "from": "A", "to": "D"},
+			{"type": "visitor", "from": "A", "to": "B"},
+			{"type": "visitor", "from": "A", "to": "C"},
+			{"type": "visitor", "from": "A", "to": "B"},
+			{"type": "visitor", "from": "A", "to": "E"},
+			{"type": "visitor", "from": "A", "to": "D"},
+			{"type": "visitor", "from": "A", "to": "B"},
+			{"type": "visitor", "from": "A", "to": "C"},
+			{"type": "visitor", "from": "A", "to": "B"},
+		],
+		"stars": [50, 75, 90, 100],
+		"solution": [[[5, 6], [5, 5], [6, 5], [6, 4], [6, 3], [6, 2], [5, 2], [5, 1], [5, 0], [4, 0], [3, 0]], [[3, 0], [3, 1], [3, 2], [2, 2], [2, 3], [1, 3], [1, 4], [1, 5], [2, 5], [2, 6]]],
+		"sols": [[[[2, 3], [1, 3], [1, 4], [1, 5], [2, 5], [2, 6]], [[3, 0], [3, 1], [3, 2], [4, 2], [5, 2], [5, 3], [6, 3], [6, 4], [6, 5], [5, 5], [5, 6]]], [[[5, 6], [5, 5], [6, 5], [6, 4], [6, 3], [6, 2], [5, 2], [5, 1], [5, 0], [4, 0], [3, 0]], [[3, 0], [3, 1], [3, 2], [2, 2], [2, 3], [1, 3], [1, 4], [1, 5], [2, 5], [2, 6]]], [[[5, 6], [5, 5], [6, 5], [6, 4], [6, 3], [6, 2], [5, 2], [5, 1], [5, 0], [4, 0], [3, 0]], [[3, 0], [3, 1], [3, 2], [2, 2], [2, 3], [1, 3], [1, 4], [1, 5], [2, 5], [2, 6]]], [[[5, 6], [5, 5], [6, 5], [6, 4], [6, 3], [6, 2], [5, 2], [5, 1], [5, 0], [4, 0], [3, 0]], [[3, 0], [3, 1], [3, 2], [2, 2], [2, 3], [1, 3], [1, 4], [1, 5], [2, 5], [2, 6]]]],
+	},
+	{
+		"id": "A-2", "world": "ATELIER", "name": "The Divide",
+		"cols": 10, "rows": 9, "ground_row": 0, "blocked": [Vector2i(4, 0), Vector2i(4, 1), Vector2i(4, 2), Vector2i(4, 4), Vector2i(4, 5), Vector2i(4, 6), Vector2i(4, 7), Vector2i(4, 8)],
+		"overlaps": [
+			{"cells": [Vector2i(5, 0), Vector2i(6, 0), Vector2i(7, 0), Vector2i(8, 0), Vector2i(9, 0), Vector2i(3, 1), Vector2i(5, 1), Vector2i(9, 1), Vector2i(0, 2), Vector2i(1, 2), Vector2i(2, 2), Vector2i(3, 2), Vector2i(5, 2), Vector2i(6, 2), Vector2i(7, 2), Vector2i(8, 2), Vector2i(9, 2), Vector2i(0, 3), Vector2i(1, 3), Vector2i(7, 3), Vector2i(8, 3), Vector2i(9, 3), Vector2i(0, 4), Vector2i(1, 4), Vector2i(2, 4), Vector2i(3, 4), Vector2i(5, 4), Vector2i(6, 4), Vector2i(7, 4), Vector2i(8, 4), Vector2i(9, 4), Vector2i(3, 5), Vector2i(5, 5), Vector2i(6, 5), Vector2i(7, 5), Vector2i(8, 5), Vector2i(9, 5), Vector2i(0, 6), Vector2i(1, 6), Vector2i(2, 6), Vector2i(3, 6), Vector2i(5, 6), Vector2i(6, 6), Vector2i(7, 6), Vector2i(8, 6), Vector2i(9, 6), Vector2i(0, 7), Vector2i(1, 7), Vector2i(2, 7), Vector2i(3, 7), Vector2i(3, 8), Vector2i(5, 8), Vector2i(8, 8), Vector2i(9, 8)], "max": 3},
+			{"cells": [Vector2i(2, 3), Vector2i(2, 5), Vector2i(2, 8), Vector2i(3, 0), Vector2i(6, 1), Vector2i(6, 3), Vector2i(9, 7)], "max": 6},
+		],
+		"rooms": [
+			{"type": "lobby", "cells": [Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0), Vector2i(0, 1), Vector2i(1, 1), Vector2i(2, 1)], "drops": [{"cell": Vector2i(2, 0), "dir": R}]},
+			{"type": "office", "cells": [Vector2i(0, 5), Vector2i(1, 5)], "drops": [{"cell": Vector2i(1, 5), "dir": R}]},
+			{"type": "office", "cells": [Vector2i(0, 8), Vector2i(1, 8)], "drops": [{"cell": Vector2i(1, 8), "dir": R}]},
+			{"type": "atrium", "cells": [Vector2i(3, 3), Vector2i(4, 3), Vector2i(5, 3)], "drops": [{"cell": Vector2i(3, 3), "dir": L}, {"cell": Vector2i(5, 3), "dir": R}]},
+			{"type": "office", "cells": [Vector2i(7, 1), Vector2i(8, 1)], "drops": [{"cell": Vector2i(7, 1), "dir": L}]},
+			{"type": "penthouse", "cells": [Vector2i(5, 7), Vector2i(6, 7), Vector2i(7, 7), Vector2i(8, 7), Vector2i(6, 8), Vector2i(7, 8)], "drops": [{"cell": Vector2i(8, 7), "dir": R}]},
+		],
+		"cards": [
+			{"name": "LIFT 1", "type": "standard", "color": COL_A},
+			{"name": "LIFT 2", "type": "standard", "color": COL_B},
+		],
+		"quota": 10, "max_lost": 8, "shift": 120.0,
+		"spawn": {"interval_start": 2.8, "interval_end": 2.4, "ramp": 50.0, "burst_min": 1, "burst_max": 2, "gap": 0.9},
+		"mix": {"visitor": 1.0},
+		"manifest": [
+			{"type": "visitor", "from": "A", "to": "B"},
+			{"type": "visitor", "from": "A", "to": "E"},
+			{"type": "visitor", "from": "A", "to": "F"},
+			{"type": "visitor", "from": "A", "to": "C"},
+			{"type": "visitor", "from": "A", "to": "E"},
+			{"type": "visitor", "from": "A", "to": "B"},
+			{"type": "visitor", "from": "A", "to": "F"},
+			{"type": "visitor", "from": "A", "to": "E"},
+		],
+		"stars": [25, 40, 55, 65],   # live ceiling 77, 4-star at ~90% (headroom)
+		"solution": [[[3, 0], [3, 1], [3, 2], [2, 2], [2, 3], [2, 4], [2, 5], [2, 6], [2, 7], [2, 8]], [[9, 7], [9, 6], [9, 5], [9, 4], [9, 3], [8, 3], [7, 3], [6, 3], [6, 2], [6, 1]]],
+		"sols": [[[[3, 0], [3, 1], [3, 2], [2, 2], [2, 3], [2, 4], [2, 5], [2, 6], [2, 7], [2, 8]], [[6, 3], [6, 4], [6, 5], [6, 6], [7, 6], [8, 6], [9, 6], [9, 7]]], [[[3, 0], [3, 1], [3, 2], [2, 2], [2, 3], [2, 4], [2, 5], [2, 6], [2, 7], [2, 8]], [[6, 3], [6, 2], [6, 1], [6, 0], [7, 0], [8, 0], [9, 0], [9, 1], [9, 2], [9, 3], [9, 4], [9, 5], [9, 6], [9, 7]]], [[[3, 0], [3, 1], [3, 2], [2, 2], [2, 3], [2, 4], [2, 5], [2, 6], [2, 7], [2, 8]], [[6, 3], [6, 2], [6, 1], [6, 0], [7, 0], [8, 0], [9, 0], [9, 1], [9, 2], [9, 3], [9, 4], [9, 5], [9, 6], [9, 7]]], [[[3, 0], [3, 1], [3, 2], [2, 2], [2, 3], [2, 4], [2, 5], [2, 6], [2, 7], [2, 8]], [[9, 7], [9, 6], [9, 5], [9, 4], [9, 3], [8, 3], [7, 3], [6, 3], [6, 2], [6, 1]]]],
+	},
+	{
+		"id": "A-3", "world": "ATELIER", "name": "Rush Hour",
+		"cols": 8, "rows": 12, "ground_row": 0, "blocked": [Vector2i(5, 1), Vector2i(5, 2), Vector2i(6, 9), Vector2i(6, 10), Vector2i(7, 9), Vector2i(7, 10)],
+		"overlaps": [
+			{"cells": [Vector2i(4, 0), Vector2i(5, 0), Vector2i(6, 0), Vector2i(7, 0), Vector2i(3, 1), Vector2i(4, 1), Vector2i(6, 1), Vector2i(7, 1), Vector2i(0, 2), Vector2i(1, 2), Vector2i(2, 2), Vector2i(3, 2), Vector2i(4, 2), Vector2i(6, 2), Vector2i(7, 2), Vector2i(0, 3), Vector2i(1, 3), Vector2i(2, 3), Vector2i(3, 3), Vector2i(4, 3), Vector2i(0, 4), Vector2i(1, 4), Vector2i(2, 4), Vector2i(3, 4), Vector2i(4, 4), Vector2i(5, 4), Vector2i(6, 4), Vector2i(7, 4), Vector2i(3, 5), Vector2i(4, 5), Vector2i(5, 5), Vector2i(6, 5), Vector2i(7, 5), Vector2i(0, 6), Vector2i(1, 6), Vector2i(2, 6), Vector2i(3, 6), Vector2i(4, 6), Vector2i(0, 7), Vector2i(1, 7), Vector2i(2, 7), Vector2i(3, 7), Vector2i(4, 7), Vector2i(5, 7), Vector2i(6, 7), Vector2i(7, 7), Vector2i(0, 8), Vector2i(1, 8), Vector2i(2, 8), Vector2i(3, 8), Vector2i(4, 8), Vector2i(5, 8), Vector2i(6, 8), Vector2i(7, 8), Vector2i(0, 9), Vector2i(1, 9), Vector2i(2, 9), Vector2i(3, 9), Vector2i(4, 9), Vector2i(5, 9), Vector2i(0, 10), Vector2i(0, 11), Vector2i(1, 11), Vector2i(2, 11), Vector2i(5, 11), Vector2i(6, 11), Vector2i(7, 11)], "max": 3},
+			{"cells": [Vector2i(1, 10), Vector2i(2, 5), Vector2i(3, 0), Vector2i(5, 3), Vector2i(5, 6)], "max": 6},
+		],
+		"rooms": [
+			{"type": "lobby", "cells": [Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0), Vector2i(0, 1), Vector2i(1, 1), Vector2i(2, 1)], "drops": [{"cell": Vector2i(2, 0), "dir": R}]},
+			{"type": "penthouse", "cells": [Vector2i(2, 10), Vector2i(3, 10), Vector2i(4, 10), Vector2i(5, 10), Vector2i(3, 11), Vector2i(4, 11)], "drops": [{"cell": Vector2i(2, 10), "dir": L}]},
+			{"type": "office", "cells": [Vector2i(6, 3), Vector2i(7, 3)], "drops": [{"cell": Vector2i(6, 3), "dir": L}]},
+			{"type": "office", "cells": [Vector2i(6, 6), Vector2i(7, 6)], "drops": [{"cell": Vector2i(6, 6), "dir": L}]},
+			{"type": "office", "cells": [Vector2i(0, 5), Vector2i(1, 5)], "drops": [{"cell": Vector2i(1, 5), "dir": R}]},
+		],
+		"cards": [
+			{"name": "LOCAL", "type": "standard", "color": COL_A},
+			{"name": "EXPRESS", "type": "express", "color": COL_D, "speed": 1500.0, "accel": 1200.0},
+		],
+		"quota": 10, "max_lost": 8, "shift": 75.0,
+		"spawn": {"interval_start": 2.4, "interval_end": 2.1, "ramp": 50.0, "burst_min": 1, "burst_max": 2, "gap": 0.9},
+		"mix": {"visitor": 1.0},
+		"manifest": [
+			{"type": "executive", "from": "A", "to": "B"},
+			{"type": "visitor", "from": "A", "to": "C"},
+			{"type": "executive", "from": "A", "to": "B"},
+			{"type": "executive", "from": "A", "to": "B"},
+			{"type": "visitor", "from": "A", "to": "E"},
+			{"type": "executive", "from": "A", "to": "B"},
+			{"type": "visitor", "from": "A", "to": "D"},
+			{"type": "executive", "from": "A", "to": "B"},
+			{"type": "executive", "from": "A", "to": "B"},
+			{"type": "visitor", "from": "A", "to": "C"},
+			{"type": "executive", "from": "A", "to": "B"},
+			{"type": "visitor", "from": "A", "to": "E"},
+		],
+		"stars": [70, 100, 140, 170],   # live ceiling 193, 4-star at ~90% (headroom)
+		"solution": [[[3, 0], [3, 1], [3, 2], [3, 3], [3, 4], [3, 5], [2, 5]], [[3, 0], [4, 0], [4, 1], [4, 2], [4, 3], [5, 3], [5, 4], [5, 5], [5, 6], [5, 7], [5, 8], [5, 9], [4, 9], [3, 9], [2, 9], [1, 9], [1, 10]]],
+		"sols": [[[[5, 3], [5, 4], [5, 5], [5, 6]], [[1, 10], [1, 9], [2, 9], [3, 9], [3, 8], [3, 7], [3, 6], [3, 5], [3, 4], [3, 3], [3, 2], [3, 1], [3, 0], [4, 0], [4, 1], [4, 2], [4, 3], [5, 3]]], [[[3, 0], [3, 1], [3, 2], [3, 3], [3, 4], [3, 5], [2, 5]], [[3, 0], [4, 0], [4, 1], [4, 2], [4, 3], [5, 3], [5, 4], [5, 5], [5, 6], [5, 7], [5, 8], [5, 9], [4, 9], [3, 9], [2, 9], [1, 9], [1, 10]]], [[[3, 0], [3, 1], [3, 2], [3, 3], [3, 4], [3, 5], [2, 5]], [[3, 0], [4, 0], [4, 1], [4, 2], [4, 3], [5, 3], [5, 4], [5, 5], [5, 6], [5, 7], [5, 8], [5, 9], [4, 9], [3, 9], [2, 9], [1, 9], [1, 10]]], [[[3, 0], [3, 1], [3, 2], [3, 3], [3, 4], [3, 5], [2, 5]], [[3, 0], [4, 0], [4, 1], [4, 2], [4, 3], [5, 3], [5, 4], [5, 5], [5, 6], [5, 7], [5, 8], [5, 9], [4, 9], [3, 9], [2, 9], [1, 9], [1, 10]]]],
+	},
+	{
+		"id": "A-4", "world": "ATELIER", "name": "Freight Yard",
+		"cols": 9, "rows": 9, "ground_row": 0, "blocked": [Vector2i(1, 6), Vector2i(1, 7), Vector2i(4, 1), Vector2i(4, 2), Vector2i(7, 7), Vector2i(7, 8)],
+		"overlaps": [
+			{"cells": [Vector2i(4, 0), Vector2i(5, 0), Vector2i(6, 0), Vector2i(7, 0), Vector2i(8, 0), Vector2i(3, 1), Vector2i(8, 1), Vector2i(0, 2), Vector2i(1, 2), Vector2i(2, 2), Vector2i(3, 2), Vector2i(5, 2), Vector2i(8, 2), Vector2i(0, 3), Vector2i(1, 3), Vector2i(2, 3), Vector2i(3, 3), Vector2i(4, 3), Vector2i(5, 3), Vector2i(6, 3), Vector2i(7, 3), Vector2i(8, 3), Vector2i(3, 4), Vector2i(4, 4), Vector2i(5, 4), Vector2i(0, 5), Vector2i(1, 5), Vector2i(2, 5), Vector2i(3, 5), Vector2i(4, 5), Vector2i(5, 5), Vector2i(6, 5), Vector2i(7, 5), Vector2i(8, 5), Vector2i(0, 6), Vector2i(2, 6), Vector2i(7, 6), Vector2i(8, 6), Vector2i(0, 7), Vector2i(2, 7), Vector2i(8, 7), Vector2i(0, 8), Vector2i(1, 8), Vector2i(2, 8), Vector2i(3, 8), Vector2i(4, 8), Vector2i(5, 8), Vector2i(6, 8), Vector2i(8, 8)], "max": 3},
+			{"cells": [Vector2i(2, 4), Vector2i(3, 0), Vector2i(3, 6), Vector2i(5, 1), Vector2i(6, 4), Vector2i(6, 6)], "max": 6},
+		],
+		"rooms": [
+			{"type": "lobby", "cells": [Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0), Vector2i(0, 1), Vector2i(1, 1), Vector2i(2, 1)], "drops": [{"cell": Vector2i(2, 0), "dir": R}]},
+			{"type": "delivery", "label": "storage", "cells": [Vector2i(6, 1), Vector2i(7, 1), Vector2i(6, 2), Vector2i(7, 2)], "drops": [{"cell": Vector2i(6, 1), "dir": L}]},
+			{"type": "cafe", "cells": [Vector2i(4, 6), Vector2i(5, 6), Vector2i(3, 7), Vector2i(4, 7), Vector2i(5, 7), Vector2i(6, 7)], "drops": [{"cell": Vector2i(4, 6), "dir": L}, {"cell": Vector2i(5, 6), "dir": R}]},
+			{"type": "office", "cells": [Vector2i(0, 4), Vector2i(1, 4)], "drops": [{"cell": Vector2i(1, 4), "dir": R}]},
+			{"type": "office", "cells": [Vector2i(7, 4), Vector2i(8, 4)], "drops": [{"cell": Vector2i(7, 4), "dir": L}]},
+		],
+		"cards": [
+			{"name": "LIFT", "type": "standard", "color": COL_A},
+			{"name": "CARGO", "type": "cargo", "color": COL_C, "speed": 100.0, "accel": 80.0},
+		],
+		"quota": 10, "max_lost": 8, "shift": 90.0,
+		"spawn": {"interval_start": 3.0, "interval_end": 2.6, "ramp": 50.0, "burst_min": 1, "burst_max": 2, "gap": 1.0},
+		"mix": {"visitor": 1.0},
+		"manifest": [
+			{"type": "delivery", "from": "B", "to": "C", "return": "B"},
+			{"type": "visitor", "from": "A", "to": "D"},
+			{"type": "delivery", "from": "B", "to": "C", "return": "B"},
+			{"type": "visitor", "from": "A", "to": "C"},
+			{"type": "delivery", "from": "B", "to": "C", "return": "B"},
+			{"type": "visitor", "from": "A", "to": "E"},
+			{"type": "delivery", "from": "B", "to": "C", "return": "B"},
+			{"type": "visitor", "from": "A", "to": "D"},
+			{"type": "delivery", "from": "B", "to": "C", "return": "B"},
+			{"type": "visitor", "from": "A", "to": "C"},
+		],
+		"stars": [95, 140, 180, 220],   # live ceiling 253, 4-star at ~90% (headroom)
+		"solution": [[[5, 1], [5, 0], [4, 0], [3, 0], [3, 1], [3, 2], [3, 3], [3, 4], [2, 4], [2, 5], [2, 6], [3, 6]], [[5, 1], [5, 2], [5, 3], [6, 3], [6, 4], [6, 5], [6, 6]]],
+		"sols": [[[[3, 0], [3, 1], [3, 2], [3, 3], [3, 4], [4, 4], [5, 4], [6, 4]], [[3, 6], [3, 5], [4, 5], [5, 5], [6, 5], [6, 4], [6, 3], [5, 3], [5, 2], [5, 1], [5, 0], [4, 0], [3, 0]]], [[[3, 0], [3, 1], [3, 2], [3, 3], [3, 4], [2, 4], [2, 5], [2, 6], [3, 6]], [[5, 1], [5, 2], [5, 3], [5, 4], [5, 5], [6, 5], [6, 6]]], [[[5, 1], [5, 0], [4, 0], [3, 0], [3, 1], [3, 2], [3, 3], [3, 4], [2, 4], [2, 5], [2, 6], [3, 6]], [[5, 1], [5, 2], [5, 3], [6, 3], [6, 4], [6, 5], [6, 6]]], [[[5, 1], [5, 0], [4, 0], [3, 0], [3, 1], [3, 2], [3, 3], [3, 4], [2, 4], [2, 5], [2, 6], [3, 6]], [[5, 1], [5, 2], [5, 3], [6, 3], [6, 4], [6, 5], [6, 6]]]],
+	},
+	{
+		"id": "A-5", "world": "ATELIER", "name": "Relay",
+		"cols": 7, "rows": 13, "ground_row": 0, "blocked": [Vector2i(0, 2), Vector2i(0, 3), Vector2i(0, 4), Vector2i(0, 5), Vector2i(0, 6), Vector2i(0, 7), Vector2i(0, 8), Vector2i(0, 9), Vector2i(0, 10), Vector2i(0, 11), Vector2i(0, 12), Vector2i(4, 5), Vector2i(5, 5), Vector2i(6, 5), Vector2i(6, 6), Vector2i(6, 7), Vector2i(6, 8), Vector2i(6, 9), Vector2i(6, 10), Vector2i(6, 11), Vector2i(6, 12)],
+		"overlaps": [
+			{"cells": [Vector2i(4, 0), Vector2i(5, 0), Vector2i(6, 0), Vector2i(3, 1), Vector2i(4, 1), Vector2i(5, 1), Vector2i(6, 1), Vector2i(1, 2), Vector2i(2, 2), Vector2i(3, 2), Vector2i(4, 2), Vector2i(5, 2), Vector2i(6, 2), Vector2i(1, 3), Vector2i(2, 3), Vector2i(6, 3), Vector2i(1, 4), Vector2i(2, 4), Vector2i(3, 4), Vector2i(4, 4), Vector2i(5, 4), Vector2i(6, 4), Vector2i(1, 5), Vector2i(2, 5), Vector2i(3, 5), Vector2i(5, 6), Vector2i(5, 7), Vector2i(1, 8), Vector2i(2, 8), Vector2i(3, 8), Vector2i(4, 8), Vector2i(5, 8), Vector2i(1, 9), Vector2i(2, 9), Vector2i(3, 9), Vector2i(4, 9), Vector2i(5, 9), Vector2i(1, 10), Vector2i(2, 10), Vector2i(3, 10), Vector2i(4, 10), Vector2i(5, 10), Vector2i(1, 12), Vector2i(4, 12), Vector2i(5, 12)], "max": 3},
+			{"cells": [Vector2i(1, 6), Vector2i(3, 0), Vector2i(3, 3), Vector2i(4, 6), Vector2i(5, 11)], "max": 6},
+		],
+		"rooms": [
+			{"type": "lobby", "cells": [Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0), Vector2i(0, 1), Vector2i(1, 1), Vector2i(2, 1)], "drops": [{"cell": Vector2i(2, 0), "dir": R}]},
+			{"type": "office", "cells": [Vector2i(4, 3), Vector2i(5, 3)], "drops": [{"cell": Vector2i(4, 3), "dir": L}]},
+			{"type": "cafe", "cells": [Vector2i(2, 6), Vector2i(3, 6), Vector2i(1, 7), Vector2i(2, 7), Vector2i(3, 7), Vector2i(4, 7)], "drops": [{"cell": Vector2i(2, 6), "dir": L}, {"cell": Vector2i(3, 6), "dir": R}]},
+			{"type": "penthouse", "cells": [Vector2i(1, 11), Vector2i(2, 11), Vector2i(3, 11), Vector2i(4, 11), Vector2i(2, 12), Vector2i(3, 12)], "drops": [{"cell": Vector2i(4, 11), "dir": R}]},
+		],
+		"cards": [
+			{"name": "LIFT 1", "type": "standard", "color": COL_A},
+			{"name": "LIFT 2", "type": "standard", "color": COL_B},
+		],
+		"quota": 10, "max_lost": 8, "shift": 90.0,
+		"spawn": {"interval_start": 2.8, "interval_end": 2.4, "ramp": 50.0, "burst_min": 1, "burst_max": 2, "gap": 0.9},
+		"mix": {"visitor": 1.0},
+		"manifest": [
+			{"type": "visitor", "from": "A", "to": "D"},
+			{"type": "visitor", "from": "A", "to": "B"},
+			{"type": "visitor", "from": "A", "to": "C"},
+			{"type": "executive", "from": "A", "to": "D"},
+			{"type": "visitor", "from": "A", "to": "D"},
+			{"type": "visitor", "from": "A", "to": "B"},
+			{"type": "visitor", "from": "A", "to": "C"},
+			{"type": "executive", "from": "A", "to": "D"},
+			{"type": "visitor", "from": "A", "to": "D"},
+			{"type": "visitor", "from": "A", "to": "C"},
+		],
+		"stars": [45, 65, 80, 90],
+		"solution": [[[4, 6], [5, 6], [5, 7], [5, 8], [5, 9], [5, 10], [5, 11]], [[1, 6], [1, 5], [2, 5], [3, 5], [3, 4], [3, 3], [3, 2], [3, 1], [3, 0]]],
+		"sols": [[[[4, 6], [5, 6], [5, 7], [5, 8], [5, 9], [5, 10], [5, 11]], [[3, 0], [3, 1], [3, 2], [3, 3], [3, 4], [3, 5], [2, 5], [1, 5], [1, 6]]], [[[4, 6], [5, 6], [5, 7], [5, 8], [5, 9], [5, 10], [5, 11]], [[1, 6], [1, 5], [2, 5], [3, 5], [3, 4], [3, 3], [3, 2], [3, 1], [3, 0]]], [[[4, 6], [5, 6], [5, 7], [5, 8], [5, 9], [5, 10], [5, 11]], [[1, 6], [1, 5], [2, 5], [3, 5], [3, 4], [3, 3], [3, 2], [3, 1], [3, 0]]], [[[4, 6], [5, 6], [5, 7], [5, 8], [5, 9], [5, 10], [5, 11]], [[1, 6], [1, 5], [2, 5], [3, 5], [3, 4], [3, 3], [3, 2], [3, 1], [3, 0]]]],
+	},
+	{
+		"id": "A-6", "world": "ATELIER", "name": "Full House",
+		"cols": 10, "rows": 14, "ground_row": 0, "blocked": [Vector2i(2, 7), Vector2i(2, 8), Vector2i(3, 2), Vector2i(4, 7), Vector2i(4, 8), Vector2i(4, 10), Vector2i(4, 11)],
+		"overlaps": [
+			{"cells": [Vector2i(4, 0), Vector2i(5, 0), Vector2i(9, 0), Vector2i(3, 1), Vector2i(4, 1), Vector2i(5, 1), Vector2i(6, 1), Vector2i(9, 1), Vector2i(0, 2), Vector2i(1, 2), Vector2i(2, 2), Vector2i(4, 2), Vector2i(5, 2), Vector2i(6, 2), Vector2i(7, 2), Vector2i(8, 2), Vector2i(9, 2), Vector2i(0, 3), Vector2i(1, 3), Vector2i(2, 3), Vector2i(3, 3), Vector2i(4, 3), Vector2i(5, 3), Vector2i(6, 3), Vector2i(7, 3), Vector2i(8, 3), Vector2i(9, 3), Vector2i(3, 4), Vector2i(8, 4), Vector2i(9, 4), Vector2i(0, 5), Vector2i(1, 5), Vector2i(2, 5), Vector2i(3, 5), Vector2i(8, 5), Vector2i(9, 5), Vector2i(0, 6), Vector2i(1, 6), Vector2i(2, 6), Vector2i(3, 6), Vector2i(4, 6), Vector2i(5, 6), Vector2i(6, 6), Vector2i(7, 6), Vector2i(8, 6), Vector2i(9, 6), Vector2i(0, 7), Vector2i(1, 7), Vector2i(3, 7), Vector2i(5, 7), Vector2i(6, 7), Vector2i(0, 8), Vector2i(1, 8), Vector2i(3, 8), Vector2i(5, 8), Vector2i(6, 8), Vector2i(7, 8), Vector2i(8, 8), Vector2i(9, 8), Vector2i(0, 9), Vector2i(1, 9), Vector2i(7, 9), Vector2i(8, 9), Vector2i(9, 9), Vector2i(0, 10), Vector2i(1, 10), Vector2i(2, 10), Vector2i(3, 10), Vector2i(5, 10), Vector2i(6, 10), Vector2i(7, 10), Vector2i(8, 10), Vector2i(9, 10), Vector2i(3, 11), Vector2i(5, 11), Vector2i(6, 11), Vector2i(7, 11), Vector2i(8, 11), Vector2i(9, 11), Vector2i(0, 12), Vector2i(1, 12), Vector2i(2, 12), Vector2i(3, 12), Vector2i(9, 12), Vector2i(0, 13), Vector2i(1, 13), Vector2i(2, 13), Vector2i(3, 13), Vector2i(4, 13), Vector2i(5, 13), Vector2i(8, 13), Vector2i(9, 13)], "max": 3},
+			{"cells": [Vector2i(2, 4), Vector2i(2, 9), Vector2i(2, 11), Vector2i(3, 0), Vector2i(4, 4), Vector2i(4, 12), Vector2i(6, 0), Vector2i(6, 9), Vector2i(7, 4), Vector2i(7, 7)], "max": 6},
+		],
+		"rooms": [
+			{"type": "lobby", "cells": [Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0), Vector2i(0, 1), Vector2i(1, 1), Vector2i(2, 1)], "drops": [{"cell": Vector2i(2, 0), "dir": R}]},
+			{"type": "delivery", "label": "storage", "cells": [Vector2i(7, 0), Vector2i(8, 0), Vector2i(7, 1), Vector2i(8, 1)], "drops": [{"cell": Vector2i(7, 0), "dir": L}]},
+			{"type": "cafe", "cells": [Vector2i(5, 4), Vector2i(6, 4), Vector2i(4, 5), Vector2i(5, 5), Vector2i(6, 5), Vector2i(7, 5)], "drops": [{"cell": Vector2i(5, 4), "dir": L}, {"cell": Vector2i(6, 4), "dir": R}]},
+			{"type": "office", "cells": [Vector2i(0, 4), Vector2i(1, 4)], "drops": [{"cell": Vector2i(1, 4), "dir": R}]},
+			{"type": "office", "cells": [Vector2i(8, 7), Vector2i(9, 7)], "drops": [{"cell": Vector2i(8, 7), "dir": L}]},
+			{"type": "atrium", "cells": [Vector2i(3, 9), Vector2i(4, 9), Vector2i(5, 9)], "drops": [{"cell": Vector2i(3, 9), "dir": L}, {"cell": Vector2i(5, 9), "dir": R}]},
+			{"type": "office", "cells": [Vector2i(0, 11), Vector2i(1, 11)], "drops": [{"cell": Vector2i(1, 11), "dir": R}]},
+			{"type": "penthouse", "cells": [Vector2i(5, 12), Vector2i(6, 12), Vector2i(7, 12), Vector2i(8, 12), Vector2i(6, 13), Vector2i(7, 13)], "drops": [{"cell": Vector2i(5, 12), "dir": L}]},
+		],
+		"cards": [
+			{"name": "LIFT 1", "type": "standard", "color": COL_A},
+			{"name": "LIFT 2", "type": "standard", "color": COL_B},
+			{"name": "EXPRESS", "type": "express", "color": COL_D, "speed": 1500.0, "accel": 1200.0},
+			{"name": "CARGO", "type": "cargo", "color": COL_C, "speed": 100.0, "accel": 80.0},
+		],
+		"quota": 10, "max_lost": 8, "shift": 100.0,
+		"spawn": {"interval_start": 2.4, "interval_end": 2.0, "ramp": 70.0, "burst_min": 1, "burst_max": 2, "gap": 0.9},
+		"mix": {"visitor": 1.0},
+		"manifest": [
+			{"type": "visitor", "from": "A", "to": "D"},
+			{"type": "delivery", "from": "B", "to": "C", "return": "B"},
+			{"type": "executive", "from": "A", "to": "H"},
+			{"type": "visitor", "from": "A", "to": "E"},
+			{"type": "visitor", "from": "A", "to": "G"},
+			{"type": "delivery", "from": "B", "to": "C", "return": "B"},
+			{"type": "visitor", "from": "A", "to": "C"},
+			{"type": "executive", "from": "A", "to": "H"},
+			{"type": "visitor", "from": "A", "to": "D"},
+			{"type": "delivery", "from": "B", "to": "C", "return": "B"},
+			{"type": "visitor", "from": "A", "to": "G"},
+			{"type": "visitor", "from": "A", "to": "E"},
+			{"type": "executive", "from": "A", "to": "H"},
+			{"type": "delivery", "from": "B", "to": "C", "return": "B"},
+			{"type": "visitor", "from": "A", "to": "C"},
+			{"type": "visitor", "from": "A", "to": "G"},
+			{"type": "executive", "from": "A", "to": "H"},
+			{"type": "delivery", "from": "B", "to": "C", "return": "B"},
+		],
+		"stars": [140, 210, 280, 340],   # live ceiling 381, 4-star at ~90% (headroom)
+		"solution": [[[2, 9], [2, 10], [2, 11], [2, 12], [3, 12], [4, 12]], [[7, 7], [7, 8], [7, 9], [6, 9]], [[3, 0], [3, 1], [4, 1], [4, 2], [4, 3], [4, 4], [3, 4], [2, 4], [2, 5], [2, 6], [1, 6], [1, 7], [1, 8], [1, 9], [2, 9]], [[7, 4], [7, 3], [7, 2], [6, 2], [6, 1], [6, 0]]],
+		"sols": [[[[4, 4], [3, 4], [3, 5], [3, 6], [4, 6], [5, 6], [5, 7], [6, 7], [7, 7]], [[2, 11], [2, 10], [2, 9], [1, 9], [1, 8], [1, 7], [1, 6], [2, 6], [2, 5], [2, 4]], [[2, 4], [2, 3], [3, 3], [4, 3], [4, 4]], [[7, 7], [7, 8], [7, 9], [6, 9]]], [[[4, 12], [3, 12], [3, 11], [2, 11], [2, 12], [2, 13], [3, 13], [4, 13]], [[7, 4], [8, 4], [8, 5], [8, 6], [7, 6], [7, 7], [7, 8], [7, 9], [6, 9]], [[2, 11], [2, 10], [2, 9], [1, 9], [1, 8], [1, 7], [1, 6], [2, 6], [2, 5], [2, 4], [3, 4], [4, 4], [4, 3], [4, 2], [4, 1], [4, 0], [3, 0]], [[7, 4], [7, 3], [7, 2], [6, 2], [6, 1], [6, 0]]], [[[4, 12], [4, 13], [3, 13], [2, 13], [2, 12], [2, 11]], [[7, 4], [8, 4], [8, 5], [8, 6], [7, 6], [7, 7]], [[3, 0], [3, 1], [4, 1], [4, 2], [4, 3], [4, 4], [3, 4], [2, 4], [2, 5], [2, 6], [1, 6], [1, 7], [1, 8], [1, 9], [1, 10], [2, 10], [2, 11], [3, 11], [3, 12], [4, 12]], [[7, 4], [7, 3], [7, 2], [6, 2], [6, 1], [6, 0]]], [[[2, 9], [2, 10], [2, 11], [2, 12], [3, 12], [4, 12]], [[7, 7], [7, 8], [7, 9], [6, 9]], [[3, 0], [3, 1], [4, 1], [4, 2], [4, 3], [4, 4], [3, 4], [2, 4], [2, 5], [2, 6], [1, 6], [1, 7], [1, 8], [1, 9], [2, 9]], [[7, 4], [7, 3], [7, 2], [6, 2], [6, 1], [6, 0]]]],
 	},
 ]
 
