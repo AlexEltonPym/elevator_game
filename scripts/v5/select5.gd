@@ -92,13 +92,22 @@ func _rebuild() -> void:
 	_kfont(wlabel)
 	add_child(wlabel)
 
+	# MENU (home) button on a reserved bottom strip; ESC does the same (see _input).
+	var home := Ui5.make_button("MENU", "Grey", 24)
+	home.icon = Ui5.arrow_tex("w")
+	home.size = Vector2(220, 64)
+	home.position = Vector2((vp.x - home.size.x) / 2.0, vp.y - 84.0)
+	home.pressed.connect(_to_menu)
+	add_child(home)
+
 	# Level buttons for this world (generous margins; the border was reading tight).
 	var items := _levels_in_page()
 	var margin := 40.0
 	var top := 130.0
 	var gap := 20.0
+	var bottom_reserve := 96.0   # the MENU strip
 	var n: int = maxi(1, items.size())
-	var h := (vp.y - top - margin - gap * (n - 1)) / float(n)
+	var h := (vp.y - top - margin - bottom_reserve - gap * (n - 1)) / float(n)
 	h = clampf(h, 96.0, 176.0)
 	for k in items.size():
 		var index: int = items[k].index
@@ -140,8 +149,15 @@ func _on_unhover(idx: int) -> void:
 
 ## Secret dev shortcut: while hovering a level, press 1-4 to launch it pre-solved to that
 ## star tier (1 = a 1-star plan ... 4 = the perfect plan).
+func _to_menu() -> void:
+	get_tree().change_scene_to_file("res://scenes/v5_menu.tscn")
+
+
 func _input(event: InputEvent) -> void:
 	if not (event is InputEventKey and event.pressed and not event.echo):
+		return
+	if event.keycode == KEY_ESCAPE:
+		_to_menu()
 		return
 	var tier := -1
 	match event.keycode:

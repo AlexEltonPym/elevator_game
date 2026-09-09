@@ -84,6 +84,17 @@ static var _npc_tex_red: Array = []    # EXECUTIVE variant: blue hair -> RED (gi
 static var _npc_tex_green: Array = []   # DELIVERY variant: blue hair -> GREEN (persists cargo-less)
 static var _npc_loaded := false
 
+# BUSINESSMAN test skin: a hi-res 8-frame walk cycle, 8 cols x 2 rows of BM_CW x BM_CH cells.
+# Row 0 = LEFT-facing walk, row 1 = RIGHT-facing walk (both baked, so NO mirroring). Used for
+# the regular commuter types (visitor/patient/shopper); executive/delivery keep the recoloured
+# 16x16 sheet (they rely on the hair-swap + cart). Rendered BM_H tall, bottom-aligned to feet.
+const BM_PATH := "res://assets/pixel/pixelspaces/Pre-made NPCs/businessman_walk.png"
+const BM_COLS := 8
+const BM_CW := 164
+const BM_CH := 235
+const BM_H := 40.0
+static var _bm_tex: Texture2D = null
+
 static func _load_npc() -> void:
 	if _npc_loaded:
 		return
@@ -93,6 +104,7 @@ static func _load_npc() -> void:
 		_npc_tex.append(t)
 		_npc_tex_red.append(_recolor(t, "red"))
 		_npc_tex_green.append(_recolor(t, "green"))
+	_bm_tex = load(BM_PATH) if ResourceLoader.exists(BM_PATH) else null
 
 
 ## A hair-recoloured clone of an NPC sheet: the blue hair (blue-dominant pixels) is remapped by
@@ -116,6 +128,7 @@ static func _recolor(tex: Texture2D, mode: String) -> Texture2D:
 
 var _sheet := 0
 var _anim_i := 0
+var _bm_i := 0          # businessman 8-frame walk index (0..7)
 var _anim_t := 0.0
 var _facing := 0        # 0 front, 1 right, -1 left
 var _cols: Array = NPC_FRONT
@@ -491,6 +504,7 @@ func _process(delta: float) -> void:
 	if riding != null:
 		_cols = NPC_FRONT
 		_anim_i = 0
+		_bm_i = 0
 	else:
 		var vel := position - _prev_pos
 		if vel.length() > 0.4:
@@ -498,6 +512,7 @@ func _process(delta: float) -> void:
 			if _anim_t > 0.13:
 				_anim_t = 0.0
 				_anim_i = (_anim_i + 1) % 2
+				_bm_i = (_bm_i + 1) % BM_COLS
 			if absf(vel.x) >= absf(vel.y):
 				_facing = 1 if vel.x >= 0.0 else -1
 				_cols = NPC_SIDE
@@ -505,6 +520,7 @@ func _process(delta: float) -> void:
 				_cols = NPC_FRONT
 		else:
 			_anim_i = 0
+			_bm_i = 0
 			_cols = NPC_FRONT
 	_prev_pos = position
 	# Depth sort: figures lower on screen (larger y) draw in front. Render-only.
@@ -562,6 +578,10 @@ func _draw() -> void:
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	# Special passengers keep a distinct HAIR colour (persists cart-less too): executives are
 	# red-haired, delivery men green-haired; everyone else is the default blue sheet.
+	# `fig_top` = the screen Y of the figure's head, used to anchor the patience badge above it
+	# (differs from the 16px `side` when the taller businessman skin is drawn).
+	var fig_top := feet - side
+	var use_bm: bool = _bm_tex != null and ptype != "executive" and ptype != "delivery"
 	var tex: Texture2D = null
 	if _sheet < _npc_tex.size():
 		if ptype == "executive":
@@ -570,7 +590,15 @@ func _draw() -> void:
 			tex = _npc_tex_green[_sheet]
 		else:
 			tex = _npc_tex[_sheet]
-	if tex != null:
+	if use_bm:
+		# Hi-res 8-frame walk cycle; row 0 faces LEFT, row 1 faces RIGHT (baked, no mirror).
+		var bh := BM_H * rs
+		var bw := bh * float(BM_CW) / float(BM_CH)
+		var brow := 0 if _facing < 0 else 1
+		var bsrc := Rect2(_bm_i * BM_CW, brow * BM_CH, BM_CW, BM_CH)
+		draw_texture_rect_region(_bm_tex, Rect2(-bw / 2.0, feet - bh, bw, bh), bsrc)
+		fig_top = feet - bh
+	elif tex != null:
 		var dest := Rect2(-side / 2.0, feet - side, side, side)  # feet on the floor line
 		var src := Rect2(_cols[_anim_i] * 16, 0, 16, 16)
 		if _facing < 0 and riding == null:   # only mirror while WALKING; riding faces the doors
@@ -594,7 +622,7 @@ func _draw() -> void:
 	# replacement for the old "?". Shown for the whole trip (queue -> board -> ride -> transfer),
 	# vanishing only once they arrive (between-dwell) or the trip ends.
 	if active and activated and not between:
-		var center := Vector2(0, feet - side - 6.0)
+		var center := Vector2(0, fig_top - 6.0)
 		var frac := clampf(patience / maxf(1.0, patience_max), 0.0, 1.0)
 		var no_route := no_path and riding == null
 		var bcol: Color = Grid5.room_color(dest_room)
